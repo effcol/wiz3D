@@ -1,4 +1,4 @@
-# wiz3D — "We See 3D"
+# wiz3D "We See 3D"
 
 A universal stereoscopic 3D wrapper for DirectX, OpenGL, AMD HD3D, and Nvidia 3D Vision. 
 
