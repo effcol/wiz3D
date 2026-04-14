@@ -51,6 +51,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Battlefield 3 | DX11 | x86 | ✅ Half SBS working | Only tested in Campaign. Wary of testing in multiplayer, I would recommend only trying in Campaign. |
 | Deus Ex: Human Revolution | DX11 | x86 | ✅ Half SBS working | Half SBS stereo confirmed perfect at 4K. Cursor doubled correctly. |
 | Deus Ex: HR Director's Cut | DX11 | x86 | ✅ Half SBS working | Has undocumented native AMD HD3D support. |
+| DiRT 2 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT 3 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT 3 Complete Edition | DX11 | x86 | ⚠️ Partial | Top half of Half SBS visible, but content shifted to bottom quarters. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT Rally | DX11 | x86 | ⚠️ Partial | Top half of Half SBS visible, but content shifted to bottom quarters. `hardware_settings_config.xml` needs `stereo enabled="true"` |
