@@ -22,11 +22,11 @@ Wiz3D is an open-source stereoscopic 3D wrapper that hooks into DirectX, OpenGL,
 
 ### Released Build:
 
-* **AMD HD3D:** ✅ **Working!** Proxy chain successfully intercepts and converts Top-and-Bottom quad-buffer output to universal Half Side-by-Side (HSBS). Still needs more game support, mouse doubling implemented, and more outputs to be supported.
+* **AMD HD3D:** ✅ **Mostly Working!** Proxy chain successfully intercepts and converts Top-and-Bottom quad-buffer output to universal Half Side-by-Side (HSBS). Still needs Ego engine games and Tomb Raider 2013 to work fully. Mouse doubling needs implementing, more outputs need to be supported, and need to make sure it works on all GPUs and on Linux.
 
 ### Unreleased Builds:
 
-* **DirectX 9:** ✅ **Working!** `d3d9.dll` proxy loader works! Left 4 Dead 2 and many others run in full stereo 3D, outputs in all originally supported formats, and the profile system loads shader fixes and stereo settings for all originally supported games.
+* **DirectX 9:** ✅ **Mostly Working!** `d3d9.dll` proxy loader works! Left 4 Dead 2 and many others run in full stereo 3D, outputs in all originally supported formats, and the profile system loads shader fixes and stereo settings for all originally supported games.
 * **DirectX 10/11:** ⚠️ **Partial.** The DX10/11 wrapper was never completely finished by iZ3D Inc. Some games work, many crash. Current build works in some games, needs further testing.
 * **DirectX 7/8:** ⚠️ **In Progress.** iZ3D used wrappers for DX7/8 to then run them in DX9's stereoization. Currently I've made basic test builds, feel free to test them! 
 * **OpenGL:** ⚠️ **In Progress.** Basic build has been made, untested. Feel free to test it and report back your findings! 
@@ -49,7 +49,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 *Legend: **Working** = Stereo output activated and playable. **Partial** = Stereo activated but with issues (crash, wrong settings, shader problems). **Not loading** = Wrapper not activating.*
 
-### AMD HD3D Game List
+### AMD HD3D Native Game List
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
@@ -90,8 +90,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ### iZ3D DX7/8 Games
 
-*Profiles automatically load from `BaseProfile.xml`. Ensure you match the API correctly.*
-
 | Game | API | Bits | Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
 | Ballance | DX8 | x86 | ✅ | - | - |
@@ -110,7 +108,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Tom Clancy's Rainbow Six 3: Raven Shield | DX8 | x86 | ✅ | - | - |
 | Tony Hawk's Pro Skater 3 | DX8 | x86 | ✅ | - | - |
 
-*(Note: Hundreds of other DX9 titles are supported via the included `BaseProfile.xml`. See full list in repository documentation).*
 
 ## iZ3D DX9 32bit Games
 
@@ -391,6 +388,53 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Warcraft III: Reign of Chaos | ✅ | x86/x64 | - | - | - |
 | World in Conflict | DX9/DX10 | x86 | ✅ | - | - |
 | World of Tanks | DX11 | x64 | ✅ | - | - |
+
+### Nvidia 3D Vision "Ready" Native Game List
+
+| Game | API | Bits | Result | Notes |
+|------|-----|------|--------|-------|
+| Aion: The Tower of Eternity | DX9 | x86 | - | - |
+| NVIDIA Demo: Aliens vs. Triangles | - | x86/x64 | - | - |
+| Batman: Arkham Asylum | DX9 | x86 | - | - |
+| Batman: Arkham City | - | x86/x64 | - | - |
+| Batman: Arkham Origins | - | x86/x64 | - | - |
+| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | - | - |
+| Battlefield: Bad Company 2: Vietnam | - | x86/x64 | - | - |
+| Brave | - | x86/x64 | - | - |
+| Call of Duty: Black Ops | DX9 | x86 | - | - |
+| Carrier Command: Gaea Mission | - | x86/x64 | - | - |
+| Civilization V | - | x86/x64 | - | - |
+| Dead Rising 2 | - | x86/x64 | - | - |
+| Deep Black | - | x86/x64 | - | - |
+| Deep Black: Reloaded | - | x86/x64 | - | - |
+| Depth Hunter | - | x86/x64 | - | - |
+| Duke Nukem Forever | - | x86/x64 | - | - |
+| Google Earth | OpenGL/DX9 | x86 | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
+| GT Legends | - | x86/x64 | - | - |
+| Hard Reset | - | x86/x64 | - | - |
+| Hawken | - | x86/x64 | - | - |
+| Inversion | - | x86/x64 | - | - |
+| Just Cause 2 | - | x86/x64 | - | - |
+| L.A. Noire | - | x86/x64 | - | - |
+| Mafia II | - | x86/x64 | - | - |
+| Max Payne 3 | - | x86/x64 | - | - |
+| Medal of Honor (2010) | - | x86/x64 | - | - |
+| Metro 2033 | - | x86/x64 | - | - |
+| Nvidia Demo: Endless City | - | x86/x64 | - | - |
+| Nvidia Demo: Stone Giant | - | x86/x64 | - | - |
+| Nvidia Demo: Supersonic Sled | - | x86/x64 | - | - |
+| Oil Rush | - | x86/x64 | - | - |
+| Pirate101 | - | x86/x64 | - | - |
+| Resident Evil 5 | - | x86/x64 | - | - |
+| rFactor 2 | - | x86/x64 | - | - |
+| Roller Coaster Rampage | - | x86/x64 | - | - |
+| Rusty Hearts | - | x86/x64 | - | - |
+| Street Fighter X Tekken | - | x86/x64 | - | - |
+| Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
+| Tom Clancy's H.A.W.X 2 | - | x86/x64 | - | - |
+| Unigine: Heaven | - | x86/x64 | - | - |
+| The Witcher 2: Assassins of Kings | DX9 | x86 | - | - |
+| Wizard101 | - | x86/x64 | - | - |
 
 ---
 
