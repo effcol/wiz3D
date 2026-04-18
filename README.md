@@ -20,12 +20,17 @@ Wiz3D is an open-source stereoscopic 3D wrapper that hooks into DirectX, OpenGL,
 
 ## Current Status
 
+### Released Build:
+
 * **AMD HD3D:** ✅ **Working!** Proxy chain successfully intercepts and converts Top-and-Bottom quad-buffer output to universal Half Side-by-Side (HSBS). Still needs more game support, mouse doubling implemented, and more outputs to be supported.
+
+### Unreleased Builds:
+
 * **DirectX 9:** ✅ **Working!** `d3d9.dll` proxy loader works! Left 4 Dead 2 and many others run in full stereo 3D, outputs in all originally supported formats, and the profile system loads shader fixes and stereo settings for all originally supported games.
 * **DirectX 10/11:** ⚠️ **Partial.** The DX10/11 wrapper was never completely finished by iZ3D Inc. Some games work, many crash. Current build works in some games, needs further testing.
 * **DirectX 7/8:** ⚠️ **In Progress.** iZ3D used wrappers for DX7/8 to then run them in DX9's stereoization. Currently I've made basic test builds, feel free to test them! 
 * **OpenGL:** ⚠️ **In Progress.** Basic build has been made, untested. Feel free to test it and report back your findings! 
-* **Nvidia 3D Vision:** ⚠️ **In Progress.** Not included in current builds as it's still in very early stages of WIP. I'm pretty confident native "3D Vision Ready" games can be supported by this project in the future using a hybrid 3D Vision + iZ3D + AMD Quad-Buffer approach.
+* **Nvidia 3D Vision:** ⚠️ **In Progress.** Still in very early stages of WIP, kind of a long shot. I'm pretty confident native "3D Vision Ready" games can be supported by this project in the future using a hybrid 3D Vision + iZ3D + AMD Quad-Buffer approach.
 
 ---
 
@@ -73,6 +78,15 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Zombie Army Trilogy | DX11 | x86 | ✅ Half SBS working | Colors appear correct. ResizeBuffers fix applied. |
 | Thief (2014) | DX11 | x86/x64| ✅ Half SBS working | Both x86 and x64 versions tested successfully. |
 | Tomb Raider (2013) | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS. Seems to be the most stubborn HD3D game to get working. |
+| ~~Crysis 2~~ | DX11 | x86 | N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Crysis 3~~ | DX11 | x86 | N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Rise of the Tomb Raider~~ | DX11 | x64 | N/A | Native SBS output. |
+| ~~Shadwen~~ | DX11 | x64 | N/A | Native SBS output. |
+| ~~Two Worlds II~~ | DX10 | x86 | N/A | Native TAB output. |
+| ~~Trine 1~~ | DX11 | x86 | N/A | Native SBS output. |
+| ~~Trine 2~~ | DX11 | x86 | N/A | Native SBS output. |
+| ~~Trine 3~~ | DX11 | x64 | N/A | Native SBS output. |
+| ~~World of Warcraft~~ | DX11 | x86 | N/A | Multiplayer, and Stereo3D support was removed in the game's 2018 DX12 update. |
 
 ### iZ3D DX7/8 Games
 
