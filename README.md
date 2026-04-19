@@ -455,7 +455,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | ~~DOOM 3: BFG Edition~~ | OpenGL | x86 | 🚫 N/A | Native SBS output. |
 | ~~Hitman: Absolution~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
 | ~~James Cameron's Avatar: The Game~~ | DX9/DX10 | x86 | 🚫 N/A | Native SBS output. |
-
 | ~~Rise of the Tomb Raider~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
 | ~~Sonic Generations~~ | DX9 | x86 | 🚫 N/A | Native SBS output. |
 | ~~Sniper Elite V2~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
