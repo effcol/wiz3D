@@ -55,12 +55,12 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 |------|-----|------|--------|-------|
 | Battlefield 3 | DX11 | x86 | ✅ Half SBS working | Only tested in Campaign. Wary of testing in multiplayer, I would recommend only trying in Campaign. |
 | Deus Ex: Human Revolution | DX11 | x86 | ✅ Half SBS working | Half SBS stereo confirmed perfect at 4K. Cursor doubled correctly. |
-| Deus Ex: HR Director's Cut | DX11 | x86 | ✅ Half SBS working | Has undocumented native AMD HD3D support. |
+| Deus Ex: Human Revolution Director's Cut | DX11 | x86 | ✅ Half SBS working | Has undocumented native AMD HD3D support. |
 | DiRT 2 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT 3 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT 3 Complete Edition | DX11 | x86 | ⚠️ Partial | Top half of Half SBS visible, but content shifted to bottom quarters. `hardware_settings_config.xml` needs `stereo enabled="true"` |
-| DiRT Rally | DX11 | x86 | ⚠️ Partial | Top half of Half SBS visible, but content shifted to bottom quarters. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT Showdown | DX11 | x86 | ⚠️ Partial | Top half of Half SBS visible, but content shifted to bottom quarters. `hardware_settings_config.xml` needs `stereo enabled="true"` |
+| DiRT Rally | DX11 | x86 | ⚠️ Partial | Top half of Half SBS visible, but content shifted to bottom quarters. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | F1 2010 | DX11 | x86 | Untested | Untested |
 | F1 2011 | DX11 | x86 | Untested | Untested |
 | F1 2012 | DX11 | x86 | Untested | Untested |
@@ -78,15 +78,15 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Zombie Army Trilogy | DX11 | x86 | ✅ Half SBS working | Colors appear correct. ResizeBuffers fix applied. |
 | Thief (2014) | DX11 | x86/x64| ✅ Half SBS working | Both x86 and x64 versions tested successfully. |
 | Tomb Raider (2013) | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS. Seems to be the most stubborn HD3D game to get working. |
-| ~~Crysis 2~~ | DX11 | x86 | N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Crysis 3~~ | DX11 | x86 | N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Rise of the Tomb Raider~~ | DX11 | x64 | N/A | Native SBS output. |
-| ~~Shadwen~~ | DX11 | x64 | N/A | Native SBS output. |
-| ~~Two Worlds II~~ | DX10 | x86 | N/A | Native TAB output. |
-| ~~Trine 1~~ | DX11 | x86 | N/A | Native SBS output. |
-| ~~Trine 2~~ | DX11 | x86 | N/A | Native SBS output. |
-| ~~Trine 3~~ | DX11 | x64 | N/A | Native SBS output. |
-| ~~World of Warcraft~~ | DX11 | x86 | N/A | Multiplayer, and Stereo3D support was removed in the game's 2018 DX12 update. |
+| ~~Crysis 2~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Crysis 3~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Rise of the Tomb Raider~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
+| ~~Shadwen~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
+| ~~Two Worlds II~~ | DX10 | x86 | 🚫 N/A | Native TAB output. |
+| ~~Trine 1~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
+| ~~Trine 2~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
+| ~~Trine 3~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
+| ~~World of Warcraft~~ | DX11 | x86 | 🚫 N/A | MMO. Stereo3D support was removed in the game's 2018 DX12 update. |
 
 ### iZ3D DX7/8 Games
 
@@ -393,8 +393,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
-| Aion: The Tower of Eternity | DX9 | x86 | - | - |
-| NVIDIA Demo: Aliens vs. Triangles | - | x86/x64 | - | - |
+| Aion: The Tower of Eternity | DX9 | x86 | - | MMO. |
 | Batman: Arkham Asylum | DX9 | x86 | - | - |
 | Batman: Arkham City | - | x86/x64 | - | - |
 | Batman: Arkham Origins | - | x86/x64 | - | - |
@@ -404,12 +403,20 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Call of Duty: Black Ops | DX9 | x86 | - | - |
 | Carrier Command: Gaea Mission | - | x86/x64 | - | - |
 | Civilization V | - | x86/x64 | - | - |
+| Diablo III | DX9/DX11 | x86/x64 | - | Native NVAPI cursor/UI support, relies on driver for stereo. |
 | Dead Rising 2 | - | x86/x64 | - | - |
 | Deep Black | - | x86/x64 | - | - |
 | Deep Black: Reloaded | - | x86/x64 | - | - |
 | Depth Hunter | - | x86/x64 | - | - |
+| DiRT 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
+| DiRT 3 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
+| DiRT 3 Complete Edition | DX11 | - | Also HD3D, but not yet fully working. |
+| DiRT Showdown | DX11 | x86 | - | Also HD3D, but not yet fully working. |
+| DiRT Rally | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | Duke Nukem Forever | - | x86/x64 | - | - |
 | Google Earth | OpenGL/DX9 | x86 | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
+| GRID 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
+| GRID Autosport | DX11 | - | Also HD3D, but not yet fully working. |
 | GT Legends | - | x86/x64 | - | - |
 | Hard Reset | - | x86/x64 | - | - |
 | Hawken | - | x86/x64 | - | - |
@@ -420,21 +427,45 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Max Payne 3 | - | x86/x64 | - | - |
 | Medal of Honor (2010) | - | x86/x64 | - | - |
 | Metro 2033 | - | x86/x64 | - | - |
+| Nvidia Demo: Aliens vs. Triangles | - | x86/x64 | - | - |
 | Nvidia Demo: Endless City | - | x86/x64 | - | - |
 | Nvidia Demo: Stone Giant | - | x86/x64 | - | - |
 | Nvidia Demo: Supersonic Sled | - | x86/x64 | - | - |
 | Oil Rush | - | x86/x64 | - | - |
-| Pirate101 | - | x86/x64 | - | - |
-| Resident Evil 5 | - | x86/x64 | - | - |
+| Passion Leads Army Benchmark  | - | x86/x64 | - | MMO. |
+| Pirate101 | - | x86/x64 | - | MMO. |
+| Resident Evil 5 | - | x86/x64 | - | aka Biohazard 5 |
 | rFactor 2 | - | x86/x64 | - | - |
 | Roller Coaster Rampage | - | x86/x64 | - | - |
-| Rusty Hearts | - | x86/x64 | - | - |
-| Street Fighter X Tekken | - | x86/x64 | - | - |
+| Rusty Hearts | - | x86/x64 | - | MMO. |
+| StarCraft II | DX9/DX11 | x86/x64 | - | Native NVAPI cursor/UI support, relies on driver for stereo. |
 | Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
+| Street Fighter X Tekken | - | x86/x64 | - | - |
 | Tom Clancy's H.A.W.X 2 | - | x86/x64 | - | - |
-| Unigine: Heaven | - | x86/x64 | - | - |
+| Tomb Raider (2013) | DX11 | x86 | - | Also HD3D, but not yet fully working. |
+| Unigine: Heaven Benchmark | - | x86/x64 | - | 3.0 |
 | The Witcher 2: Assassins of Kings | DX9 | x86 | - | - |
-| Wizard101 | - | x86/x64 | - | - |
+| Wizard101 | - | x86/x64 | - | MMO. |
+| ~~Battlefield 3~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
+| ~~Crysis 2~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Crysis 3~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Deus Ex: Human Revolution~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
+| ~~Deus Ex: Human Revolution Director's Cut~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
+| ~~Deus Ex: Mankind Divided~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
+| ~~DOOM 3: BFG Edition~~ | OpenGL | x86 | 🚫 N/A | Native SBS output. |
+| ~~Hitman: Absolution~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
+| ~~James Cameron's Avatar: The Game~~ | DX9/DX10 | x86 | 🚫 N/A | Native SBS output. |
+
+| ~~Rise of the Tomb Raider~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
+| ~~Sonic Generations~~ | DX9 | x86 | 🚫 N/A | Native SBS output. |
+| ~~Sniper Elite V2~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
+| ~~Sniper Elite III~~ | DX11| x86| 🚫 N/A | Working via HD3D output. |
+| ~~Thief (2014)~~ | DX11 | x86/x64|  🚫 N/A | Working via HD3D output. |
+| ~~Trine 1~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
+| ~~Trine 2~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
+| ~~Trine 3~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
+| ~~World of Warcraft~~ | DX11 | x86 | 🚫 N/A | MMO, not advised to sue wrapper. Stereo3D support was removed in the game's 2018 DX12 update. |
+
 
 ---
 
