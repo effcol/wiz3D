@@ -78,15 +78,15 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Zombie Army Trilogy | DX11 | x86 | ✅ Half SBS working | Colors appear correct. |
 | Thief (2014) | DX11 | x86/x64| ✅ Half SBS working | Both x86 and x64 versions working. |
 | Tomb Raider (2013) | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS. Most stubborn HD3D game to get working. |
-| ~~Crysis 2~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Crysis 3~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Rise of the Tomb Raider~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
-| ~~Shadwen~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
-| ~~Two Worlds II~~ | DX10 | x86 | 🚫 N/A | Native TAB output. |
-| ~~Trine 1~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
-| ~~Trine 2~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
-| ~~Trine 3~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
-| ~~World of Warcraft~~ | DX11 | x86 | 🚫 N/A | MMO. Stereo3D support was removed in the game's 2018 DX12 update. |
+| ~~Crysis 2~~ | DX11 | x86 | 🚫N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Crysis 3~~ | DX11 | x86 | 🚫N/A | Native Depth-Map Reprojection SBS output. |
+| ~~Rise of the Tomb Raider~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
+| ~~Shadwen~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
+| ~~Two Worlds II~~ | DX10 | x86 | 🚫N/A | Native TAB output. |
+| ~~Trine 1~~ | DX11 | x86 | 🚫N/A | Native SBS output. |
+| ~~Trine 2~~ | DX11 | x86 | 🚫N/A | Native SBS output. |
+| ~~Trine 3~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
+| ~~World of Warcraft~~ | DX11 | x86 | 🚫N/A | MMO. Stereo3D support was removed in the game's 2018 DX12 update. |
 
 ### DirectX 7/8 Games
 
@@ -319,62 +319,62 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Wolfenstein (2009) | DX9 | x86 | ✓ | - | - |
 | WorldShift | DX9 | x86 | ✓ | - | - |
 | Zeno Clash | DX9 | x86 | ✓ | - | - |
+| ~~Darkspore~~ | DX9 | x86 | ✓ | 🚫N/A | Game not playable until [Resurrection Capsule](https://github.com/vitor251093/resurrection-capsule) project completes. |
+| ~~Fury (2007)~~ | DX9 | x86 | ✓ | 🚫N/A | MMO shut down 2008 |
+| ~~Global Agenda~~ | DX9 | x86 | ✓ | 🚫N/A | MMO |
+| ~~Monster Hunter Frontier Online~~ | DX9 | x86 | ✓ | 🚫N/A | - |
+| ~~Warhammer Online: Age of Reckoning~~ | DX9 | x86 | ✓ | 🚫N/A | MMO. Return of Reckoning is modern version, need to investigate that. |
 
 ## DirectX 9 64bit Game List
 
 | Game | API | Bits | iZ3D Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
 | Chess Titans | DX9 | x86/x64 | ✕ | - | - |
-| Counter-Strike: Source | OpenGL/DX9 | x86/x64 | ✓ | - | - |
-| Day of Defeat: Source | DX9 | x86/x64 | ✓ | - | - |
-| Dungeons & Dragons Online | DX9 | x86/x64 | ✓ | - | - |
-| EVE Online | DX9 | x86/x64 | ✓ | - | - |
-| EverQuest | DX9 | x64 | ✓ | - | - |
-| EverQuest 2 | DX9 | x64 | ✓ | - | - |
 | Evolution GT | DX9 | x64 | ✕ | - | - |
 | Far Cry | DX9 | x86/x64 | ✓ | - | - |
-| Flyff (Fly For Fun) | DX9 | x86/x64 | ✓ | - | - |
-| Half-Life 2: Deathmatch | DX9 | x86/x64 | ✓ | - | - |
 | REFLEX XTR² | DX9 | x86/x64 | ✓ | - | - |
-| RIFT | DX9 | x86/x64 | ✓ | - | - |
-| Starcraft II | DX9 | x86/x64 | ✓ | - | - |
-| Team Fortress 2 | DX9 | x86/x64 | ✓ | - | - |
 | Unreal Tournament 2004 | DX9 | x64 | ✓ | ✅ Working | - |
+| ~~Counter-Strike: Source~~ | OpenGL/DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
+| ~~Day of Defeat: Source~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
+| ~~Dungeons & Dragons Online~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~EVE Online~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~EverQuest~~ | DX9 | x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~EverQuest 2~~ | DX9 | x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Flyff (Fly For Fun)~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Half-Life 2: Deathmatch~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
+| ~~RIFT~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Starcraft II~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
+| ~~Team Fortress 2~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
 
 ## DirectX 10/11 Game List
 
 | Game | API | Bits | iZ3D Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
-| Age of Conan: Unchained | DX9/DX10 | x86 | ✓ | - | - |
 | Aliens vs. Predator (2010) | DX9/DX11 | x86 | ✓ | - | - |
 | Assassins Creed | DX9/DX10 | x86 | ✓ | - | - |
 | Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | ✓ | - | Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
 | BioShock | DX9/DX10 | x86 | ✓ | - | - |
 | BioShock 2 | DX9/DX10 | x86 | ✓ | - | - |
 | Call of Juarez: Bound in Blood | DX9/DX10 | x86 | ✓ | - | - |
-| Champions Online | DX9/DX11 | x86 | ✕ | - | - |
 | Company of Heroes | DX9/DX10 | x86 | ✓ | - | - |
 | Cryostasis | DX9/DX10 | x86 | ✓ | - | - |
 | Crysis | DX9/DX10 | x86/x64 | ✓ | - | - |
 | Crysis: Warhead | DX9/DX10 | x86/x64 | ✓ | - | - |
 | Crysis 2 | DX9/DX11 | x86/x64 | ✓ | - | - |
-| DC Universe Online | DX9/DX11 | x86 | ✓ | - | - |
-| DCS: Black Shark | DX9/DX11 | x86 | ✓ | - | - |
+| DCS: Black Shark | DX9/DX11 | x86 | ✓ | - | Single Player may be okay. Multiplayer not reccomended. |
 | De Blob | DX11 | x86 | ✓ | - | - |
 | Deus Ex: Human Revolution | DX9/DX11 | x86 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the HD3D native version and Directors Cut version. |
 | Devil May Cry 4 (2008) | DX9/DX10 | x86/x64 | ✓ | - | - |
 | Dirt 3 | DX9/DX11 | x86 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the HD3D native version and Complete Edition version. |
 | Dragon Age II | DX9/DX11 | x86 | ✓ | - | - |
-| Entropia Universe | DX11 | x64 | ✕ | - | - |
 | Far Cry 2 | DX9/DX10 | x86 | ✓ | - | - |
 | F.E.A.R. 3 | DX9/DX10 | x86 | ✓ | - | - |
-| Final Fantasy 14 | DX11 | x86 | ✕ | - | - |
 | Gears of War | DX9/DX10 | x86 | ✓ | - | - |
 | Homefront | DX9/DX11 | x86 | ✓ | - | - |
 | Just Cause 2 | DX10 | x86 | ✓ | - | - |
 | Lost Planet | DX9/DX10 | x86 | ✓ | - | - |
 | Lost Planet 2 | DX9/DX11 | x86 | ✓ | - | - |
-| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | - | Might includes Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | - | Single Player only reccomended. Might includes Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
 | Metro 2033 | DX9/DX11 | x86 | ✓ | - | - |
 | Microsoft Flight Simulator X | DX9/DX10 | x86 | ✓ | - | - |
 | NecroVisioN | DX9/DX10 | x86 | ✓ | - | - |
@@ -383,28 +383,23 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | S.T.A.L.K.E.R.: Call of Pripyat | DX9/DX10/DX11 | x86/x64 | ✓ | - | - |
 | Serious Sam HD: The First Encounter | DX9/DX11/DX12 | x86 | ✓ | - | - |
 | Sid Meier's Civilization V | DX9/DX11 | x86 | ✓ | - | - |
-| The Lord of the Rings Online: Shadows of Angmar | DX9/DX10/DX11 | x86/x64 | ✓ | - | MMO. Not sure if this convers the modern The Lord of the Rings Online version. |
 | Tom Clancy's H.A.W.X | DX9/DX10 | x86 | ✓ | - | - |
 | Tom Clancy's H.A.W.X. 2 | DX9/DX11 | x86 | ✓ | - | - |
-| Warcraft III: Reign of Chaos | OpenGL/DX8/DX9/DX11 | x86/x64 | ✓ | - | - |
 | World in Conflict | DX9/DX10 | x86 | ✓ | - | - |
-| World of Tanks | DX11 | x64 | ✓ | - | - |
-
-## iZ3D Games Not Supported
-
-| Game | API | Bits | Profile | Result | Notes |
-| ~~Darkspore~~ | DX9 | x86 | ✓ | - | Game not playable until [Resurrection Capsule](https://github.com/vitor251093/resurrection-capsule) project completes. |
-| ~~Fury (2007)~~ | DX9 | x86 | ✓ | - | MMO shut down 2008 |
-| ~~Global Agenda~~ | DX9 | x86 | ✓ | - | - |
-| ~~Monster Hunter Frontier Online~~ | DX9 | x86 | ✓ | - | - |
-| ~~TERA Online~~ | DX11 | x86/x64 | ✓ | - | - |
-| ~~Warhammer Online: Age of Reckoning~~ | - | x86 | ✓ | - | - |
+| ~~Age of Conan: Unchained~~ | DX9/DX10 | x86 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Champions Online~~ | DX9/DX11 | x64 | ✕ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~DC Universe Online~~ | DX9/DX11 | x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Entropia Universe~~ | DX11 | x64 | ✕ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Final Fantasy 14~~ | DX11 | x64 | ✕ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~TERA Online~~ | DX11 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~The Lord of the Rings Online: Shadows of Angmar~~ | DX9/DX10/DX11 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Warcraft III: Reign of Chaos~~ | OpenGL/DX8/DX9/DX11 | x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
+| ~~World of Tanks~~ | DX11 | x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
 
 ### Nvidia 3D Vision "Ready" Native Game List
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
-| Aion: The Tower of Eternity | DX9 | x86 | - | MMO. |
 | Batman: Arkham Asylum | DX9 | x86 | - | - |
 | Batman: Arkham City | - | x86/x64 | - | - |
 | Batman: Arkham Origins | - | x86/x64 | - | - |
@@ -443,12 +438,10 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Nvidia Demo: Stone Giant | - | x86/x64 | - | - |
 | Nvidia Demo: Supersonic Sled | - | x86/x64 | - | - |
 | Oil Rush | - | x86/x64 | - | - |
-| Passion Leads Army Benchmark  | - | x86/x64 | - | MMO. |
-| Pirate101 | - | x86/x64 | - | MMO. |
+| Passion Leads Army Benchmark  | - | x86/x64 | - | - |
 | Resident Evil 5 | - | x86/x64 | - | aka Biohazard 5 |
 | rFactor 2 | - | x86/x64 | - | - |
 | Roller Coaster Rampage | - | x86/x64 | - | - |
-| Rusty Hearts | - | x86/x64 | - | MMO. |
 | StarCraft II | DX9/DX11 | x86/x64 | - | Native NVAPI cursor/UI support, relies on driver for stereo. |
 | Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
 | Street Fighter X Tekken | - | x86/x64 | - | - |
@@ -456,26 +449,14 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Tomb Raider (2013) | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | Unigine: Heaven Benchmark | - | x86/x64 | - | 3.0 |
 | The Witcher 2: Assassins of Kings | DX9 | x86 | - | - |
-| Wizard101 | - | x86/x64 | - | MMO. |
-| ~~Battlefield 3~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
-| ~~Crysis 2~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Crysis 3~~ | DX11 | x86 | 🚫 N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Deus Ex: Human Revolution~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
-| ~~Deus Ex: Human Revolution Director's Cut~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
-| ~~Deus Ex: Mankind Divided~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
-| ~~DOOM 3: BFG Edition~~ | OpenGL | x86 | 🚫 N/A | Native SBS output. |
-| ~~Hitman: Absolution~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
-| ~~James Cameron's Avatar: The Game~~ | DX9/DX10 | x86 | 🚫 N/A | Native SBS output. |
-| ~~Rise of the Tomb Raider~~ | DX11 | x64 | 🚫 N/A | Native SBS output. |
-| ~~Sonic Generations~~ | DX9 | x86 | 🚫 N/A | Native SBS output. |
-| ~~Sniper Elite V2~~ | DX11 | x86 | 🚫 N/A | Working via HD3D output. |
-| ~~Sniper Elite III~~ | DX11| x86| 🚫 N/A | Working via HD3D output. |
-| ~~Thief (2014)~~ | DX11 | x86/x64|  🚫 N/A | Working via HD3D output. |
-| ~~Trine 1~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
-| ~~Trine 2~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
-| ~~Trine 3~~ | DX11 | x86 | 🚫 N/A | Native SBS output. |
-| ~~World of Warcraft~~ | DX11 | x86 | 🚫 N/A | MMO, not advised to sue wrapper. Stereo3D support was removed in the game's 2018 DX12 update. |
-
+| ~~Aion: The Tower of Eternity~~ | DX9 | x86 | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Deus Ex: Mankind Divided~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
+| ~~DOOM 3: BFG Edition~~ | OpenGL | x86 | 🚫N/A | Native SBS output. |
+| ~~James Cameron's Avatar: The Game~~ | DX9/DX10 | x86 | 🚫N/A | Native SBS output. |
+| ~~Pirate101~~ | - | x86/x64 | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Rusty Hearts~~ | - | x86/x64 | 🚫N/A | MMO. Testing not reccomended. |
+| ~~Sonic Generations~~ | DX9 | x86 | 🚫N/A | Native SBS output. |
+| ~~Wizard101~~ | - | x86/x64 | 🚫N/A | MMO. Testing not reccomended. |
 
 ---
 
