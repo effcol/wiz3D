@@ -1,6 +1,6 @@
 # wiz3D "We See 3D"
 
-A universal stereoscopic 3D wrapper for DirectX, OpenGL, AMD HD3D, and Nvidia 3D Vision. 
+A universal stereoscopic 3D wrapper for DirectX, OpenGL, AMD HD3D, and Nvidia 3D Vision. Based on iZ3D. 
 
 **iZ3D** meant "**I** See 3D", so **wiz3D** means "**We** See 3D"
 
@@ -67,7 +67,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | F1 2013 | DX11 | x86 | Untested | Untested |
 | GRID 2 | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | GRID Autosport | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
-| Hitman: Absolution | DX11 | x86 | ✅ Half SBSB working | Mouse not doubling. |
+| Hitman: Absolution | DX11 | x86 | ✅ Half SBS working | Mouse not doubling. |
 | Sleeping Dogs | DX11 | x86 | ✅ Half SBS working | Mouse not doubling. |
 | Sleeping Dogs: Definitive Edition | DX11 | x64 | ✅ Half SBS working | Undocumented native AMD HD3D support. |
 | Sniper Elite V2 | DX11 | x86 | ✅ Half SBS working | Minor color shifting, and mouse not doubling. |
@@ -78,15 +78,9 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Zombie Army Trilogy | DX11 | x86 | ✅ Half SBS working | Colors appear correct. |
 | Thief (2014) | DX11 | x86/x64| ✅ Half SBS working | Both x86 and x64 versions working. |
 | Tomb Raider (2013) | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS. Most stubborn HD3D game to get working. |
-| ~~Crysis 2~~ | DX11 | x86 | 🚫N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Crysis 3~~ | DX11 | x86 | 🚫N/A | Native Depth-Map Reprojection SBS output. |
-| ~~Rise of the Tomb Raider~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
-| ~~Shadwen~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
-| ~~Two Worlds II~~ | DX10 | x86 | 🚫N/A | Native TAB output. |
-| ~~Trine 1~~ | DX11 | x86 | 🚫N/A | Native SBS output. |
-| ~~Trine 2~~ | DX11 | x86 | 🚫N/A | Native SBS output. |
-| ~~Trine 3~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
-| ~~World of Warcraft~~ | DX11 | x86 | 🚫N/A | MMO. Stereo3D support was removed in the game's 2018 DX12 update. |
+
+- **Excluded (Native SBS/TAB):** *Crysis 2*, *Crysis 3*, *Rise of the Tomb Raider*, *Shadwen*, *Two Worlds II*, *Trine 1*, *Trine 2*, *Trine 3*.
+- **Excluded (Online Ban Risk):** *World of Warcraft*. <sub>(Stereo3D removed in 2018 DX12 update)</sub>
 
 ### DirectX 7/8 Games
 
