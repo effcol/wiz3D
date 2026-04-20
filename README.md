@@ -370,54 +370,47 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
 | Batman: Arkham Asylum | DX9 | x86 | - | - |
-| Batman: Arkham City | - | x86/x64 | - | - |
-| Batman: Arkham Origins | - | x86/x64 | - | - |
-| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | - | - |
-| Battlefield: Bad Company 2: Vietnam | - | x86/x64 | - | - |
-| Brave | - | x86/x64 | - | - |
+| Batman: Arkham City | DX9/DX11 | x86 | - | - |
+| Batman: Arkham Origins | DX9/DX11 | x86 | - | - |
+| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | - | Including 'Vietnam' Expansion Pack |
+| Brave: The Video Game | DX9 | x86 | - | - |
 | Call of Duty: Black Ops | DX9 | x86 | - | - |
-| Carrier Command: Gaea Mission | - | x86/x64 | - | - |
-| Civilization V | - | x86/x64 | - | - |
-| Dead Rising 2 | - | x86/x64 | - | - |
-| Deep Black | - | x86/x64 | - | - |
-| Deep Black: Reloaded | - | x86/x64 | - | - |
-| Depth Hunter | - | x86/x64 | - | - |
+| Carrier Command: Gaea Mission | DX9/DX11 | x86 | - | - |
+| Civilization V | DX9/DX11 | x86 | - | - |
+| Dead Rising 2 | DX9 | x86 | - | - |
+| Deep Black: Reloaded | DX9 | x86 | - | - |
+| Depth Hunter | DX9 | x86 | - | - |
 | DiRT 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | DiRT 3 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | DiRT 3 Complete Edition | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | DiRT Showdown | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | DiRT Rally | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| Duke Nukem Forever | - | x86/x64 | - | - |
+| Duke Nukem Forever | DX9 | x86 | - | - |
 | Google Earth | OpenGL/DX9 | x86 | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
 | GRID 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | GRID Autosport | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| GT Legends | - | x86/x64 | - | - |
-| Hard Reset | - | x86/x64 | - | - |
-| Inversion | - | x86/x64 | - | - |
-| Just Cause 2 | - | x86/x64 | - | - |
-| L.A. Noire | - | x86/x64 | - | - |
-| Mafia II | - | x86/x64 | - | - |
-| Max Payne 3 | - | x86/x64 | - | - |
-| Medal of Honor (2010) | - | x86/x64 | - | - |
-| Metro 2033 | - | x86/x64 | - | - |
-| Nvidia Demo: Aliens vs. Triangles | - | x86/x64 | - | - |
-| Nvidia Demo: Endless City | - | x86/x64 | - | - |
-| Nvidia Demo: Stone Giant | - | x86/x64 | - | - |
-| Nvidia Demo: Supersonic Sled | - | x86/x64 | - | - |
-| Oil Rush | - | x86/x64 | - | - |
-| Passion Leads Army Benchmark  | - | x86/x64 | - | - |
-| Resident Evil 5 | - | x86/x64 | - | aka Biohazard 5 |
-| rFactor 2 | - | x86/x64 | - | - |
-| Roller Coaster Rampage | - | x86/x64 | - | - |
+| GT Legends | DX9 | x86 | - | - |
+| Hard Reset | DX9 | x86 | - | - |
+| Inversion | DX9/DX11 | x86 | - | - |
+| Just Cause 2 | DX10 | x86 | - | - |
+| L.A. Noire | DX9/DX11 | x86 | - | - |
+| Mafia II | DX9 | x86 | - | - |
+| Max Payne 3 | DX9/DX11 | x86 | - | - |
+| Medal of Honor (2010) | DX9/DX11 | x86 | - | - |
+| Metro 2033 | DX9/DX11 | x86 | - | - |
+| Oil Rush | OpenGL/DX9/DX11 | x86 | - | - |
+| Resident Evil 5 | DX9/DX10 | x86 | - | aka Biohazard 5 |
+| rFactor 2 | DX9/DX11 | x64 | - | Single-player only recommended. |
+| Roller Coaster Rampage | DX9 | x86 | - | - |
 | Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
-| Street Fighter X Tekken | - | x86/x64 | - | - |
-| Tom Clancy's H.A.W.X 2 | - | x86/x64 | - | - |
+| Street Fighter X Tekken | DX9 | x86 | - | - |
+| Tom Clancy's H.A.W.X 2 | DX9/DX11 | x86 | - | - |
 | Tomb Raider (2013) | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| Unigine: Heaven Benchmark | - | x86/x64 | - | 3.0 |
 | The Witcher 2: Assassins of Kings | DX9 | x86 | - | - |
 
 - **Excluded (Native SBS/TAB):** *Deus Ex: Mankind Divided*, *DOOM 3: BFG Edition*, *Avatar: The Game*, *Sonic Generations*. 
 - **Excluded (Online Ban Risk):** *Aion: The Tower of Eternity*, *Diablo III*, *Hawken*, *Pirate101*, *Rusty Hearts*, *Wizard101*, *StarCraft II*.
+- **Excluded (Demo or Benchmark):** *Aliens vs. Triangles*, *Endless City*, *Stone Giant*, *Supersonic Sled*, *Passion Leads Army Benchmark*, *Unigine: Heaven Benchmark*.
 
 ---
 
