@@ -68,8 +68,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | F1 2013 | DX11 | x86 | Untested | Untested |
 | GRID 2 | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | GRID Autosport | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
-| Hitman: Absolution | DX11 | x86 | ⚠️ Partial | UI,  menus and videos correct, gameplay is the top half of the view-port.
-Mouse not doubling. |
+| Hitman: Absolution | DX11 | x86 | ⚠️ Partial | UI,  menus and videos correct, gameplay is the top half of the view-port. Mouse not doubling. |
 | Sleeping Dogs | DX11 | x86 | ✅ Half SBS working | Mouse not doubling. |
 | Sleeping Dogs: Definitive Edition | DX11 | x64 | ✅ Half SBS working | Undocumented native AMD HD3D support. |
 | Sniper Elite V2 | DX11 | x86 | ✅ Half SBS working | Minor color shifting, and mouse not doubling. |
