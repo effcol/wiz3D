@@ -17,7 +17,7 @@ wiz3D is an open-source stereoscopic 3D wrapper that hooks into DirectX, OpenGL,
 
 iZ3D was a commercial product (~2002–2010) and one of the pioneers in modding games for stereoscopic 3D using kernel-level driver injection. The original developers kindly open-sourced the code under the MIT license, hosted by [bo3b/iZ3D](https://github.com/bo3b/iZ3D).
 
-wiz3D modernizes that source code, replaces kernel-level hooks with a proxy DLL loader, and expands the scope to enable native stereoscopic 3D within AMD HD3D and Nvidia 3D Vision games.
+This project modernizes that source code, replaces kernel-level hooks with a proxy DLL loader, and expands the scope to re-enable stereoscopic 3D in games that have native AMD HD3D and Nvidia 3D Vision support.
 
 ## Current Status
 
@@ -50,7 +50,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 *Legend: **Working** = Stereo output activated and playable. **Partial** = Stereo activated but with issues (crash, wrong settings, shader problems). **Not loading** = Wrapper not activating.*
 
-### AMD HD3D Native Game List
+### AMD HD3D Native Games
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
@@ -310,7 +310,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 - **Excluded (Game Not Playable):** *Darkspore*. <sub>(Game not playable til [Resurrection Capsule](https://github.com/vitor251093/resurrection-capsule) project completes.)</sub>
 - **Excluded (Online Ban Risk):** *Allods Online*, *Dark Age of Camelot*, *Darkfall Online*, *Fury (2007)*, *Global Agenda*, *Guild Wars*, *Monster Hunter Frontier Online*, *Warhammer Online: Age of Reckoning*.
 
-## DirectX 9 64bit Game List
+## DirectX 9 64bit Games
 
 | Game | API | Bits | iZ3D Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
@@ -322,7 +322,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 - **Excluded (VAC Ban Risk):** *Counter-Strike: Source*, *Day of Defeat: Source*, *Half-Life 2: Deathmatch*.
 - **Excluded (Online Ban Risk):** *Dungeons & Dragons Online*, *EVE Online*, *EverQuest*, *EverQuest 2*, *Flyff (Fly For Fun)*, *RIFT*, *Starcraft II*.
 
-## DirectX 10/11 Game List
+## DirectX 10/11 Games
 
 | Game | API | Bits | iZ3D Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
@@ -365,7 +365,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 - **Excluded (Online Ban Risk):** *Age of Conan: Unchained*, *Champions Online*, *DC Universe Online*, *Entropia Universe*, *Final Fantasy 14*, *TERA Online*, *The Lord of the Rings Online*, *Warcraft III: Reign of Chaos*, *World of Tanks*.
 
-### Nvidia 3D Vision "Ready" Native Game List
+### Nvidia 3D Vision "Ready" Native Games
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
