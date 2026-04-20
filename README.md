@@ -86,22 +86,16 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Game | API | Bits | iZ3D Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
 | Ballance | DX8 | x86 | ✓ | - | - |
-| Deus Ex | OpenGL/DX7 | x86 | ✕ | - | Not listed in iZ3D support, in list for DX7 testing. |
-| Empire Earth II | DX8 | x86 | ✓ | - | - |
+| Deus Ex | OpenGL/DX7 | x86 | ✕ | - | listed for DX7 testing. |
 | FATE | DX8 | x86 | ✕ | - | - |
-| Command & Conquer: Renegade | DX8 | x86 | ✕ | - | - |
-| Command & Conquer: Generals | DX8 | x86 | ✕ | - | - |
-| Freelancer | DX8 | x86 | ✓ | - | - |
-| GTR - FIA GT Racing Game | DX8 | x86 | ✓ | - | - |
 | Mega Man X8 | DX8 | x86 | ✓ | - | - |
 | Mercedes-Benz World Racing | DX8 | x86 | ✓ | - | - |
-| NASCAR Racing 2003 Season | OpenGL/DX8 | x86 | ✓ | - | - |
 | Sniper Elite | DX8 | x86 | ✓ | - | - |
 | The Lord of the Rings: The Return of the King | DX8 | x86 | ✓ | - | - |
 | Thief: Deadly Shadows | DX8 | x86 | ✓ | - | - |
-| Tom Clancy's Rainbow Six 3: Raven Shield | DX8 | x86 | ✓ | - | - |
 | Tony Hawk's Pro Skater 3 | DX8 | x86 | ✓ | - | - |
 
+- **Excluded (Online Ban Risk):** *Command & Conquer: Generals*, *Command & Conquer: Renegade*, *Empire Earth II*, *Freelancer*, *GTR - FIA GT Racing Game*, *NASCAR Racing 2003 Season*, *Tom Clancy's Rainbow Six 3: Raven Shield*. <sub>(Active community servers with stringent anti-cheat)</sub>
 
 ## DirectX 9 32bit Games
 
@@ -112,7 +106,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Aion: The Tower of Eternity | DX9 | x86 | ✓ | - | Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
 | Alien Breed 2: Assault | DX9 | x86 | ✓ | - | - |
 | Alien Swarm | DX9 | x86 | ✓ | - | - |
-| Allods Online | DX9 | x86 | ✓ | - | - |
 | Alone in the Dark (2008) | DX9 | x86 | ✓ | - | - |
 | America's Army | DX8/DX9 | x86 | ✓ | - | - |
 | Anomaly Warzone Earth | DX9 | x86 | ✓ | - | - |
@@ -155,12 +148,10 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Condemned: Criminal Origins | DX9 | x86 | ✓ | - | - |
 | Demigod | DX9 | x86 | ✕ | - | - |
 | Damnation | DX9 | x86 | ✓ | - | - |
-| Dark Age of Camelot | DX9 | x86 | ✕ | - | - |
 | Dark Messiah of Might and Magic | DX9 | x86 | ✓ | - | - |
 | Dark Void | DX9 | x86 | ✓ | - | - |
 | Dead Space | DX9 | x86 | ✓ | - | - |
 | Dead Space 2 | DX9 | x86 | ✓ | - | - |
-| Darkfall Online | DX9 | x86 | ✕ | - | - |
 | Defense Grid: The Awakening | DX9 | x86 | ✓ | - | - |
 | Delta Force: Xtreme | DX9 | x86 | ✓ | - | - |
 | Devil May Cry 3: Special Edition | DX9 | x86 | ✓ | - | - |
@@ -175,6 +166,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Empire: Total War | DX9 | x86 | ✓ | - | - |
 | Enemy Engaged 2 | DX9 | x86 | ✕ | - | - |
 | Eragon | DX9 | x86 | ✓ | - | - |
+| Evolution GT | DX9 | x32 | ✕ | - | - |
 | Fable: The Lost Chapters | DX9 | x86 | ✓ | - | - |
 | Fable III | DX9 | x86 | ✓ | - | - |
 | Fahrenheit | DX9 | x86 | ✓ | - | aka Indigo Prophecy |
@@ -198,7 +190,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Grand Theft Auto: San Andreas | DX9 | x86 | ✓ | - | - |
 | Grand Theft Auto IV | DX9 | x86 | ✓ | - | - |
 | GRID | DX9 | x86 | ✓ | - | - |
-| Guild Wars | DX9 | x86 | ✓ | - | - |
 | Guitar Hero III: Legends of Rock | DX9 | x86 | ✓ | - | - |
 | Half-Life 2 | DX9 | x86 | ✓ | ⚠️ Not loading | Suspect issue with needing `-game` command line argument  |
 | Heroes of Might and Magic V | DX9 | x86 | ✓ | - | - |
@@ -275,7 +266,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Supreme Commander: Forged Alliance | DX9 | x86 | ✓ | - | - |
 | Supreme Commander 2 | DX9 | x86 | ✓ | - | - |
 | Test Drive Unlimited | DX9 | x86 | ✓ | - | - |
-| The Ball | DX9 | x86 | ✕ | ✅ Working | Ball shadow diffrent in both eyes. |
+| The Ball | DX9 | x86 | ✕ | ✅ Working | Ball shadow different in both eyes. listed for testing. |
 | The Chronicles of Narnia: The Lion, the Witch and the Wardrobe | DX9 | x86 | ✓ | - | (Guess based on 'Narnia' and 'Narnia.exe') |
 | The Elder Scrolls IV: Oblivion | DX9 | x86 | ✓ | - | - |
 | The Movies (2005) | DX9 | x86 | ✓ | - | - |
@@ -313,32 +304,21 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Wolfenstein (2009) | DX9 | x86 | ✓ | - | - |
 | WorldShift | DX9 | x86 | ✓ | - | - |
 | Zeno Clash | DX9 | x86 | ✓ | - | - |
-| ~~Darkspore~~ | DX9 | x86 | ✓ | 🚫N/A | Game not playable until [Resurrection Capsule](https://github.com/vitor251093/resurrection-capsule) project completes. |
-| ~~Fury (2007)~~ | DX9 | x86 | ✓ | 🚫N/A | MMO shut down 2008 |
-| ~~Global Agenda~~ | DX9 | x86 | ✓ | 🚫N/A | MMO |
-| ~~Monster Hunter Frontier Online~~ | DX9 | x86 | ✓ | 🚫N/A | - |
-| ~~Warhammer Online: Age of Reckoning~~ | DX9 | x86 | ✓ | 🚫N/A | MMO. Return of Reckoning is modern version, need to investigate that. |
+
+- **Excluded (Game Not Playable):** *Darkspore*. <sub>(Game not playable til [Resurrection Capsule](https://github.com/vitor251093/resurrection-capsule) project completes.)</sub>
+- **Excluded (Online Ban Risk):** *Allods Online*, *Dark Age of Camelot*, *Darkfall Online*, *Fury (2007)*, *Global Agenda*, *Guild Wars*, *Monster Hunter Frontier Online*, *Warhammer Online: Age of Reckoning*.
 
 ## DirectX 9 64bit Game List
 
 | Game | API | Bits | iZ3D Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
 | Chess Titans | DX9 | x86/x64 | ✕ | - | - |
-| Evolution GT | DX9 | x64 | ✕ | - | - |
 | Far Cry | DX9 | x86/x64 | ✓ | - | - |
 | REFLEX XTR² | DX9 | x86/x64 | ✓ | - | - |
 | Unreal Tournament 2004 | DX9 | x64 | ✓ | ✅ Working | - |
-| ~~Counter-Strike: Source~~ | OpenGL/DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
-| ~~Day of Defeat: Source~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
-| ~~Dungeons & Dragons Online~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~EVE Online~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~EverQuest~~ | DX9 | x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~EverQuest 2~~ | DX9 | x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Flyff (Fly For Fun)~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Half-Life 2: Deathmatch~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
-| ~~RIFT~~ | DX9 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Starcraft II~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
-| ~~Team Fortress 2~~ | DX9 | x86/x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
+
+- **Excluded (VAC Ban Risk):** *Counter-Strike: Source*, *Day of Defeat: Source*, *Half-Life 2: Deathmatch*.
+- **Excluded (Online Ban Risk):** *Dungeons & Dragons Online*, *EVE Online*, *EverQuest*, *EverQuest 2*, *Flyff (Fly For Fun)*, *RIFT*, *Starcraft II*.
 
 ## DirectX 10/11 Game List
 
@@ -354,8 +334,8 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Cryostasis | DX9/DX10 | x86 | ✓ | - | - |
 | Crysis | DX9/DX10 | x86/x64 | ✓ | - | - |
 | Crysis: Warhead | DX9/DX10 | x86/x64 | ✓ | - | - |
-| Crysis 2 | DX9/DX11 | x86/x64 | ✓ | - | - |
-| DCS: Black Shark | DX9/DX11 | x86 | ✓ | - | Single Player may be okay. Multiplayer not reccomended. |
+| Crysis 2 | DX9/DX11 | x86/x64 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the game's native SBS. |
+| DCS: Black Shark | DX9/DX11 | x86 | ✓ | - | Single Player may be okay. Multiplayer not recommended. |
 | De Blob | DX11 | x86 | ✓ | - | - |
 | Deus Ex: Human Revolution | DX9/DX11 | x86 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the HD3D native version and Directors Cut version. |
 | Devil May Cry 4 (2008) | DX9/DX10 | x86/x64 | ✓ | - | - |
@@ -368,7 +348,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Just Cause 2 | DX10 | x86 | ✓ | - | - |
 | Lost Planet | DX9/DX10 | x86 | ✓ | - | - |
 | Lost Planet 2 | DX9/DX11 | x86 | ✓ | - | - |
-| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | - | Single Player only reccomended. Might includes Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | - | Single Player only recommended. Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
 | Metro 2033 | DX9/DX11 | x86 | ✓ | - | - |
 | Microsoft Flight Simulator X | DX9/DX10 | x86 | ✓ | - | - |
 | NecroVisioN | DX9/DX10 | x86 | ✓ | - | - |
@@ -380,15 +360,8 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Tom Clancy's H.A.W.X | DX9/DX10 | x86 | ✓ | - | - |
 | Tom Clancy's H.A.W.X. 2 | DX9/DX11 | x86 | ✓ | - | - |
 | World in Conflict | DX9/DX10 | x86 | ✓ | - | - |
-| ~~Age of Conan: Unchained~~ | DX9/DX10 | x86 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Champions Online~~ | DX9/DX11 | x64 | ✕ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~DC Universe Online~~ | DX9/DX11 | x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Entropia Universe~~ | DX11 | x64 | ✕ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Final Fantasy 14~~ | DX11 | x64 | ✕ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~TERA Online~~ | DX11 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~The Lord of the Rings Online: Shadows of Angmar~~ | DX9/DX10/DX11 | x86/x64 | ✓ | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Warcraft III: Reign of Chaos~~ | OpenGL/DX8/DX9/DX11 | x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
-| ~~World of Tanks~~ | DX11 | x64 | ✓ | 🚫N/A | Online game. Testing not reccomended. |
+
+- **Excluded (Online Ban Risk):** *Age of Conan: Unchained*, *Champions Online*, *DC Universe Online*, *Entropia Universe*, *Final Fantasy 14*, *TERA Online*, *The Lord of the Rings Online*, *Warcraft III: Reign of Chaos*, *World of Tanks*.
 
 ### Nvidia 3D Vision "Ready" Native Game List
 
