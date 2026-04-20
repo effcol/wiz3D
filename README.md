@@ -1,6 +1,6 @@
 # wiz3D "We See 3D"
 
-A universal stereoscopic 3D wrapper for DirectX, OpenGL, AMD HD3D, and Nvidia 3D Vision. Based on iZ3D. 
+A universal stereoscopic 3D wrapper for DirectX 7-11, OpenGL, AMD HD3D, and Nvidia 3D Vision. Based on iZ3D. 
 
 **iZ3D** meant "**I** See 3D", so **wiz3D** means "**We** See 3D"
 
@@ -11,7 +11,7 @@ A universal stereoscopic 3D wrapper for DirectX, OpenGL, AMD HD3D, and Nvidia 3D
 
 ## What Is This?
 
-Wiz3D is an open-source stereoscopic 3D wrapper that hooks into DirectX, OpenGL, and AMD HD3D native games to generate real-time stereo 3D output (Half Side-by-Side, Top-and-Bottom, Anaglyph, etc.) without requiring kernel drivers or proprietary hardware.
+wiz3D is an open-source stereoscopic 3D wrapper that hooks into DirectX, OpenGL, and AMD HD3D native games to generate real-time stereo 3D output (Half Side-by-Side, Top-and-Bottom, Anaglyph, etc.) without requiring kernel drivers or proprietary hardware.
 
 **The History:** iZ3D was a commercial product (~2002–2010) and one of the pioneers in modding games for stereoscopic 3D using kernel-level driver injection. The original developers kindly open-sourced the code under the MIT license, hosted by [bo3b/iZ3D](https://github.com/bo3b/iZ3D).
 
@@ -403,7 +403,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Call of Duty: Black Ops | DX9 | x86 | - | - |
 | Carrier Command: Gaea Mission | - | x86/x64 | - | - |
 | Civilization V | - | x86/x64 | - | - |
-| Diablo III | DX9/DX11 | x86/x64 | - | Native NVAPI cursor/UI support, relies on driver for stereo. |
 | Dead Rising 2 | - | x86/x64 | - | - |
 | Deep Black | - | x86/x64 | - | - |
 | Deep Black: Reloaded | - | x86/x64 | - | - |
@@ -419,7 +418,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | GRID Autosport | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | GT Legends | - | x86/x64 | - | - |
 | Hard Reset | - | x86/x64 | - | - |
-| Hawken | - | x86/x64 | - | - |
 | Inversion | - | x86/x64 | - | - |
 | Just Cause 2 | - | x86/x64 | - | - |
 | L.A. Noire | - | x86/x64 | - | - |
@@ -436,21 +434,15 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Resident Evil 5 | - | x86/x64 | - | aka Biohazard 5 |
 | rFactor 2 | - | x86/x64 | - | - |
 | Roller Coaster Rampage | - | x86/x64 | - | - |
-| StarCraft II | DX9/DX11 | x86/x64 | - | Native NVAPI cursor/UI support, relies on driver for stereo. |
 | Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
 | Street Fighter X Tekken | - | x86/x64 | - | - |
 | Tom Clancy's H.A.W.X 2 | - | x86/x64 | - | - |
 | Tomb Raider (2013) | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | Unigine: Heaven Benchmark | - | x86/x64 | - | 3.0 |
 | The Witcher 2: Assassins of Kings | DX9 | x86 | - | - |
-| ~~Aion: The Tower of Eternity~~ | DX9 | x86 | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Deus Ex: Mankind Divided~~ | DX11 | x64 | 🚫N/A | Native SBS output. |
-| ~~DOOM 3: BFG Edition~~ | OpenGL | x86 | 🚫N/A | Native SBS output. |
-| ~~James Cameron's Avatar: The Game~~ | DX9/DX10 | x86 | 🚫N/A | Native SBS output. |
-| ~~Pirate101~~ | - | x86/x64 | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Rusty Hearts~~ | - | x86/x64 | 🚫N/A | MMO. Testing not reccomended. |
-| ~~Sonic Generations~~ | DX9 | x86 | 🚫N/A | Native SBS output. |
-| ~~Wizard101~~ | - | x86/x64 | 🚫N/A | MMO. Testing not reccomended. |
+
+- **Excluded (Native SBS/TAB):** *Deus Ex: Mankind Divided*, *DOOM 3: BFG Edition*, *Avatar: The Game*, *Sonic Generations*. 
+- **Excluded (Online Ban Risk):** *Aion: The Tower of Eternity*, *Diablo III*, *Hawken*, *Pirate101*, *Rusty Hearts*, *Wizard101*, *StarCraft II*.
 
 ---
 
