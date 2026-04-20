@@ -6,6 +6,8 @@ A universal stereoscopic 3D wrapper for DirectX 7-11, OpenGL, AMD HD3D, and Nvid
 
 <img width="5760" height="1080" alt="vlcsnap-2026-04-05-21h46m56s809_Parralel _and_Cross" src="https://github.com/user-attachments/assets/b8d2c574-2962-4bfa-b15d-380956552a32" />
 <img width="5760" height="1080" alt="vlcsnap-2026-04-03-22h37m17s146_Parralel _and_Cross" src="https://github.com/user-attachments/assets/89859e2f-915f-499f-a307-b8738d0e561f" />
+<img width="5760" height="1080" alt="Screenshot 2026-03-26 190057_Parralel _and_Cross" src="https://github.com/user-attachments/assets/493f2e32-1c3b-42c6-984d-ef9eacf96620" />
+
 
 ---
 
@@ -13,9 +15,9 @@ A universal stereoscopic 3D wrapper for DirectX 7-11, OpenGL, AMD HD3D, and Nvid
 
 wiz3D is an open-source stereoscopic 3D wrapper that hooks into DirectX, OpenGL, and AMD HD3D native games to generate real-time stereo 3D output (Half Side-by-Side, Top-and-Bottom, Anaglyph, etc.) without requiring kernel drivers or proprietary hardware.
 
-**The History:** iZ3D was a commercial product (~2002–2010) and one of the pioneers in modding games for stereoscopic 3D using kernel-level driver injection. The original developers kindly open-sourced the code under the MIT license, hosted by [bo3b/iZ3D](https://github.com/bo3b/iZ3D).
+iZ3D was a commercial product (~2002–2010) and one of the pioneers in modding games for stereoscopic 3D using kernel-level driver injection. The original developers kindly open-sourced the code under the MIT license, hosted by [bo3b/iZ3D](https://github.com/bo3b/iZ3D).
 
-**This Project:** wiz3D modernizes that source code, replaces kernel-level hooks with a proxy DLL loader, and expands the scope to enable native stereoscopic 3D within AMD HD3D and Nvidia 3D Vision games.
+wiz3D modernizes that source code, replaces kernel-level hooks with a proxy DLL loader, and expands the scope to enable native stereoscopic 3D within AMD HD3D and Nvidia 3D Vision games.
 
 ## Current Status
 
