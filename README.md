@@ -93,6 +93,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Game | API | Bits | iZ3D Profile | Result | Notes |
 |------|-----|---------|--------|-------|-------|
 | Ballance | DX8 | x86 | ✓ | - | - |
+| Deus Ex | OpenGL/DX7 | x86 | ✕ | - | Not listed in iZ3D support, in list for DX7 testing. |
 | Empire Earth II | DX8 | x86 | ✓ | - | - |
 | FATE | DX8 | x86 | ✕ | - | - |
 | Command & Conquer: Renegade | DX8 | x86 | ✕ | - | - |
@@ -416,13 +417,13 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Depth Hunter | - | x86/x64 | - | - |
 | DiRT 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | DiRT 3 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| DiRT 3 Complete Edition | DX11 | - | Also HD3D, but not yet fully working. |
+| DiRT 3 Complete Edition | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | DiRT Showdown | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | DiRT Rally | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | Duke Nukem Forever | - | x86/x64 | - | - |
 | Google Earth | OpenGL/DX9 | x86 | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
 | GRID 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| GRID Autosport | DX11 | - | Also HD3D, but not yet fully working. |
+| GRID Autosport | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | GT Legends | - | x86/x64 | - | - |
 | Hard Reset | - | x86/x64 | - | - |
 | Hawken | - | x86/x64 | - | - |
