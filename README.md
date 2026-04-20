@@ -369,6 +369,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
+| Assassin's Creed: Revelations | DX9 | x86 | - | - |
 | Batman: Arkham Asylum | DX9 | x86 | - | - |
 | Batman: Arkham City | DX9/DX11 | x86 | - | - |
 | Batman: Arkham Origins | DX9/DX11 | x86 | - | - |
@@ -398,8 +399,10 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Max Payne 3 | DX9/DX11 | x86 | - | - |
 | Medal of Honor (2010) | DX9/DX11 | x86 | - | - |
 | Metro 2033 | DX9/DX11 | x86 | - | - |
+| Metro: Last Light | DX9/DX11 | x86 | - | - |
 | Oil Rush | OpenGL/DX9/DX11 | x86 | - | - |
 | Resident Evil 5 | DX9/DX10 | x86 | - | aka Biohazard 5 |
+| Resident Evil 6 | DX9 | x86 | - | aka Biohazard 6 |
 | rFactor 2 | DX9/DX11 | x64 | - | Single-player only recommended. |
 | Roller Coaster Rampage | DX9 | x86 | - | - |
 | Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
