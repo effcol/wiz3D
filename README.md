@@ -4,9 +4,8 @@ A universal stereoscopic 3D wrapper for DirectX, OpenGL, AMD HD3D, and Nvidia 3D
 
 **iZ3D** meant "**I** See 3D", so **wiz3D** means "**We** See 3D"
 
-<img width="3840" height="1080" alt="vlcsnap-2026-04-05-21h46m56s809" src="https://github.com/user-attachments/assets/a44e887b-cf54-46fd-9b25-ede89bf87167" />
-<img width="3840" height="1080" alt="vlcsnap-2026-04-03-22h37m17s146" src="https://github.com/user-attachments/assets/3d49776f-c689-4b6e-b186-b4cb108a20f5" />
-
+<img width="5760" height="1080" alt="vlcsnap-2026-04-05-21h46m56s809_Parralel _and_Cross" src="https://github.com/user-attachments/assets/b8d2c574-2962-4bfa-b15d-380956552a32" />
+<img width="5760" height="1080" alt="vlcsnap-2026-04-03-22h37m17s146_Parralel _and_Cross" src="https://github.com/user-attachments/assets/89859e2f-915f-499f-a307-b8738d0e561f" />
 
 ---
 
