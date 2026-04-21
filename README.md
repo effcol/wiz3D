@@ -23,22 +23,23 @@ This project modernizes that source code, replaces kernel-level hooks with a pro
 
 ### Released Build:
 
-* **AMD HD3D:** ✅ **Mostly Working!** Proxy chain successfully intercepts and converts Top-and-Bottom quad-buffer output to universal Half Side-by-Side (HSBS). Still needs Ego engine games and Tomb Raider 2013 to work fully. Mouse doubling needs implementing, more outputs need to be supported, and need to make sure it works on all GPUs and on Linux.
+* **AMD HD3D:** ✅ **Mostly Working!** HD3D games render stereo interally, so all that's needed is proxy to enable that rendering, capture the quad buffer output, and display it using modern stereo3D standards. The Proxy chain is successfully triggering stereo3D and capturing the quad buffer output. All that remains is getting that quad buffer output to display corrently in modern formats like Top-and-Bottom and Side-by-Side. Currently Half TAB and Half SBS is supported with about half the games, the other games still need work displaying the output correctly.
 
 ### Unreleased Builds:
 
 * **DirectX 9:** ✅ **Mostly Working!** `d3d9.dll` proxy loader works! Left 4 Dead 2 and many others run in full stereo 3D, outputs in all originally supported formats, and the profile system loads shader fixes and stereo settings for all originally supported games.
-* **DirectX 10/11:** ⚠️ **Partial.** The DX10/11 wrapper was never completely finished by iZ3D Inc. Some games work, many crash. Current build works in some games, needs further testing.
-* **DirectX 7/8:** ⚠️ **In Progress.** iZ3D used wrappers for DX7/8 to then run them in DX9's stereoization. Currently I've made basic test builds, feel free to test them! 
-* **OpenGL:** ⚠️ **In Progress.** Basic build has been made, untested. Feel free to test it and report back your findings! 
-* **Nvidia 3D Vision:** ⚠️ **In Progress.** Still in very early stages of WIP, kind of a long shot. I'm pretty confident native "3D Vision Ready" games can be supported by this project in the future using a hybrid 3D Vision + iZ3D + AMD Quad-Buffer approach.
+* **DirectX 10/11:** ⚠️ **Partial.** The DX10/11 wrapper was never completely finished by iZ3D Inc. Some games work, but implementation in wiz3D still has some way to go and hasn't got any games booting with stereo3D initialised yet.
+* **DirectX 7/8:** ⚠️ **In Progress.** iZ3D used wrappers for DX7/8 to then run them in DX9's stereoization. Currently I've made basic test build with the wrappers successfully passing onto the DX9 wrapper, but no stereo3D initialise yet.
+* **OpenGL:** ⚠️ **In Progress.** Basic build has been made, untested. 
+* **Nvidia 3D Vision Ready:** ⚠️ **In Progress.** Still in very early stages, kind of a long shot. Most 3D Vision Ready games don't have internal stereo rendering, they just make their shaders and UI more compatible with Nvidia's stereo injector. We will aim to get 3DV shaders and UI working with iZ3D as the injector instead.
 
 ---
 
 ## Getting Started Playing
 
+1. Launch game before downlaoding, and set the resolution and refreshrate, and make sure fullscreen is enabled.
 1. Download the latest release from the **Releases** tab.
-2. Find the executable (`.exe`) of the game you want to play, and check the API and bitness, and if it supports AMD HD3D support for the game you want to play ([PCGamingWiki](https://www.pcgamingwiki.com/wiki/Home) usually works if not listed here).
+2. Find the executable (`.exe`) of the game you want to play, and check the API, Bitness and HD3D/3DVision support so you know which files to use.
 3. Copy the **contents** of the appropriate `wiz3D` subfolder (e.g., the contents of the `dx9` > `x86` folder for a DX9 32-bit game) directly into the folder containing the game's `.exe`.
 4. Launch the game. Stereo 3D should activate automatically! If it's an HD3D game, you may need to activate `stereoscopic 3D` or `HD3D` in the in-game menu.
 
@@ -48,13 +49,13 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ## wiz3D Game Test Results
 
-*Legend: **Working** = Stereo output activated and playable. **Partial** = Stereo activated but with issues (crash, wrong settings, shader problems). **Not loading** = Wrapper not activating.*
+*Legend: ✅ **Working** = Stereo output activated and playable. ⚠️ **Partial** = Stereo activated but with issues (crash, wrong settings, shader problems). **Not loading** = Wrapper not activating. **Untested** = I haven't tested yet or don't have access to that game*
 
 ### AMD HD3D Native Games
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
-| Battlefield 3 | DX11 | x86 | ✅ Half SBS working | Only tested in Campaign. Wary of testing in multiplayer, I would recommend only trying in Campaign. |
+| Battlefield 3 | DX11 | x86 | ✅ Half SBS working | Campaign only. Don't use with Multiplayer due to ban risks. |
 | Deus Ex: Human Revolution | DX11 | x86 | ✅ Half SBS working | Cursor doubled correctly. |
 | Deus Ex: Human Revolution Director's Cut | DX11 | x86 | ✅ Half SBS working | Undocumented native AMD HD3D support. Cursor doubled correctly. |
 | DiRT 2 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
@@ -168,7 +169,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Empire: Total War | DX9 | x86 | ✓ | - | - |
 | Enemy Engaged 2 | DX9 | x86 | ✕ | - | - |
 | Eragon | DX9 | x86 | ✓ | - | - |
-| Evolution GT | DX9 | x32 | ✕ | - | - |
+| Evolution GT | DX9 | x86 | ✕ | - | - |
 | Fable: The Lost Chapters | DX9 | x86 | ✓ | - | - |
 | Fable III | DX9 | x86 | ✓ | - | - |
 | Fahrenheit | DX9 | x86 | ✓ | - | aka Indigo Prophecy |
@@ -369,7 +370,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
-| Assassin's Creed: Revelations | DX9 | x86 | - | - |
+| Assassin's Creed: Revelations | DX9 | x86 | - | 3D Vision Fog option in settings |
 | Batman: Arkham Asylum | DX9 | x86 | - | - |
 | Batman: Arkham City | DX9/DX11 | x86 | - | - |
 | Batman: Arkham Origins | DX9/DX11 | x86 | - | - |
@@ -381,37 +382,34 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Dead Rising 2 | DX9 | x86 | - | - |
 | Deep Black: Reloaded | DX9 | x86 | - | - |
 | Depth Hunter | DX9 | x86 | - | - |
-| DiRT 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| DiRT 3 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| DiRT 3 Complete Edition | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| DiRT Showdown | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| DiRT Rally | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| Duke Nukem Forever | DX9 | x86 | - | - |
+| Devil May Cry 4 | DX9/10 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
+| Devil May Cry 4 Special Edition | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
+| Dragon's Dogma: Dark Arisen | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
+| Duke Nukem Forever | DX9/DX10 | x86 | - | - |
 | Google Earth | OpenGL/DX9 | x86 | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
-| GRID 2 | DX11 | x86 | - | Also HD3D, but not yet fully working. |
-| GRID Autosport | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | GT Legends | DX9 | x86 | - | - |
 | Hard Reset | DX9 | x86 | - | - |
 | Inversion | DX9/DX11 | x86 | - | - |
 | Just Cause 2 | DX10 | x86 | - | - |
 | L.A. Noire | DX9/DX11 | x86 | - | - |
+| Lost Planet 2 | DX9/DX11 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
 | Mafia II | DX9 | x86 | - | - |
 | Max Payne 3 | DX9/DX11 | x86 | - | - |
-| Medal of Honor (2010) | DX9/DX11 | x86 | - | - |
+| Medal of Honor (2010) | DX9/DX11 | x86 | - | This might be only the multiplayer, if so I'll exclude it. |
 | Metro 2033 | DX9/DX11 | x86 | - | - |
-| Metro: Last Light | DX9/DX11 | x86 | - | - |
+| Metro: Last Light | DX9/DX11 | x86 | - | Lists 3D vision support in [Official PC Requirements](https://www.reddit.com/r/Games/comments/1cjh4l/metro_last_light_official_pc_requirements/) |
 | Oil Rush | OpenGL/DX9/DX11 | x86 | - | - |
-| Resident Evil 5 | DX9/DX10 | x86 | - | aka Biohazard 5 |
-| Resident Evil 6 | DX9 | x86 | - | aka Biohazard 6 |
+| Resident Evil 5 | DX9/DX10 | x86 | - | - |
+| Resident Evil 6 | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
 | rFactor 2 | DX9/DX11 | x64 | - | Single-player only recommended. |
 | Roller Coaster Rampage | DX9 | x86 | - | - |
 | Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
 | Street Fighter X Tekken | DX9 | x86 | - | - |
 | Tom Clancy's H.A.W.X 2 | DX9/DX11 | x86 | - | - |
-| Tomb Raider (2013) | DX11 | x86 | - | Also HD3D, but not yet fully working. |
 | The Witcher 2: Assassins of Kings | DX9 | x86 | - | - |
 
 - **Excluded (Native SBS/TAB):** *Deus Ex: Mankind Divided*, *DOOM 3: BFG Edition*, *Avatar: The Game*, *Sonic Generations*. 
+- **Excluded (Native AMD HD3D):** *Battlefield 3*, *DiRT 2*, *DiRT 3*, *DiRT Showdown*, *DiRT Rally*, *GRID 2*, *GRID Autosport*, *Tomb Raider (2013)*. 
 - **Excluded (Online Ban Risk):** *Aion: The Tower of Eternity*, *Diablo III*, *Hawken*, *Pirate101*, *Rusty Hearts*, *Wizard101*, *StarCraft II*.
 - **Excluded (Demo or Benchmark):** *Aliens vs. Triangles*, *Endless City*, *Stone Giant*, *Supersonic Sled*, *Passion Leads Army Benchmark*, *Unigine: Heaven Benchmark*.
 
