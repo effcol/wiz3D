@@ -202,8 +202,8 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Killing Floor | DX8/DX9 | x86 | ✓ | - | - |
 | King Arthur: The Role-Playing Wargame | DX9 | x86 | ✓ | - | Specifies 'King Arthur: The Druids' expansion pack |
 | King's Bounty: The Legend | DX9 | x86 | ✓ | - | - |
-| Left 4 Dead | DX9 | x86 | ✓ | ✅ Working | Only tested single player. Mulitplayer not reccomended due to VAC ban risk. |
-| Left 4 Dead 2 | DX9 | x86 | ✓ | ✅ Working | Only tested single player. Mulitplayer not reccomended due to VAC ban risk. |
+| Left 4 Dead | DX9 | x86 | ✓ | ✅ Working | Only tested single player. Use `-insecure` command line argument to avoid VAC ban. |
+| Left 4 Dead 2 | DX9 | x86 | ✓ | ✅ Working | Only tested single player. Use `-insecure` command line argument to avoid VAC ban. |
 | Lego Star Wars: The Video Game | DX9 | x86 | ✓ | - | - |
 | Lego Star Wars III: The Clone Wars | DX9 | x86 | ✓ | - | - |
 | Madden NFL 08 | DX9 | x86 | ✓ | - | - |
