@@ -56,10 +56,10 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Game | API | Bits | Result | Notes |
 |------|-----|------|--------|-------|
 | Battlefield 3 | DX11 | x86 | ✅ Half SBS working | Campaign only. Don't use with Multiplayer due to ban risks. |
-| Deus Ex: Human Revolution | DX11 | x86 | ✅ Half SBS working | Cursor doubled correctly. |
+| Deus Ex: Human Revolution | DX11 | x86 | ✅ Half SBS working | Cursor doubled correctly. Check iZ3D Shader Fix. |
 | Deus Ex: Human Revolution Director's Cut | DX11 | x86 | ✅ Half SBS working | Undocumented native AMD HD3D support. Cursor doubled correctly. |
 | DiRT 2 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
-| DiRT 3 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
+| DiRT 3 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"`. Check iZ3D Shader Fix. |
 | DiRT 3 Complete Edition | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT Showdown | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT Rally | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
@@ -340,9 +340,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Crysis 2 | DX9/DX11 | x86/x64 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the game's native SBS. |
 | DCS: Black Shark | DX9/DX11 | x86 | ✓ | - | Single Player may be okay. Multiplayer not recommended. |
 | De Blob | DX11 | x86 | ✓ | - | - |
-| Deus Ex: Human Revolution | DX9/DX11 | x86 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the HD3D native version and Directors Cut version. |
 | Devil May Cry 4 (2008) | DX9/DX10 | x86/x64 | ✓ | - | - |
-| Dirt 3 | DX9/DX11 | x86 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the HD3D native version and Complete Edition version. |
 | Dragon Age II | DX9/DX11 | x86 | ✓ | - | - |
 | Far Cry 2 | DX9/DX10 | x86 | ✓ | - | - |
 | F.E.A.R. 3 | DX9/DX10 | x86 | ✓ | - | - |
