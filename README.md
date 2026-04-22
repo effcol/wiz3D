@@ -380,9 +380,9 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Dead Rising 2 | DX9 | x86 | - | - |
 | Deep Black: Reloaded | DX9 | x86 | - | - |
 | Depth Hunter | DX9 | x86 | - | - |
-| Devil May Cry 4 | DX9/10 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
-| Devil May Cry 4 Special Edition | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
-| Dragon's Dogma: Dark Arisen | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
+| Devil May Cry 4 | DX9/10 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
+| Devil May Cry 4 Special Edition | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
+| Dragon's Dogma: Dark Arisen | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
 | Duke Nukem Forever | DX9/DX10 | x86 | - | - |
 | Google Earth | OpenGL/DX9 | x86 | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
 | GT Legends | DX9 | x86 | - | - |
@@ -390,7 +390,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Inversion | DX9/DX11 | x86 | - | - |
 | Just Cause 2 | DX10 | x86 | - | - |
 | L.A. Noire | DX9/DX11 | x86 | - | - |
-| Lost Planet 2 | DX9/DX11 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
+| Lost Planet 2 | DX9/DX11 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
 | Mafia II | DX9 | x86 | - | - |
 | Max Payne 3 | DX9/DX11 | x86 | - | - |
 | Medal of Honor (2010) | DX9/DX11 | x86 | - | This might be only the multiplayer, if so I'll exclude it. |
@@ -398,7 +398,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Metro: Last Light | DX9/DX11 | x86 | - | Lists 3D vision support in [Official PC Requirements](https://www.reddit.com/r/Games/comments/1cjh4l/metro_last_light_official_pc_requirements/) |
 | Oil Rush | OpenGL/DX9/DX11 | x86 | - | - |
 | Resident Evil 5 | DX9/DX10 | x86 | - | - |
-| Resident Evil 6 | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs more investigation. |
+| Resident Evil 6 | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
 | rFactor 2 | DX9/DX11 | x64 | - | Single-player only recommended. |
 | Roller Coaster Rampage | DX9 | x86 | - | - |
 | Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
