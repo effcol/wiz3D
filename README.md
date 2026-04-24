@@ -415,11 +415,10 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ## License & Commercial Use
 
-The original iZ3D legacy code included in this repository remains under its original **MIT License**. 
+The original legacy iZ3D code included in this repository remains under its original **MIT License**.
 
-All new modifications, proxy DLLs, HD3D hooks, and modernizations introduced by the **wiz3D** project are licensed under the **GNU General Public License v3.0 (GPLv3)**. 
+All new modifications, proxy DLLs, hooks, and modernizations introduced by the **wiz3D** project are licensed under the **GNU Lesser General Public License v2.1 (LGPLv2.1)** (see `LICENSE`).
 
-wiz3D is free for individuals, modders, and the community to use, modify, and distribute, provided all derivative works remain open-source under the GPLv3.
+**What this means for the community:** wiz3D is free for gamers, modders, and the open-source community to use, modify, and distribute. Thanks to the LGPLv2.1, this wrapper can be legally and safely injected into proprietary, closed-source games. However, any modifications made directly to the wiz3D wrapper codebase itself must remain open-source and be shared back with the community under the same license.
 
-### Commercial Licensing (Hardware Vendors & OEMs)
-If you are a hardware manufacturer, display vendor, or software company wishing to integrate the wiz3D/HD3D stereoscopic wrapper into a proprietary, closed-source product or launcher without the restrictions of the GPLv3, **Commercial B2B Licenses are available.** Please contact the repository owner to discuss a commercial exemption license, custom hardware integration, or Service Level Agreements (SLAs).
+**Commercial Licensing (Hardware Vendors & OEMs):** If you are a hardware manufacturer, display vendor, or software company wishing to integrate the wiz3D stereoscopic wrapper into a proprietary product, modify it without releasing your source code, or bypass the copyleft restrictions of the LGPLv2.1, **Commercial B2B Licenses are available.** Please contact the repository owner to discuss a commercial exemption license, custom hardware integration, or Service Level Agreements (SLAs).
