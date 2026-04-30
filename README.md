@@ -24,12 +24,13 @@ This project modernizes that source code, replaces kernel-level hooks with a pro
 ### Released Build:
 
 * **AMD HD3D:** ✅ **Mostly Working!** HD3D games render stereo interally, so all that's needed is proxy to enable that rendering, capture the quad buffer output, and display it using modern stereo3D standards. The Proxy chain is successfully triggering stereo3D and capturing the quad buffer output. All that remains is getting that quad buffer output to display corrently in modern formats like Top-and-Bottom and Side-by-Side. Currently Half TAB and Half SBS is supported with about half the games, the other games still need work displaying the output correctly.
+* **DirectX 9:** ✅ **Mostly Working!** `d3d9.dll` proxy loader works! Left 4 Dead 2 and many others run in full stereo3D, outputs in all originally supported formats, and the profile system loads shader fixes and stereo settings for all originally supported games.
+* **DirectX 8:** ⚠️ **In Progress.** Wrapper to convert DX8 to use DX9's stereoization. DX8 to DX9 converstion is working. Here for testing.
+* **DirectX 7:** ⚠️ **In Progress.** Wrapper to convert DX7 to use DX9's stereoization. DX7 to DX9 converstion is working. Here for testing.
 
 ### Unreleased Builds:
 
-* **DirectX 9:** ✅ **Mostly Working!** `d3d9.dll` proxy loader works! Left 4 Dead 2 and many others run in full stereo 3D, outputs in all originally supported formats, and the profile system loads shader fixes and stereo settings for all originally supported games.
 * **DirectX 10/11:** ⚠️ **Partial.** The DX10/11 wrapper was never completely finished by iZ3D Inc. Some games work, but implementation in wiz3D still has some way to go and hasn't got any games booting with stereo3D initialised yet.
-* **DirectX 7/8:** ⚠️ **In Progress.** iZ3D used wrappers for DX7/8 to then run them in DX9's stereoization. Currently I've made basic test build with the wrappers successfully passing onto the DX9 wrapper, but no stereo3D initialise yet.
 * **OpenGL:** ⚠️ **In Progress.** Basic build has been made, untested. 
 * **Nvidia 3D Vision Ready:** ⚠️ **In Progress.** Still in very early stages, kind of a long shot. Most 3D Vision Ready games don't have internal stereo rendering, they just make their shaders and UI more compatible with Nvidia's stereo injector. We will aim to get 3DV shaders and UI working with iZ3D as the injector instead.
 
@@ -53,11 +54,11 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ### AMD HD3D Native Games
 
-| Game | API | Bits | Result | Notes |
+| Game | API | Bits | Testing | Notes |
 |------|-----|------|--------|-------|
-| Battlefield 3 | DX11 | x86 | ✅ Half SBS working | Campaign only. Don't use with Multiplayer due to ban risks. |
-| Deus Ex: Human Revolution | DX11 | x86 | ✅ Half SBS working | Cursor doubled correctly. Check iZ3D Shader Fix. |
-| Deus Ex: Human Revolution Director's Cut | DX11 | x86 | ✅ Half SBS working | Undocumented native AMD HD3D support. Cursor doubled correctly. |
+| Battlefield 3 | DX11 | x86 | ✅ Working | Campaign only. Don't use with Multiplayer due to ban risks. |
+| Deus Ex: Human Revolution | DX11 | x86 | ✅ Working | Cursor doubled correctly. Check iZ3D Shader Fix. |
+| Deus Ex: Human Revolution Director's Cut | DX11 | x86 | ✅ Working | Undocumented AMD HD3D support. Cursor doubled correctly. |
 | DiRT 2 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT 3 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"`. Check iZ3D Shader Fix. |
 | DiRT 3 Complete Edition | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
@@ -70,15 +71,15 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | GRID 2 | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | GRID Autosport | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | Hitman: Absolution | DX11 | x86 | ⚠️ Partial | UI,  menus and videos correct, gameplay is the top half of the view-port. Mouse not doubling. |
-| Sleeping Dogs | DX11 | x86 | ✅ Half SBS working | Mouse not doubling. |
-| Sleeping Dogs: Definitive Edition | DX11 | x64 | ✅ Half SBS working | Undocumented native AMD HD3D support. |
-| Sniper Elite V2 | DX11 | x86 | ✅ Half SBS working | Minor color shifting, and mouse not doubling. |
-| Sniper Elite III | DX11| x86| ✅ Half SBS working | `customersupportlogging` beta branch only. Main branch skips HD3D driver loading. |
-| Sniper Elite 4 | DX11/12| x64| ✅ Half SBS working | DX11 only. DX12 might be possible in future. |
-| Sniper Elite: Nazi Zombie Army | DX11 | x86 | ✅ Half SBS working | Minor color shifting, and mouse not doubling. |
-| Sniper Elite: Nazi Zombie Army 2 | DX11 | x86 | ✅ Half SBS working | Minor color shifting, and mouse not doubling. |
-| Zombie Army Trilogy | DX11 | x86 | ✅ Half SBS working | Colors appear correct. |
-| Thief (2014) | DX11 | x86/x64| ✅ Half SBS working | Both x86 and x64 versions working. |
+| Sleeping Dogs | DX11 | x86 | ✅ Working | Mouse not doubling. |
+| Sleeping Dogs: Definitive Edition | DX11 | x64 | ✅ Working | Undocumented AMD HD3D support. |
+| Sniper Elite V2 | DX11 | x86 | ✅ Working | Minor color shifting, and mouse not doubling. |
+| Sniper Elite III | DX11| x86| ✅ Working | `customersupportlogging` beta branch only. Main branch skips HD3D driver loading. |
+| Sniper Elite 4 | DX11/12| x64| ✅ Working | DX11 only. DX12 might be possible in future. |
+| Sniper Elite: Nazi Zombie Army | DX11 | x86 | ✅ Working | Minor color shifting, and mouse not doubling. |
+| Sniper Elite: Nazi Zombie Army 2 | DX11 | x86 | ✅ Working | Minor color shifting, and mouse not doubling. |
+| Zombie Army Trilogy | DX11 | x86 | ✅ Working | Colors appear correct. |
+| Thief (2014) | DX11 | x86/x64| ✅ Working | Both x86 and x64 versions working. |
 | Tomb Raider (2013) | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS. Most stubborn HD3D game to get working. |
 
 - **Excluded (Native SBS/TAB):** *Crysis 2*, *Crysis 3*, *Rise of the Tomb Raider*, *Shadwen*, *Two Worlds II*, *Trine 1*, *Trine 2*, *Trine 3*.
@@ -86,40 +87,40 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ### DirectX 7/8 Games
 
-| Game | API | Bits | iZ3D Profile | Result | Notes |
+| Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
-| Ballance | DX8 | x86 | ✓ | - | - |
-| Deus Ex | OpenGL/DX7 | x86 | ✕ | - | listed for DX7 testing. |
-| FATE | DX8 | x86 | ✕ | - | - |
-| Mega Man X8 | DX8 | x86 | ✓ | - | - |
-| Mercedes-Benz World Racing | DX8 | x86 | ✓ | - | - |
-| Sniper Elite | DX8 | x86 | ✓ | - | - |
-| The Lord of the Rings: The Return of the King | DX8 | x86 | ✓ | - | - |
-| Thief: Deadly Shadows | DX8 | x86 | ✓ | - | - |
-| Tony Hawk's Pro Skater 3 | DX8 | x86 | ✓ | - | - |
+| Ballance | DX8 | x86 | ✓ | Untested | - |
+| Deus Ex | OpenGL/DX7 | x86 | ✕ | ❌ No Stereo | listed for DX7 testing. |
+| FATE | DX8 | x86 | ✕ | Untested | - |
+| Mega Man X8 | DX8 | x86 | ✓ | Untested | - |
+| Mercedes-Benz World Racing | DX8 | x86 | ✓ | Untested | - |
+| Sniper Elite | DX8 | x86 | ✓ | Untested | - |
+| The Lord of the Rings: The Return of the King | DX8 | x86 | ✓ | Untested | - |
+| Thief: Deadly Shadows | DX8 | x86 | ✓ | Untested | - |
+| Tony Hawk's Pro Skater 3 | DX8 | x86 | ✓ | Untested | - |
 
 - **Excluded (Online Ban Risk):** *Command & Conquer: Generals*, *Command & Conquer: Renegade*, *Empire Earth II*, *Freelancer*, *GTR - FIA GT Racing Game*, *NASCAR Racing 2003 Season*, *Tom Clancy's Rainbow Six 3: Raven Shield*. <sub>(Active community servers with stringent anti-cheat)</sub>
 
 ## DirectX 9 32bit Games
 
-| Game | API | Bits | iZ3D Profile | Result | Notes |
+| Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
-| A.R.E.S.: Extinction Agenda | DX9 | x86 | ✓ | - | - |
-| AaAaAA!!! A Reckless Disregard for Gravity | DX9 | x86 | ✓ | - | - |
-| Aion: The Tower of Eternity | DX9 | x86 | ✓ | - | Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
-| Alien Breed 2: Assault | DX9 | x86 | ✓ | - | - |
+| A.R.E.S.: Extinction Agenda | DX9 | x86 | ✓ | Untested | - |
+| AaAaAA!!! A Reckless Disregard for Gravity | DX9 | x86 | ✓ | Untested | - |
+| Aion: The Tower of Eternity | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
+| Alien Breed 2: Assault | DX9 | x86 | ✓ | Untested | - |
 | Alien Swarm | DX9 | x86 | ✓ | - | - |
-| Alone in the Dark (2008) | DX9 | x86 | ✓ | - | - |
-| America's Army | DX8/DX9 | x86 | ✓ | - | - |
-| Anomaly Warzone Earth | DX9 | x86 | ✓ | - | - |
-| AquaNox 2: Revelation | DX8/DX9 | x86 | ✓ | - | - |
-| Arma: Armed Assault | DX9 | x86 | ✓ | - | aka ARMA: Combat Operations  |
-| Armies of Exigo | DX9 | x86 | ✓ | - | - |
-| Assassin's Creed II | DX9 | x86 | ✓ | - | - |
-| Assassin's Creed: Brotherhood | DX9 | x86 | ✓ | - | - |
-| Audiosurf | DX9 | x86 | ✓ | - | - |
-| Back to the Future: The Game | DX9 | x86 | ✓ | - | Episode 1-5 |
-| Batman: Arkham Asylum | DX9 | x86 | ✓ | - | Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Alone in the Dark (2008) | DX9 | x86 | ✓ | Untested | - |
+| America's Army | DX8/DX9 | x86 | ✓ | Untested | - |
+| Anomaly Warzone Earth | DX9 | x86 | ✓ | Untested | - |
+| AquaNox 2: Revelation | DX8/DX9 | x86 | ✓ | Untested | - |
+| Arma: Armed Assault | DX9 | x86 | ✓ | Untested | aka ARMA: Combat Operations  |
+| Armies of Exigo | DX9 | x86 | ✓ | Untested | - |
+| Assassin's Creed II | DX9 | x86 | ✓ | Untested | - |
+| Assassin's Creed: Brotherhood | DX9 | x86 | ✓ | Untested | - |
+| Audiosurf | DX9 | x86 | ✓ | Untested | - |
+| Back to the Future: The Game | DX9 | x86 | ✓ | Untested | Episode 1-5 |
+| Batman: Arkham Asylum | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
 | Battlefield 2 | DX9 | x86 | ✓ | - | - |
 | Battlefield 2142 | DX9 | x86 | ✓ | - | - |
 | Battlestations: Pacific | DX9 | x86 | ✓ | - | - |
@@ -136,11 +137,11 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Brothers in Arms: Hell's Highway | DX9 | x86 | ✓ | - | - |
 | Bulletstorm | DX9 | x86 | ✓ | - | - |
 | Burnout Paradise | DX9 | x86 | ✓ | - | - |
-| Cabela's Big Game Hunter: 10th Anniversary Edition | DX9 | x86 | ✓ | - | Not sure exactly which game, profile just says "Cabela Big Game Hunter BGH10.exe" |
+| Cabela's Big Game Hunter: 10th Anniversary Edition | DX9 | x86 | ✓ | - | Not sure which game, profile says "Cabela Big Game Hunter BGH10.exe" |
 | Call of Cthulhu: Dark Corners of the Earth | DX9 | x86 | ✓ | - | - |
 | Call of Duty 2 | DX9 | x86 | ✓ | - | - |
 | Call of Duty: World at War | DX9 | x86 | ✓ | - | - |
-| Call of Duty: Black Ops | DX9 | x86 | ✓ | - | Might install Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Call of Duty: Black Ops | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
 | Call of Duty 4: Modern Warfare (2007) | DX9 | x86 | ✓ | - | - |
 | Call of Duty: Modern Warfare 2 | DX9 | x86 | ✓ | - | - |
 | Cars | DX9 | x86 | ✓ | - | - |
@@ -207,7 +208,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Lego Star Wars: The Video Game | DX9 | x86 | ✓ | - | - |
 | Lego Star Wars III: The Clone Wars | DX9 | x86 | ✓ | - | - |
 | Madden NFL 08 | DX9 | x86 | ✓ | - | - |
-| Mafia II | DX9 | x86 | ✓ | - | Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Mafia II | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
 | Majesty 2: The Fantasy Kingdom Sim | DX9 | x86 | ✓ | - | - |
 | Mass Effect | DX9 | x86 | ✓ | - | - |
 | Mass Effect 2 | DX9 | x86 | ✓ | - | - |
@@ -235,7 +236,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Portal 2 | DX9 | x86 | ✓ | - | - |
 | Prince of Persia: The Forgotten Sands | DX9 | x86 | ✓ | - | - |
 | ProtoGalaxy | DX9 | x86 | ✓ | - | - |
-| Resident Evil 5 | DX9 | x86 | ✓ | - | Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Resident Evil 5 | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
 | Richard Burns Rally | DX9 | x86 | ✓ | - | - |
 | Rise and Fall: Civilizations at War | DX9 | x86 | ✓ | - | - |
 | Rise of Flight | DX9 | x86 | ✓ | - | - |
@@ -264,7 +265,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Star Wars: Battlefront II (2005) | DX9 | x86 | ✓ | - | - |
 | Starship Troopers | DX9 | x86 | ✓ | - | - |
 | Street Fighter IV | DX9 | x86 | ✓ | - | - |
-| Super Street Fighter IV Arcade Edition | DX9 | x86 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Super Street Fighter IV Arcade Edition | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
 | Supreme Commander | DX9 | x86 | ✓ | - | - |
 | Supreme Commander: Forged Alliance | DX9 | x86 | ✓ | - | - |
 | Supreme Commander 2 | DX9 | x86 | ✓ | - | - |
@@ -274,11 +275,11 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | The Elder Scrolls IV: Oblivion | DX9 | x86 | ✓ | - | - |
 | The Movies (2005) | DX9 | x86 | ✓ | - | - |
 | The Settlers II: 10th Anniversary | DX9 | x86 | ✓ | - | - |
-| The Sims 2: University | DX9 | x86 | ✓ | - | Targets "Sims2EP1.exe", so not sure if it's only this expansion pack or all of The Sims 2. |
+| The Sims 2: University | DX9 | x86 | ✓ | - | Targets "Sims2EP1.exe", might just be expansion pack or all of The Sims 2. |
 | The Sims 3 | DX9 | x86 | ✓ | - | - |
 | The Sims Medieval | DX9 | x86 | ✓ | - | - |
 | The Witcher | DX9 | x86 | ✓ | - | - |
-| The Witcher 2: Assassins of Kings | DX9 | x86 | ✓ | - | Might includes Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| The Witcher 2: Assassins of Kings | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
 | TimeShift | DX9 | x86 | ✓ | - | - |
 | Titan Quest | DX9 | x86 | ✓ | - | - |
 | TOCA Race Driver 3 | DX9 | x86 | ✓ | - | - |
@@ -313,7 +314,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ## DirectX 9 64bit Games
 
-| Game | API | Bits | iZ3D Profile | Result | Notes |
+| Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
 | Chess Titans | DX9 | x86/x64 | ✕ | - | - |
 | Far Cry | DX9 | x86/x64 | ✓ | - | - |
@@ -325,11 +326,11 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ## DirectX 10/11 Games
 
-| Game | API | Bits | iZ3D Profile | Result | Notes |
+| Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
 | Aliens vs. Predator (2010) | DX9/DX11 | x86 | ✓ | - | - |
 | Assassins Creed | DX9/DX10 | x86 | ✓ | - | - |
-| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | ✓ | - | Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
 | BioShock | DX9/DX10 | x86 | ✓ | - | - |
 | BioShock 2 | DX9/DX10 | x86 | ✓ | - | - |
 | Call of Juarez: Bound in Blood | DX9/DX10 | x86 | ✓ | - | - |
@@ -337,7 +338,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Cryostasis | DX9/DX10 | x86 | ✓ | - | - |
 | Crysis | DX9/DX10 | x86/x64 | ✓ | - | - |
 | Crysis: Warhead | DX9/DX10 | x86/x64 | ✓ | - | - |
-| Crysis 2 | DX9/DX11 | x86/x64 | ✓ | - | Includes Shader Fix. See if shader fix can be applied to the game's native SBS. |
+| Crysis 2 | DX9/DX11 | x86/x64 | ✓ | - | Includes Shader Fix. See if can be applied to the game's native SBS. |
 | DCS: Black Shark | DX9/DX11 | x86 | ✓ | - | Single Player may be okay. Multiplayer not recommended. |
 | De Blob | DX11 | x86 | ✓ | - | - |
 | Devil May Cry 4 (2008) | DX9/DX10 | x86/x64 | ✓ | - | - |
@@ -349,7 +350,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Just Cause 2 | DX10 | x86 | ✓ | - | - |
 | Lost Planet | DX9/DX10 | x86 | ✓ | - | - |
 | Lost Planet 2 | DX9/DX11 | x86 | ✓ | - | - |
-| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | - | Single Player only recommended. Might include Shader Fix. See if shader fix can be applied to the 3D Vision native version. |
+| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | - | Use Single Player only. Includes Shader Fix, see if compatible with 3D Vision in future. |
 | Metro 2033 | DX9/DX11 | x86 | ✓ | - | - |
 | Microsoft Flight Simulator X | DX9/DX10 | x86 | ✓ | - | - |
 | NecroVisioN | DX9/DX10 | x86 | ✓ | - | - |
@@ -366,7 +367,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 ### Nvidia 3D Vision "Ready" Native Games
 
-| Game | API | Bits | Result | Notes |
+| Game | API | Bits | Testing | Notes |
 |------|-----|------|--------|-------|
 | Assassin's Creed: Revelations | DX9 | x86 | - | 3D Vision Fog option in settings |
 | Batman: Arkham Asylum | DX9 | x86 | - | - |
