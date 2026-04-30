@@ -8,7 +8,6 @@ A universal stereoscopic 3D wrapper for DirectX 7-11, OpenGL, AMD HD3D, and Nvid
 <img width="5760" height="1080" alt="vlcsnap-2026-04-03-22h37m17s146_Parralel _and_Cross" src="https://github.com/user-attachments/assets/89859e2f-915f-499f-a307-b8738d0e561f" />
 <img width="5760" height="1080" alt="Screenshot 2026-03-26 190057_Parralel _and_Cross" src="https://github.com/user-attachments/assets/493f2e32-1c3b-42c6-984d-ef9eacf96620" />
 
-
 ---
 
 ## What Is This?
@@ -32,7 +31,7 @@ This project modernizes that source code, replaces kernel-level hooks with a pro
 
 * **DirectX 10/11:** ⚠️ **Partial.** The DX10/11 wrapper was never completely finished by iZ3D Inc. Some games work, but implementation in wiz3D still has some way to go and hasn't got any games booting with stereo3D initialised yet.
 * **OpenGL:** ⚠️ **In Progress.** Basic build has been made, untested. 
-* **Nvidia 3D Vision Ready:** ⚠️ **In Progress.** Still in very early stages, kind of a long shot. Most 3D Vision Ready games don't have internal stereo rendering, they just make their shaders and UI more compatible with Nvidia's stereo injector. We will aim to get 3DV shaders and UI working with iZ3D as the injector instead.
+* **Nvidia 3D Vision 'Ready':** ⚠️ **In Progress.** Still in very early stages, kind of a long shot. Most 3D Vision Ready games don't have internal stereo rendering, they just make their shaders and UI more compatible with Nvidia's stereo injector. We will aim to get 3DV shaders and UI working with iZ3D as the injector instead.
 
 ---
 
@@ -121,193 +120,193 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Audiosurf | DX9 | x86 | ✓ | Untested | - |
 | Back to the Future: The Game | DX9 | x86 | ✓ | Untested | Episode 1-5 |
 | Batman: Arkham Asylum | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
-| Battlefield 2 | DX9 | x86 | ✓ | - | - |
-| Battlefield 2142 | DX9 | x86 | ✓ | - | - |
-| Battlestations: Pacific | DX9 | x86 | ✓ | - | - |
-| Beowulf: The Game | DX9 | x86 | ✓ | - | - |
-| Bet on Soldier | DX9 | x86 | ✓ | - | - |
-| Beyond Good & Evil | DX9 | x86 | ✓ | - | - |
-| Bionic Commando (2009) | DX9 | x86 | ✕ | - | - |
-| Bionic Commando Rearmed | DX9 | x86 | ✓ | - | - |
-| Black & White 2 | DX9 | x86 | ✓ | - | - |
-| BlazBlue: Calamity Trigger | DX9 | x86 | ✕ | - | - |
-| Borderlands | DX9 | x86 | ✓ | - | - |
-| Brothers in Arms: Road to Hill 30 | DX9 | x86 | ✓ | - | - |
-| Brothers in Arms: Earned in Blood | DX9 | x86 | ✓ | - | - |
-| Brothers in Arms: Hell's Highway | DX9 | x86 | ✓ | - | - |
-| Bulletstorm | DX9 | x86 | ✓ | - | - |
-| Burnout Paradise | DX9 | x86 | ✓ | - | - |
-| Cabela's Big Game Hunter: 10th Anniversary Edition | DX9 | x86 | ✓ | - | Not sure which game, profile says "Cabela Big Game Hunter BGH10.exe" |
-| Call of Cthulhu: Dark Corners of the Earth | DX9 | x86 | ✓ | - | - |
-| Call of Duty 2 | DX9 | x86 | ✓ | - | - |
-| Call of Duty: World at War | DX9 | x86 | ✓ | - | - |
-| Call of Duty: Black Ops | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
-| Call of Duty 4: Modern Warfare (2007) | DX9 | x86 | ✓ | - | - |
-| Call of Duty: Modern Warfare 2 | DX9 | x86 | ✓ | - | - |
-| Cars | DX9 | x86 | ✓ | - | - |
-| Chromadrome 2 | DX9 | x86 | ✓ | - | - |
-| Command & Conquer 3: Tiberium Wars | DX9 | x86 | ✓ | - | - |
-| Command & Conquer: Red Alert 3 | DX9 | x86 | ✓ | - | - |
-| Command & Conquer 4: Tiberian Twilight | DX9 | x86 | ✓ | - | - |
-| Condemned: Criminal Origins | DX9 | x86 | ✓ | - | - |
-| Demigod | DX9 | x86 | ✕ | - | - |
-| Damnation | DX9 | x86 | ✓ | - | - |
-| Dark Messiah of Might and Magic | DX9 | x86 | ✓ | - | - |
-| Dark Void | DX9 | x86 | ✓ | - | - |
-| Dead Space | DX9 | x86 | ✓ | - | - |
-| Dead Space 2 | DX9 | x86 | ✓ | - | - |
-| Defense Grid: The Awakening | DX9 | x86 | ✓ | - | - |
-| Delta Force: Xtreme | DX9 | x86 | ✓ | - | - |
-| Devil May Cry 3: Special Edition | DX9 | x86 | ✓ | - | - |
-| DiRT | DX9 | x86 | ✓ | - | - |
-| Disciples III: Renaissance | DX9 | x86 | ✓ | - | - |
-| Divinity II: Ego Draconis  | DX9 | x86 | ✓ | - | - |
-| Dragon Age: Origins | DX9 | x86 | ✓ | - | - |
-| Drakensang: The Dark Eye | DX7/DX9 | x86 | ✓ | - | - |
-| Dungeons (2011) | DX9 | x86 | ✕ | - | - |
-| Dungeon Siege II | DX9 | x86 | ✓ | - | - |
-| Dungeon Siege III | DX9 | x86 | ✓ | - | - |
-| Empire: Total War | DX9 | x86 | ✓ | - | - |
-| Enemy Engaged 2 | DX9 | x86 | ✕ | - | - |
-| Eragon | DX9 | x86 | ✓ | - | - |
-| Evolution GT | DX9 | x86 | ✕ | - | - |
-| Fable: The Lost Chapters | DX9 | x86 | ✓ | - | - |
-| Fable III | DX9 | x86 | ✓ | - | - |
-| Fahrenheit | DX9 | x86 | ✓ | - | aka Indigo Prophecy |
-| Fallout 3 | DX9 | x86 | ✓ | - | - |
-| F.E.A.R. | DX9 | x86 | ✓ | - | - |
-| F.E.A.R. Perseus Mandate | DX9 | x86 | ✓ | - | - |
-| F.E.A.R. 2: Project Origin | DX9 | x86 | ✓ | - | - |
-| FIFA 10 | DX9 | x86 | ✕ | - | - |
-| FlatOut | DX9 | x86 | ✓ | - | - |
-| FlatOut 2 | DX9 | x86 | ✕ | - | - |
-| FlatOut: Ultimate Carnage | DX9 | x86 | ✓ | - | - |
-| Foreign Legion: Buckets of Blood | DX9 | x86 | ✕ | - | - |
-| Frontlines: Fuel of War | DX9 | x86 | ✓ | - | - |
-| Front Mission Evolved | DX9 | x86 | ✕ | - | - |
-| Fuel | DX9 | x86 | ✕ | - | - |
-| G-Force | DX9 | x86 | ✓ | - | - |
-| Garshasp: The Monster Slayer | DX9 | x86 | ✓ | - | - |
-| Ghostbusters: The Video Game | DX9 | x86 | ✓ | - | - |
-| Ghostbusters: Sanctum of Slime | DX9 | x86 | ✓ | - | - |
-| Google Earth | OpenGL/DX9 | x86 | ✓ | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
-| Grand Theft Auto: San Andreas | DX9 | x86 | ✓ | - | - |
-| Grand Theft Auto IV | DX9 | x86 | ✓ | - | - |
-| GRID | DX9 | x86 | ✓ | - | - |
-| Guitar Hero III: Legends of Rock | DX9 | x86 | ✓ | - | - |
+| Battlefield 2 | DX9 | x86 | ✓ | Untested | - |
+| Battlefield 2142 | DX9 | x86 | ✓ | Untested | - |
+| Battlestations: Pacific | DX9 | x86 | ✓ | Untested | - |
+| Beowulf: The Game | DX9 | x86 | ✓ | Untested | - |
+| Bet on Soldier | DX9 | x86 | ✓ | Untested | - |
+| Beyond Good & Evil | DX9 | x86 | ✓ | Untested | - |
+| Bionic Commando (2009) | DX9 | x86 | ✕ | Untested | - |
+| Bionic Commando Rearmed | DX9 | x86 | ✓ | Untested | - |
+| Black & White 2 | DX9 | x86 | ✓ | Untested | - |
+| BlazBlue: Calamity Trigger | DX9 | x86 | ✕ | Untested | - |
+| Borderlands | DX9 | x86 | ✓ | Untested | - |
+| Brothers in Arms: Road to Hill 30 | DX9 | x86 | ✓ | Untested | - |
+| Brothers in Arms: Earned in Blood | DX9 | x86 | ✓ | Untested | - |
+| Brothers in Arms: Hell's Highway | DX9 | x86 | ✓ | Untested | - |
+| Bulletstorm | DX9 | x86 | ✓ | Untested | - |
+| Burnout Paradise | DX9 | x86 | ✓ | Untested | - |
+| Cabela's Big Game Hunter: 10th Anniversary Edition | DX9 | x86 | ✓ | Untested | Not sure which game, profile says "Cabela Big Game Hunter BGH10.exe" |
+| Call of Cthulhu: Dark Corners of the Earth | DX9 | x86 | ✓ | Untested | - |
+| Call of Duty 2 | DX9 | x86 | ✓ | Untested | - |
+| Call of Duty: World at War | DX9 | x86 | ✓ | Untested | - |
+| Call of Duty: Black Ops | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
+| Call of Duty 4: Modern Warfare (2007) | DX9 | x86 | ✓ | Untested | - |
+| Call of Duty: Modern Warfare 2 | DX9 | x86 | ✓ | Untested | - |
+| Cars | DX9 | x86 | ✓ | Untested | - |
+| Chromadrome 2 | DX9 | x86 | ✓ | Untested | - |
+| Command & Conquer 3: Tiberium Wars | DX9 | x86 | ✓ | Untested | - |
+| Command & Conquer: Red Alert 3 | DX9 | x86 | ✓ | Untested | - |
+| Command & Conquer 4: Tiberian Twilight | DX9 | x86 | ✓ | Untested | - |
+| Condemned: Criminal Origins | DX9 | x86 | ✓ | Untested | - |
+| Demigod | DX9 | x86 | ✕ | Untested | - |
+| Damnation | DX9 | x86 | ✓ | Untested | - |
+| Dark Messiah of Might and Magic | DX9 | x86 | ✓ | Untested | - |
+| Dark Void | DX9 | x86 | ✓ | Untested | - |
+| Dead Space | DX9 | x86 | ✓ | Untested | - |
+| Dead Space 2 | DX9 | x86 | ✓ | Untested | - |
+| Defense Grid: The Awakening | DX9 | x86 | ✓ | Untested | - |
+| Delta Force: Xtreme | DX9 | x86 | ✓ | Untested | - |
+| Devil May Cry 3: Special Edition | DX9 | x86 | ✓ | Untested | - |
+| DiRT | DX9 | x86 | ✓ | Untested | - |
+| Disciples III: Renaissance | DX9 | x86 | ✓ | Untested | - |
+| Divinity II: Ego Draconis  | DX9 | x86 | ✓ | Untested | - |
+| Dragon Age: Origins | DX9 | x86 | ✓ | Untested | - |
+| Drakensang: The Dark Eye | DX7/DX9 | x86 | ✓ | Untested | - |
+| Dungeons (2011) | DX9 | x86 | ✕ | Untested | - |
+| Dungeon Siege II | DX9 | x86 | ✓ | Untested | - |
+| Dungeon Siege III | DX9 | x86 | ✓ | Untested | - |
+| Empire: Total War | DX9 | x86 | ✓ | Untested | - |
+| Enemy Engaged 2 | DX9 | x86 | ✕ | Untested | - |
+| Eragon | DX9 | x86 | ✓ | Untested | - |
+| Evolution GT | DX9 | x86 | ✕ | Untested | - |
+| Fable: The Lost Chapters | DX9 | x86 | ✓ | Untested | - |
+| Fable III | DX9 | x86 | ✓ | Untested | - |
+| Fahrenheit | DX9 | x86 | ✓ | Untested | aka Indigo Prophecy |
+| Fallout 3 | DX9 | x86 | ✓ | Untested | - |
+| F.E.A.R. | DX9 | x86 | ✓ | Untested | - |
+| F.E.A.R. Perseus Mandate | DX9 | x86 | ✓ | Untested | - |
+| F.E.A.R. 2: Project Origin | DX9 | x86 | ✓ | Untested | - |
+| FIFA 10 | DX9 | x86 | ✕ | Untested | - |
+| FlatOut | DX9 | x86 | ✓ | Untested | - |
+| FlatOut 2 | DX9 | x86 | ✕ | Untested | - |
+| FlatOut: Ultimate Carnage | DX9 | x86 | ✓ | Untested | - |
+| Foreign Legion: Buckets of Blood | DX9 | x86 | ✕ | Untested | - |
+| Frontlines: Fuel of War | DX9 | x86 | ✓ | Untested | - |
+| Front Mission Evolved | DX9 | x86 | ✕ | Untested | - |
+| Fuel | DX9 | x86 | ✕ | Untested | - |
+| G-Force | DX9 | x86 | ✓ | Untested | - |
+| Garshasp: The Monster Slayer | DX9 | x86 | ✓ | Untested | - |
+| Ghostbusters: The Video Game | DX9 | x86 | ✓ | Untested | - |
+| Ghostbusters: Sanctum of Slime | DX9 | x86 | ✓ | Untested | - |
+| Google Earth | OpenGL/DX9 | x86 | ✓ | Untested | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
+| Grand Theft Auto: San Andreas | DX9 | x86 | ✓ | Untested | - |
+| Grand Theft Auto IV | DX9 | x86 | ✓ | Untested | - |
+| GRID | DX9 | x86 | ✓ | Untested | - |
+| Guitar Hero III: Legends of Rock | DX9 | x86 | ✓ | Untested | - |
 | Half-Life 2 | DX9 | x86 | ✓ | ⚠️ Not loading | Suspect issue with needing `-game` command line argument  |
-| Heroes of Might and Magic V | DX9 | x86 | ✓ | - | - |
-| Hitman: Blood Money | DX9 | x86 | ✓ | - | - |
-| Hunted: The Demon's Forge | DX9 | x86 | ✓ | - | - |
-| Kane & Lynch 2: Dog Days | DX9 | x86 | ✓ | - |  |
-| Killing Floor | DX8/DX9 | x86 | ✓ | - | - |
-| King Arthur: The Role-Playing Wargame | DX9 | x86 | ✓ | - | Specifies 'King Arthur: The Druids' expansion pack |
-| King's Bounty: The Legend | DX9 | x86 | ✓ | - | - |
+| Heroes of Might and Magic V | DX9 | x86 | ✓ | Untested | - |
+| Hitman: Blood Money | DX9 | x86 | ✓ | Untested | - |
+| Hunted: The Demon's Forge | DX9 | x86 | ✓ | Untested | - |
+| Kane & Lynch 2: Dog Days | DX9 | x86 | ✓ | Untested | - |
+| Killing Floor | DX8/DX9 | x86 | ✓ | Untested | - |
+| King Arthur: The Role-Playing Wargame | DX9 | x86 | ✓ | Untested | Specifies 'King Arthur: The Druids' expansion pack |
+| King's Bounty: The Legend | DX9 | x86 | ✓ | Untested | - |
 | Left 4 Dead | DX9 | x86 | ✓ | ✅ Working | Only tested single player. Use `-insecure` command line argument to avoid VAC ban. |
 | Left 4 Dead 2 | DX9 | x86 | ✓ | ✅ Working | Only tested single player. Use `-insecure` command line argument to avoid VAC ban. |
-| Lego Star Wars: The Video Game | DX9 | x86 | ✓ | - | - |
-| Lego Star Wars III: The Clone Wars | DX9 | x86 | ✓ | - | - |
-| Madden NFL 08 | DX9 | x86 | ✓ | - | - |
-| Mafia II | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
-| Majesty 2: The Fantasy Kingdom Sim | DX9 | x86 | ✓ | - | - |
-| Mass Effect | DX9 | x86 | ✓ | - | - |
-| Mass Effect 2 | DX9 | x86 | ✓ | - | - |
-| Medal of Honor: Airborne | DX9 | x86 | ✓ | - | - |
-| Mercenaries 2: World in Flames | DX9 | x86 | ✓ | - | - |
-| Microsoft Flight Simulator 2004: A Century of Flight | DX9 | x86 | ✓ | - | - |
-| Mini Ninjas | DX9 | x86 | ✓ | - | - |
-| Mirror's Edge | DX9 | x86 | ✓ | - | - |
-| Monday Night Combat | DX9 | x86 | ✓ | - | - |
-| MTX: Mototrax | DX9 | x86 | ✓ | - | - |
-| Mythos | DX9 | x86 | ✓ | - | Mythos (2009) maybe? Not sure which game this is. |
-| Need for Speed: ProStreet | DX9 | x86 | ✓ | - | - |
-| Need for Speed: Undercover | DX9 | x86 | ✓ | - | - |
-| Need for Speed: Hot Pursuit (2010) | DX9 | x86 | ✓ | - | - |
-| Need for Speed: Shift | DX9 | x86 | ✓ | - | - |
-| Need for Speed: Shift 2 Unleashed | DX9 | x86 | ✓ | - | - |
-| Ninja Blade | DX9 | x86 | ✓ | - | - |
-| Operation Flashpoint: Dragon Rising | DX9 | x86 | ✓ | - | - |
-| OutRun 2006: Coast 2 Coast | DX9 | x86 | ✓ | - | - |
-| Overlord | DX9 | x86 | ✓ | - | - |
-| Overlord II | DX9 | x86 | ✓ | - | - |
-| Painkiller | DX9 | x86 | ✓ | - | - |
-| Painkiller: Overdose | DX9 | x86 | ✓ | - | - |
+| Lego Star Wars: The Video Game | DX9 | x86 | ✓ | Untested | - |
+| Lego Star Wars III: The Clone Wars | DX9 | x86 | ✓ | Untested | - |
+| Madden NFL 08 | DX9 | x86 | ✓ | Untested | - |
+| Mafia II | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
+| Majesty 2: The Fantasy Kingdom Sim | DX9 | x86 | ✓ | Untested | - |
+| Mass Effect | DX9 | x86 | ✓ | Untested | - |
+| Mass Effect 2 | DX9 | x86 | ✓ | Untested | - |
+| Medal of Honor: Airborne | DX9 | x86 | ✓ | Untested | - |
+| Mercenaries 2: World in Flames | DX9 | x86 | ✓ | Untested | - |
+| Microsoft Flight Simulator 2004: A Century of Flight | DX9 | x86 | ✓ | Untested | - |
+| Mini Ninjas | DX9 | x86 | ✓ | Untested | - |
+| Mirror's Edge | DX9 | x86 | ✓ | Untested | - |
+| Monday Night Combat | DX9 | x86 | ✓ | Untested | - |
+| MTX: Mototrax | DX9 | x86 | ✓ | Untested | - |
+| Mythos | DX9 | x86 | ✓ | Untested | Mythos (2009) maybe? Not sure which game this is. |
+| Need for Speed: ProStreet | DX9 | x86 | ✓ | Untested | - |
+| Need for Speed: Undercover | DX9 | x86 | ✓ | Untested | - |
+| Need for Speed: Hot Pursuit (2010) | DX9 | x86 | ✓ | Untested | - |
+| Need for Speed: Shift | DX9 | x86 | ✓ | Untested | - |
+| Need for Speed: Shift 2 Unleashed | DX9 | x86 | ✓ | Untested | - |
+| Ninja Blade | DX9 | x86 | ✓ | Untested | - |
+| Operation Flashpoint: Dragon Rising | DX9 | x86 | ✓ | Untested | - |
+| OutRun 2006: Coast 2 Coast | DX9 | x86 | ✓ | Untested | - |
+| Overlord | DX9 | x86 | ✓ | Untested | - |
+| Overlord II | DX9 | x86 | ✓ | Untested | - |
+| Painkiller | DX9 | x86 | ✓ | Untested | - |
+| Painkiller: Overdose | DX9 | x86 | ✓ | Untested | - |
 | Portal | DX9 | x86 | ✓ | ⚠️ Not loading | Suspect issue with needing `-game portal` command line argument  |
-| Portal 2 | DX9 | x86 | ✓ | - | - |
-| Prince of Persia: The Forgotten Sands | DX9 | x86 | ✓ | - | - |
-| ProtoGalaxy | DX9 | x86 | ✓ | - | - |
-| Resident Evil 5 | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
-| Richard Burns Rally | DX9 | x86 | ✓ | - | - |
-| Rise and Fall: Civilizations at War | DX9 | x86 | ✓ | - | - |
-| Rise of Flight | DX9 | x86 | ✓ | - | - |
-| Rise of the Argonauts | DX9 | x86 | ✓ | - | - |
-| Risen | DX9 | x86/x64 | ✓ | - | - |
-| S.T.A.L.K.E.R.: Shadow of Chernobyl | DX9 | x86 | ✓ | - | - |
-| Saints Row 2 | DX9 | x86 | ✓ | - | - |
-| Sam & Max Save the World | DX8/DX9 | x86 | ✓ | - | Specifically notes Episode 4: Abe Lincoln Must Die! |
-| Sam & Max: The Devil's Playhouse | DX9 | x86 | ✓ | - | Specifically notes Episode 1: The Penal Zone |
-| Samurai Warriors 2 | DX9 | x86 | ✓ | - | - |
-| Sanctum | DX9 | x86 | ✓ | - | - |
-| Section 8 | DX9 | x86 | ✓ | - | - |
-| Serious Sam 2 | DX9 | x86 | ✓ | - | - |
-| Sexy Beach 3 | DX9 | x86 | ✓ | - | - |
-| Shadowgrounds | DX9 | x86 | ✓ | - | - |
-| Sid Meier's Civilization IV | DX9 | x86 | ✓ | - | - |
-| Sid Meier's Railroads! | DX9 | x86 | ✓ | - | - |
-| Silent Hunter 3 | DX9 | x86 | ✓ | - | - |
-| Silent Hunter 4: Wolves of the Pacific | DX9 | x86 | ✓ | - | - |
-| Silent Hunter 5: Battle of the Atlantic | DX9 | x86 | ✓ | - | - |
-| Singularity | DX9 | x86 | ✓ | - | - |
-| Sins of a Solar Empire | DX9 | x86 | ✓ | - | - |
-| Spore | DX9 | x86 | ✓ | - | - |
-| Star Trek: Legacy | DX9 | x86 | ✓ | - | - |
-| Star Wars: Battlefront (2004) | DX9 | x86 | ✓ | - | - |
-| Star Wars: Battlefront II (2005) | DX9 | x86 | ✓ | - | - |
-| Starship Troopers | DX9 | x86 | ✓ | - | - |
-| Street Fighter IV | DX9 | x86 | ✓ | - | - |
-| Super Street Fighter IV Arcade Edition | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
-| Supreme Commander | DX9 | x86 | ✓ | - | - |
-| Supreme Commander: Forged Alliance | DX9 | x86 | ✓ | - | - |
-| Supreme Commander 2 | DX9 | x86 | ✓ | - | - |
-| Test Drive Unlimited | DX9 | x86 | ✓ | - | - |
-| The Ball | DX9 | x86 | ✕ | ✅ Working | Ball shadow different in both eyes. listed for testing. |
-| The Chronicles of Narnia: The Lion, the Witch and the Wardrobe | DX9 | x86 | ✓ | - | (Guess based on 'Narnia' and 'Narnia.exe') |
-| The Elder Scrolls IV: Oblivion | DX9 | x86 | ✓ | - | - |
-| The Movies (2005) | DX9 | x86 | ✓ | - | - |
-| The Settlers II: 10th Anniversary | DX9 | x86 | ✓ | - | - |
-| The Sims 2: University | DX9 | x86 | ✓ | - | Targets "Sims2EP1.exe", might just be expansion pack or all of The Sims 2. |
-| The Sims 3 | DX9 | x86 | ✓ | - | - |
-| The Sims Medieval | DX9 | x86 | ✓ | - | - |
-| The Witcher | DX9 | x86 | ✓ | - | - |
-| The Witcher 2: Assassins of Kings | DX9 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
-| TimeShift | DX9 | x86 | ✓ | - | - |
-| Titan Quest | DX9 | x86 | ✓ | - | - |
-| TOCA Race Driver 3 | DX9 | x86 | ✓ | - | - |
-| Tom Clancy's Ghost Recon Advanced Warfighter 2 | DX9 | x86 | ✓ | - | - |
-| Tom Clancy's Rainbow Six: Vegas | DX9 | x86 | ✓ | - | - |
-| Tom Clancy's Rainbow Six: Vegas 2 | DX9 | x86 | ✓ | - | - |
-| Tom Clancy's Splinter Cell: Double Agent | DX9 | x86 | ✓ | - | - |
-| Tom Clancy's Splinter Cell: Conviction | DX9 | x86 | ✓ | - | - |
-| Tomb Raider: Legend | DX9 | x86 | ✓ | - | - |
-| Tomb Raider: Anniversary | DX9 | x86 | ✓ | - | - |
-| Tomb Raider: Underworld | DX9 | x86 | ✓ | - | - |
-| Torchlight | DX9 | x86 | ✓ | - | - |
-| TrackMania Nations Forever | DX9 | x86 | ✓ | - | - |
-| Trine (2009) | DX9 | x86 | ✓ | - | - |
-| Two Worlds | DX9 | x86 | ✓ | - | - |
-| Unreal Tournament 3 | DX9 | x86 | ✓ | - | - |
-| Virtua Tennis 2009 | DX9 | x86 | ✓ | - | - |
-| Wallace & Gromit's Grand Adventures | DX9 | x86 | ✓ | - | Episodes 1-4 |
-| Wanted: Weapons of Fate | DX9 | x86 | ✓ | - | - |
-| Warhammer 40,000: Dawn of War | DX9 | x86 | ✓ | - | - |
-| Warhammer 40,000: Dawn of War: Dark Crusade | DX9 | x86 | ✓ | - | - |
-| Warhammer 40,000: Dawn of War: Soulstorm | DX9 | x86 | ✓ | - | - |
-| Warhammer 40,000: Dawn of War II | DX9 | x86 | ✓ | - | - |
-| Watchmen: The End is Nigh | DX9 | x86 | ✓ | - | - |
-| Wings of Prey | DX9 | x86 | ✓ | - | - |
-| Wolfenstein (2009) | DX9 | x86 | ✓ | - | - |
-| WorldShift | DX9 | x86 | ✓ | - | - |
-| Zeno Clash | DX9 | x86 | ✓ | - | - |
+| Portal 2 | DX9 | x86 | ✓ | Untested | - |
+| Prince of Persia: The Forgotten Sands | DX9 | x86 | ✓ | Untested | - |
+| ProtoGalaxy | DX9 | x86 | ✓ | Untested | - |
+| Resident Evil 5 | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
+| Richard Burns Rally | DX9 | x86 | ✓ | Untested | - |
+| Rise and Fall: Civilizations at War | DX9 | x86 | ✓ | Untested | - |
+| Rise of Flight | DX9 | x86 | ✓ | Untested | - |
+| Rise of the Argonauts | DX9 | x86 | ✓ | Untested | - |
+| Risen | DX9 | x86/x64 | ✓ | Untested | - |
+| S.T.A.L.K.E.R.: Shadow of Chernobyl | DX9 | x86 | ✓ | Untested | - |
+| Saints Row 2 | DX9 | x86 | ✓ | Untested | - |
+| Sam & Max Save the World | DX8/DX9 | x86 | ✓ | Untested | Notes Episode 4: Abe Lincoln Must Die! |
+| Sam & Max: The Devil's Playhouse | DX9 | x86 | ✓ | Untested | Notes Episode 1: The Penal Zone |
+| Samurai Warriors 2 | DX9 | x86 | ✓ | Untested | - |
+| Sanctum | DX9 | x86 | ✓ | Untested | - |
+| Section 8 | DX9 | x86 | ✓ | Untested | - |
+| Serious Sam 2 | DX9 | x86 | ✓ | Untested | - |
+| Sexy Beach 3 | DX9 | x86 | ✓ | Untested | - |
+| Shadowgrounds | DX9 | x86 | ✓ | Untested | - |
+| Sid Meier's Civilization IV | DX9 | x86 | ✓ | Untested | - |
+| Sid Meier's Railroads! | DX9 | x86 | ✓ | Untested | - |
+| Silent Hunter 3 | DX9 | x86 | ✓ | Untested | - |
+| Silent Hunter 4: Wolves of the Pacific | DX9 | x86 | ✓ | Untested | - |
+| Silent Hunter 5: Battle of the Atlantic | DX9 | x86 | ✓ | Untested | - |
+| Singularity | DX9 | x86 | ✓ | Untested | - |
+| Sins of a Solar Empire | DX9 | x86 | ✓ | Untested | - |
+| Spore | DX9 | x86 | ✓ | Untested | - |
+| Star Trek: Legacy | DX9 | x86 | ✓ | Untested | - |
+| Star Wars: Battlefront (2004) | DX9 | x86 | ✓ | Untested | - |
+| Star Wars: Battlefront II (2005) | DX9 | x86 | ✓ | Untested | - |
+| Starship Troopers | DX9 | x86 | ✓ | Untested | - |
+| Street Fighter IV | DX9 | x86 | ✓ | Untested | - |
+| Super Street Fighter IV Arcade Edition | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
+| Supreme Commander | DX9 | x86 | ✓ | Untested | - |
+| Supreme Commander: Forged Alliance | DX9 | x86 | ✓ | Untested | - |
+| Supreme Commander 2 | DX9 | x86 | ✓ | Untested | - |
+| Test Drive Unlimited | DX9 | x86 | ✓ | Untested | - |
+| The Ball | DX9 | x86 | ✕ | ✅ Working | Ball shadow diffrent in both eyes. |
+| The Chronicles of Narnia: The Lion, the Witch and the Wardrobe | DX9 | x86 | ✓ | Untested | (Guess based on 'Narnia' and 'Narnia.exe') |
+| The Elder Scrolls IV: Oblivion | DX9 | x86 | ✓ | Untested | - |
+| The Movies (2005) | DX9 | x86 | ✓ | Untested | - |
+| The Settlers II: 10th Anniversary | DX9 | x86 | ✓ | Untested | - |
+| The Sims 2: University | DX9 | x86 | ✓ | Untested | Targets "Sims2EP1.exe", might just be expansion pack or all of The Sims 2. |
+| The Sims 3 | DX9 | x86 | ✓ | Untested | - |
+| The Sims Medieval | DX9 | x86 | ✓ | Untested | - |
+| The Witcher | DX9 | x86 | ✓ | Untested | - |
+| The Witcher 2: Assassins of Kings | DX9 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
+| TimeShift | DX9 | x86 | ✓ | Untested | - |
+| Titan Quest | DX9 | x86 | ✓ | Untested | - |
+| TOCA Race Driver 3 | DX9 | x86 | ✓ | Untested | - |
+| Tom Clancy's Ghost Recon Advanced Warfighter 2 | DX9 | x86 | ✓ | Untested | - |
+| Tom Clancy's Rainbow Six: Vegas | DX9 | x86 | ✓ | Untested | - |
+| Tom Clancy's Rainbow Six: Vegas 2 | DX9 | x86 | ✓ | Untested | - |
+| Tom Clancy's Splinter Cell: Double Agent | DX9 | x86 | ✓ | Untested | - |
+| Tom Clancy's Splinter Cell: Conviction | DX9 | x86 | ✓ | Untested | - |
+| Tomb Raider: Legend | DX9 | x86 | ✓ | Untested | - |
+| Tomb Raider: Anniversary | DX9 | x86 | ✓ | Untested | - |
+| Tomb Raider: Underworld | DX9 | x86 | ✓ | Untested | - |
+| Torchlight | DX9 | x86 | ✓ | Untested | - |
+| TrackMania Nations Forever | DX9 | x86 | ✓ | Untested | - |
+| Trine (2009) | DX9 | x86 | ✓ | Untested | - |
+| Two Worlds | DX9 | x86 | ✓ | Untested | - |
+| Unreal Tournament 3 | DX9 | x86 | ✓ | Untested | - |
+| Virtua Tennis 2009 | DX9 | x86 | ✓ | Untested | - |
+| Wallace & Gromit's Grand Adventures | DX9 | x86 | ✓ | Untested | Episodes 1-4 |
+| Wanted: Weapons of Fate | DX9 | x86 | ✓ | Untested | - |
+| Warhammer 40,000: Dawn of War | DX9 | x86 | ✓ | Untested | - |
+| Warhammer 40,000: Dawn of War: Dark Crusade | DX9 | x86 | ✓ | Untested | - |
+| Warhammer 40,000: Dawn of War: Soulstorm | DX9 | x86 | ✓ | Untested | - |
+| Warhammer 40,000: Dawn of War II | DX9 | x86 | ✓ | Untested | - |
+| Watchmen: The End is Nigh | DX9 | x86 | ✓ | Untested | - |
+| Wings of Prey | DX9 | x86 | ✓ | Untested | - |
+| Wolfenstein (2009) | DX9 | x86 | ✓ | Untested | - |
+| WorldShift | DX9 | x86 | ✓ | Untested | - |
+| Zeno Clash | DX9 | x86 | ✓ | Untested | - |
 
 - **Excluded (Game Not Playable):** *Darkspore*. <sub>(Game not playable til [Resurrection Capsule](https://github.com/vitor251093/resurrection-capsule) project completes.)</sub>
 - **Excluded (Online Ban Risk):** *Allods Online*, *Dark Age of Camelot*, *Darkfall Online*, *Fury (2007)*, *Global Agenda*, *Guild Wars*, *Monster Hunter Frontier Online*, *Warhammer Online: Age of Reckoning*.
@@ -316,15 +315,15 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 | Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
-| Chess Titans | DX9 | x86/x64 | ✕ | - | - |
-| Far Cry | DX9 | x86/x64 | ✓ | - | - |
-| REFLEX XTR² | DX9 | x86/x64 | ✓ | - | - |
+| Chess Titans | DX9 | x86/x64 | ✕ | Untested | - |
+| Far Cry | DX9 | x86/x64 | ✓ | Untested | - |
+| REFLEX XTR² | DX9 | x86/x64 | ✓ | Untested | - |
 | Unreal Tournament 2004 | DX9 | x64 | ✓ | ✅ Working | - |
 
 - **Excluded (VAC Ban Risk):** *Counter-Strike: Source*, *Day of Defeat: Source*, *Half-Life 2: Deathmatch*.
 - **Excluded (Online Ban Risk):** *Dungeons & Dragons Online*, *EVE Online*, *EverQuest*, *EverQuest 2*, *Flyff (Fly For Fun)*, *RIFT*, *Starcraft II*.
 
-## DirectX 10/11 Games
+## DirectX 10/11 Games (Not Released Yet)
 
 | Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
@@ -365,7 +364,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 - **Excluded (Online Ban Risk):** *Age of Conan: Unchained*, *Champions Online*, *DC Universe Online*, *Entropia Universe*, *Final Fantasy 14*, *TERA Online*, *The Lord of the Rings Online*, *Warcraft III: Reign of Chaos*, *World of Tanks*.
 
-### Nvidia 3D Vision "Ready" Native Games
+### Nvidia 3D Vision "Ready" Native Games (Not Released Yet)
 
 | Game | API | Bits | Testing | Notes |
 |------|-----|------|--------|-------|
