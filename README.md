@@ -89,11 +89,11 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
 | Ballance | DX8 | x86 | ✓ | Untested | - |
-| Deus Ex | OpenGL/DX7 | x86 | ✕ | ❌ No Stereo | listed for DX7 testing. |
+| Deus Ex | OpenGL/DX7 | x86 | ✕ | ❌ Not Working | listed for DX7 testing. |
 | FATE | DX8 | x86 | ✕ | Untested | - |
 | Mega Man X8 | DX8 | x86 | ✓ | Untested | - |
 | Mercedes-Benz World Racing | DX8 | x86 | ✓ | Untested | - |
-| Sniper Elite | DX8 | x86 | ✓ | Untested | - |
+| Sniper Elite | DX8 | x86 | ✓ | ❌ Not Working | Game crashes. |
 | The Lord of the Rings: The Return of the King | DX8 | x86 | ✓ | Untested | - |
 | Thief: Deadly Shadows | DX8 | x86 | ✓ | Untested | - |
 | Tony Hawk's Pro Skater 3 | DX8 | x86 | ✓ | Untested | - |
