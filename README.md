@@ -112,7 +112,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Alone in the Dark (2008) | DX9 | x86 | ✓ | Untested | - |
 | America's Army | DX8/DX9 | x86 | ✓ | Untested | - |
 | Anomaly Warzone Earth | DX9 | x86 | ✓ | Untested | - |
-| AquaNox 2: Revelation | DX8/DX9 | x86 | ✓ | Untested | - |
+| AquaNox 2: Revelation | DX8/DX9 | x86 | ✓ | ✅ Working | - |
 | Arma: Armed Assault | DX9 | x86 | ✓ | Untested | aka ARMA: Combat Operations  |
 | Armies of Exigo | DX9 | x86 | ✓ | Untested | - |
 | Assassin's Creed II | DX9 | x86 | ✓ | Untested | - |
@@ -125,7 +125,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Battlestations: Pacific | DX9 | x86 | ✓ | Untested | - |
 | Beowulf: The Game | DX9 | x86 | ✓ | Untested | - |
 | Bet on Soldier | DX9 | x86 | ✓ | Untested | - |
-| Beyond Good & Evil | DX9 | x86 | ✓ | Untested | - |
+| Beyond Good & Evil | DX9 | x86 | ✓ | ✅ Mostly Working | Artifacts when paused. |
 | Bionic Commando (2009) | DX9 | x86 | ✕ | Untested | - |
 | Bionic Commando Rearmed | DX9 | x86 | ✓ | Untested | - |
 | Black & White 2 | DX9 | x86 | ✓ | Untested | - |
@@ -145,13 +145,13 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Call of Duty: Modern Warfare 2 | DX9 | x86 | ✓ | Untested | - |
 | Cars | DX9 | x86 | ✓ | Untested | - |
 | Chromadrome 2 | DX9 | x86 | ✓ | Untested | - |
-| Command & Conquer 3: Tiberium Wars | DX9 | x86 | ✓ | Untested | - |
+| Command & Conquer 3: Tiberium Wars | DX9 | x86 | ✓ | ✅ Working | Place in `/RetailExe/1.10`. Game crashes when changing settings. |
 | Command & Conquer: Red Alert 3 | DX9 | x86 | ✓ | Untested | - |
 | Command & Conquer 4: Tiberian Twilight | DX9 | x86 | ✓ | Untested | - |
 | Condemned: Criminal Origins | DX9 | x86 | ✓ | Untested | - |
 | Demigod | DX9 | x86 | ✕ | Untested | - |
 | Damnation | DX9 | x86 | ✓ | Untested | - |
-| Dark Messiah of Might and Magic | DX9 | x86 | ✓ | Untested | - |
+| Dark Messiah of Might and Magic | DX9 | x86 | ✓ | ✅ Working | Freezes on Linux. |
 | Dark Void | DX9 | x86 | ✓ | Untested | - |
 | Dead Space | DX9 | x86 | ✓ | Untested | - |
 | Dead Space 2 | DX9 | x86 | ✓ | Untested | - |
@@ -195,7 +195,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Grand Theft Auto IV | DX9 | x86 | ✓ | Untested | - |
 | GRID | DX9 | x86 | ✓ | Untested | - |
 | Guitar Hero III: Legends of Rock | DX9 | x86 | ✓ | Untested | - |
-| Half-Life 2 | DX9 | x86 | ✓ | ⚠️ Not loading | Suspect issue with needing `-game` command line argument  |
+| Half-Life 2 | DX9 | x86 | ✓ | ✅ Mostly Working | `steam_legacy` beta branch. Use `-game ` command line argument. Shadows have issues. |
 | Heroes of Might and Magic V | DX9 | x86 | ✓ | Untested | - |
 | Hitman: Blood Money | DX9 | x86 | ✓ | Untested | - |
 | Hunted: The Demon's Forge | DX9 | x86 | ✓ | Untested | - |
@@ -232,7 +232,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Overlord II | DX9 | x86 | ✓ | Untested | - |
 | Painkiller | DX9 | x86 | ✓ | Untested | - |
 | Painkiller: Overdose | DX9 | x86 | ✓ | Untested | - |
-| Portal | DX9 | x86 | ✓ | ⚠️ Not loading | Suspect issue with needing `-game portal` command line argument  |
+| Portal | DX9 | x86 | ✓ | ✅ Mostly Working | `steam_legacy` beta branch. Use `-game portal` command line argument. Shadows have issues.  |
 | Portal 2 | DX9 | x86 | ✓ | Untested | - |
 | Prince of Persia: The Forgotten Sands | DX9 | x86 | ✓ | Untested | - |
 | ProtoGalaxy | DX9 | x86 | ✓ | Untested | - |
@@ -258,7 +258,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Silent Hunter 4: Wolves of the Pacific | DX9 | x86 | ✓ | Untested | - |
 | Silent Hunter 5: Battle of the Atlantic | DX9 | x86 | ✓ | Untested | - |
 | Singularity | DX9 | x86 | ✓ | Untested | - |
-| Sins of a Solar Empire | DX9 | x86 | ✓ | Untested | - |
+| Sins of a Solar Empire | DX9 | x86 | ✓ | ✅ Mostly Working | Background at wrong depth. |
 | Spore | DX9 | x86 | ✓ | Untested | - |
 | Star Trek: Legacy | DX9 | x86 | ✓ | Untested | - |
 | Star Wars: Battlefront (2004) | DX9 | x86 | ✓ | Untested | - |
@@ -270,7 +270,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Supreme Commander: Forged Alliance | DX9 | x86 | ✓ | Untested | - |
 | Supreme Commander 2 | DX9 | x86 | ✓ | Untested | - |
 | Test Drive Unlimited | DX9 | x86 | ✓ | Untested | - |
-| The Ball | DX9 | x86 | ✕ | ✅ Working | Ball shadow diffrent in both eyes. |
+| The Ball | DX9 | x86 | ✕ | ✅ Mostly Working | Ball shadow diffrent in both eyes. |
 | The Chronicles of Narnia: The Lion, the Witch and the Wardrobe | DX9 | x86 | ✓ | Untested | (Guess based on 'Narnia' and 'Narnia.exe') |
 | The Elder Scrolls IV: Oblivion | DX9 | x86 | ✓ | Untested | - |
 | The Movies (2005) | DX9 | x86 | ✓ | Untested | - |
@@ -289,13 +289,14 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Tom Clancy's Splinter Cell: Double Agent | DX9 | x86 | ✓ | Untested | - |
 | Tom Clancy's Splinter Cell: Conviction | DX9 | x86 | ✓ | Untested | - |
 | Tomb Raider: Legend | DX9 | x86 | ✓ | Untested | - |
-| Tomb Raider: Anniversary | DX9 | x86 | ✓ | Untested | - |
+| Tomb Raider: Anniversary | DX9 | x86 | ✓ | ✅ Working | - |
 | Tomb Raider: Underworld | DX9 | x86 | ✓ | Untested | - |
 | Torchlight | DX9 | x86 | ✓ | Untested | - |
 | TrackMania Nations Forever | DX9 | x86 | ✓ | Untested | - |
 | Trine (2009) | DX9 | x86 | ✓ | Untested | - |
 | Two Worlds | DX9 | x86 | ✓ | Untested | - |
 | Unreal Tournament 3 | DX9 | x86 | ✓ | Untested | - |
+| Valkyria Chronicles | DX9 | x86/x64 | ✕ | ❌ 3D Broken | All shadows broken, UI elements at wrong depth.  |
 | Virtua Tennis 2009 | DX9 | x86 | ✓ | Untested | - |
 | Wallace & Gromit's Grand Adventures | DX9 | x86 | ✓ | Untested | Episodes 1-4 |
 | Wanted: Weapons of Fate | DX9 | x86 | ✓ | Untested | - |
@@ -328,40 +329,40 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 | Game | API | Bits | Profile | Testing | Notes |
 |------|-----|---------|--------|-------|-------|
-| Aliens vs. Predator (2010) | DX9/DX11 | x86 | ✓ | - | - |
-| Assassins Creed | DX9/DX10 | x86 | ✓ | - | - |
-| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | ✓ | - | Includes Shader Fix, see if compatible with 3D Vision in future. |
-| BioShock | DX9/DX10 | x86 | ✓ | - | - |
+| Aliens vs. Predator (2010) | DX9/DX11 | x86 | ✓ | Untested | - |
+| Assassins Creed | DX9/DX10 | x86 | ✓ | Untested | - |
+| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | ✓ | Untested | Includes Shader Fix, see if compatible with 3D Vision in future. |
+| BioShock | DX9/DX10 | x86 | ✓ | Untested | - |
 | BioShock 2 | DX9/DX10 | x86 | ✓ | - | - |
-| Call of Juarez: Bound in Blood | DX9/DX10 | x86 | ✓ | - | - |
-| Company of Heroes | DX9/DX10 | x86 | ✓ | - | - |
-| Cryostasis | DX9/DX10 | x86 | ✓ | - | - |
-| Crysis | DX9/DX10 | x86/x64 | ✓ | - | - |
-| Crysis: Warhead | DX9/DX10 | x86/x64 | ✓ | - | - |
-| Crysis 2 | DX9/DX11 | x86/x64 | ✓ | - | Includes Shader Fix. See if can be applied to the game's native SBS. |
-| DCS: Black Shark | DX9/DX11 | x86 | ✓ | - | Single Player may be okay. Multiplayer not recommended. |
-| De Blob | DX11 | x86 | ✓ | - | - |
-| Devil May Cry 4 (2008) | DX9/DX10 | x86/x64 | ✓ | - | - |
-| Dragon Age II | DX9/DX11 | x86 | ✓ | - | - |
-| Far Cry 2 | DX9/DX10 | x86 | ✓ | - | - |
-| F.E.A.R. 3 | DX9/DX10 | x86 | ✓ | - | - |
-| Gears of War | DX9/DX10 | x86 | ✓ | - | - |
-| Homefront | DX9/DX11 | x86 | ✓ | - | - |
-| Just Cause 2 | DX10 | x86 | ✓ | - | - |
-| Lost Planet | DX9/DX10 | x86 | ✓ | - | - |
-| Lost Planet 2 | DX9/DX11 | x86 | ✓ | - | - |
-| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | - | Use Single Player only. Includes Shader Fix, see if compatible with 3D Vision in future. |
-| Metro 2033 | DX9/DX11 | x86 | ✓ | - | - |
-| Microsoft Flight Simulator X | DX9/DX10 | x86 | ✓ | - | - |
-| NecroVisioN | DX9/DX10 | x86 | ✓ | - | - |
-| Red Faction: Guerrilla | DX9/DX10/DX11 | x86 | ✓ | - | - |
-| S.T.A.L.K.E.R.: Clear Sky | DX9/DX10 | x86 | ✓ | - | - |
-| S.T.A.L.K.E.R.: Call of Pripyat | DX9/DX10/DX11 | x86/x64 | ✓ | - | - |
-| Serious Sam HD: The First Encounter | DX9/DX11/DX12 | x86 | ✓ | - | - |
-| Sid Meier's Civilization V | DX9/DX11 | x86 | ✓ | - | - |
-| Tom Clancy's H.A.W.X | DX9/DX10 | x86 | ✓ | - | - |
-| Tom Clancy's H.A.W.X. 2 | DX9/DX11 | x86 | ✓ | - | - |
-| World in Conflict | DX9/DX10 | x86 | ✓ | - | - |
+| Call of Juarez: Bound in Blood | DX9/DX10 | x86 | ✓ | Untested | - |
+| Company of Heroes | DX9/DX10 | x86 | ✓ | Untested | - |
+| Cryostasis | DX9/DX10 | x86 | ✓ | Untested | - |
+| Crysis | DX9/DX10 | x86/x64 | ✓ | Untested | - |
+| Crysis: Warhead | DX9/DX10 | x86/x64 | ✓ | Untested | - |
+| Crysis 2 | DX9/DX11 | x86/x64 | ✓ | Untested | Includes Shader Fix. See if can be applied to the game's native SBS. |
+| DCS: Black Shark | DX9/DX11 | x86 | ✓ | Untested | Single Player may be okay. Multiplayer not recommended. |
+| De Blob | DX11 | x86 | ✓ | Untested | - |
+| Devil May Cry 4 (2008) | DX9/DX10 | x86/x64 | ✓ | Untested | - |
+| Dragon Age II | DX9/DX11 | x86 | ✓ | Untested | - |
+| Far Cry 2 | DX9/DX10 | x86 | ✓ | Untested | - |
+| F.E.A.R. 3 | DX9/DX10 | x86 | ✓ | Untested | - |
+| Gears of War | DX9/DX10 | x86 | ✓ | Untested | - |
+| Homefront | DX9/DX11 | x86 | ✓ | Untested | - |
+| Just Cause 2 | DX10 | x86 | ✓ | Untested | - |
+| Lost Planet | DX9/DX10 | x86 | ✓ | Untested | - |
+| Lost Planet 2 | DX9/DX11 | x86 | ✓ | Untested | - |
+| Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | Untested | Use Single Player only. Includes Shader Fix, see if compatible with 3D Vision in future. |
+| Metro 2033 | DX9/DX11 | x86 | ✓ | Untested | - |
+| Microsoft Flight Simulator X | DX9/DX10 | x86 | ✓ | Untested | - |
+| NecroVisioN | DX9/DX10 | x86 | ✓ | Untested | - |
+| Red Faction: Guerrilla | DX9/DX10/DX11 | x86 | ✓ | Untested | - |
+| S.T.A.L.K.E.R.: Clear Sky | DX9/DX10 | x86 | ✓ | Untested | - |
+| S.T.A.L.K.E.R.: Call of Pripyat | DX9/DX10/DX11 | x86/x64 | ✓ | Untested | - |
+| Serious Sam HD: The First Encounter | DX9/DX11/DX12 | x86 | ✓ | Untested | - |
+| Sid Meier's Civilization V | DX9/DX11 | x86 | ✓ | Untested | - |
+| Tom Clancy's H.A.W.X | DX9/DX10 | x86 | ✓ | Untested | - |
+| Tom Clancy's H.A.W.X. 2 | DX9/DX11 | x86 | ✓ | Untested | - |
+| World in Conflict | DX9/DX10 | x86 | ✓ | Untested | - |
 
 - **Excluded (Online Ban Risk):** *Age of Conan: Unchained*, *Champions Online*, *DC Universe Online*, *Entropia Universe*, *Final Fantasy 14*, *TERA Online*, *The Lord of the Rings Online*, *Warcraft III: Reign of Chaos*, *World of Tanks*.
 
@@ -369,43 +370,43 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 
 | Game | API | Bits | Testing | Notes |
 |------|-----|------|--------|-------|
-| Assassin's Creed: Revelations | DX9 | x86 | - | 3D Vision Fog option in settings |
-| Batman: Arkham Asylum | DX9 | x86 | - | - |
-| Batman: Arkham City | DX9/DX11 | x86 | - | - |
-| Batman: Arkham Origins | DX9/DX11 | x86 | - | - |
-| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | - | Including 'Vietnam' Expansion Pack |
-| Brave: The Video Game | DX9 | x86 | - | - |
-| Call of Duty: Black Ops | DX9 | x86 | - | - |
-| Carrier Command: Gaea Mission | DX9/DX11 | x86 | - | - |
-| Civilization V | DX9/DX11 | x86 | - | - |
-| Dead Rising 2 | DX9 | x86 | - | - |
-| Deep Black: Reloaded | DX9 | x86 | - | - |
-| Depth Hunter | DX9 | x86 | - | - |
-| Devil May Cry 4 | DX9/10 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
-| Devil May Cry 4 Special Edition | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
-| Dragon's Dogma: Dark Arisen | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
-| Duke Nukem Forever | DX9/DX10 | x86 | - | - |
-| Google Earth | OpenGL/DX9 | x86 | - | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
-| GT Legends | DX9 | x86 | - | - |
-| Hard Reset | DX9 | x86 | - | - |
-| Inversion | DX9/DX11 | x86 | - | - |
-| Just Cause 2 | DX10 | x86 | - | - |
-| L.A. Noire | DX9/DX11 | x86 | - | - |
-| Lost Planet 2 | DX9/DX11 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
-| Mafia II | DX9 | x86 | - | - |
-| Max Payne 3 | DX9/DX11 | x86 | - | - |
-| Medal of Honor (2010) | DX9/DX11 | x86 | - | This might be only the multiplayer, if so I'll exclude it. |
-| Metro 2033 | DX9/DX11 | x86 | - | - |
-| Metro: Last Light | DX9/DX11 | x86 | - | Lists 3D vision support in [Official PC Requirements](https://www.reddit.com/r/Games/comments/1cjh4l/metro_last_light_official_pc_requirements/) |
-| Oil Rush | OpenGL/DX9/DX11 | x86 | - | - |
-| Resident Evil 5 | DX9/DX10 | x86 | - | - |
-| Resident Evil 6 | DX9 | x86 | - | `Stereo=ON` in `config.ini` needs investigation. |
-| rFactor 2 | DX9/DX11 | x64 | - | Single-player only recommended. |
-| Roller Coaster Rampage | DX9 | x86 | - | - |
-| Super Street Fighter IV Arcade Edition | DX9 | x86 | - | - |
-| Street Fighter X Tekken | DX9 | x86 | - | - |
-| Tom Clancy's H.A.W.X 2 | DX9/DX11 | x86 | - | - |
-| The Witcher 2: Assassins of Kings | DX9 | x86 | - | - |
+| Assassin's Creed: Revelations | DX9 | x86 | Untested | 3D Vision Fog option in settings |
+| Batman: Arkham Asylum | DX9 | x86 | Untested | - |
+| Batman: Arkham City | DX9/DX11 | x86 | Untested | - |
+| Batman: Arkham Origins | DX9/DX11 | x86 | Untested | - |
+| Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | Untested | Including 'Vietnam' Expansion Pack |
+| Brave: The Video Game | DX9 | x86 | Untested | - |
+| Call of Duty: Black Ops | DX9 | x86 | Untested | - |
+| Carrier Command: Gaea Mission | DX9/DX11 | x86 | Untested | - |
+| Civilization V | DX9/DX11 | x86 | Untested | - |
+| Dead Rising 2 | DX9 | x86 | Untested | - |
+| Deep Black: Reloaded | DX9 | x86 | Untested | - |
+| Depth Hunter | DX9 | x86 | Untested | - |
+| Devil May Cry 4 | DX9/10 | x86 | Untested | `Stereo=ON` in `config.ini` needs investigation. |
+| Devil May Cry 4 Special Edition | DX9 | x86 | Untested | `Stereo=ON` in `config.ini` needs investigation. |
+| Dragon's Dogma: Dark Arisen | DX9 | x86 | Untested | `Stereo=ON` in `config.ini` needs investigation. |
+| Duke Nukem Forever | DX9/DX10 | x86 | Untested | - |
+| Google Earth | OpenGL/DX9 | x86 | Untested | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
+| GT Legends | DX9 | x86 | Untested | - |
+| Hard Reset | DX9 | x86 | Untested | - |
+| Inversion | DX9/DX11 | x86 | Untested | - |
+| Just Cause 2 | DX10 | x86 | Untested | - |
+| L.A. Noire | DX9/DX11 | x86 | Untested | - |
+| Lost Planet 2 | DX9/DX11 | x86 | Untested | `Stereo=ON` in `config.ini` needs investigation. |
+| Mafia II | DX9 | x86 | Untested | - |
+| Max Payne 3 | DX9/DX11 | x86 | Untested | - |
+| Medal of Honor (2010) | DX9/DX11 | x86 | Untested | This might be only the multiplayer, if so I'll exclude it. |
+| Metro 2033 | DX9/DX11 | x86 | Untested | - |
+| Metro: Last Light | DX9/DX11 | x86 | Untested | Lists 3D vision support in [Official PC Requirements](https://www.reddit.com/r/Games/comments/1cjh4l/metro_last_light_official_pc_requirements/) |
+| Oil Rush | OpenGL/DX9/DX11 | x86 | Untested | - |
+| Resident Evil 5 | DX9/DX10 | x86 | Untested | - |
+| Resident Evil 6 | DX9 | x86 | Untested | `Stereo=ON` in `config.ini` needs investigation. |
+| rFactor 2 | DX9/DX11 | x64 | Untested | Single-player only recommended. |
+| Roller Coaster Rampage | DX9 | x86 | Untested | - |
+| Super Street Fighter IV Arcade Edition | DX9 | x86 | Untested | - |
+| Street Fighter X Tekken | DX9 | x86 | Untested | - |
+| Tom Clancy's H.A.W.X 2 | DX9/DX11 | x86 | Untested | - |
+| The Witcher 2: Assassins of Kings | DX9 | x86 | Untested | - |
 
 - **Excluded (Native SBS/TAB):** *Deus Ex: Mankind Divided*, *DOOM 3: BFG Edition*, *Avatar: The Game*, *Sonic Generations*. 
 - **Excluded (Native AMD HD3D):** *Battlefield 3*, *DiRT 2*, *DiRT 3*, *DiRT Showdown*, *DiRT Rally*, *GRID 2*, *GRID Autosport*, *Tomb Raider (2013)*. 
