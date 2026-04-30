@@ -170,10 +170,11 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Enemy Engaged 2 | DX9 | x86 | ✕ | Untested | - |
 | Eragon | DX9 | x86 | ✓ | Untested | - |
 | Evolution GT | DX9 | x86 | ✕ | Untested | - |
-| Fable: The Lost Chapters | DX9 | x86 | ✓ | Untested | - |
+| Fable: The Lost Chapters | DX9 | x86 | ✓ | ⚠️ Not loading | wiz3D's `Config.xml` is conflicting with Fable's `Config.xml` |
 | Fable III | DX9 | x86 | ✓ | Untested | - |
 | Fahrenheit | DX9 | x86 | ✓ | Untested | aka Indigo Prophecy |
 | Fallout 3 | DX9 | x86 | ✓ | Untested | - |
+| Fallout: New Vegas | DX9 | x86 | ✕ | ✅ Working | Reported working on Linux |
 | F.E.A.R. | DX9 | x86 | ✓ | Untested | - |
 | F.E.A.R. Perseus Mandate | DX9 | x86 | ✓ | Untested | - |
 | F.E.A.R. 2: Project Origin | DX9 | x86 | ✓ | Untested | - |
