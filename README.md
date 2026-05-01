@@ -11,7 +11,7 @@ A universal stereoscopic 3D wrapper for DirectX 7-11, OpenGL, AMD HD3D, and Nvid
 ---
 
 ## What Is This?
-
+che
 wiz3D is an open-source stereoscopic 3D wrapper that hooks into DirectX, OpenGL, and AMD HD3D native games to generate real-time stereo 3D output (Half Side-by-Side, Top-and-Bottom, Anaglyph, etc.) without requiring kernel drivers or proprietary hardware.
 
 iZ3D was a commercial product (~2002–2010) and one of the pioneers in modding games for stereoscopic 3D using kernel-level driver injection. The original developers kindly open-sourced the code under the MIT license, hosted by [bo3b/iZ3D](https://github.com/bo3b/iZ3D).
@@ -242,7 +242,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Rise of Flight | DX9 | x86 | ✓ | Untested | - |
 | Rise of the Argonauts | DX9 | x86 | ✓ | Untested | - |
 | Risen | DX9 | x86/x64 | ✓ | Untested | - |
-| S.T.A.L.K.E.R.: Shadow of Chernobyl | DX9 | x86 | ✓ | Untested | - |
 | Saints Row 2 | DX9 | x86 | ✓ | Untested | - |
 | Sam & Max Save the World | DX8/DX9 | x86 | ✓ | Untested | Notes Episode 4: Abe Lincoln Must Die! |
 | Sam & Max: The Devil's Playhouse | DX9 | x86 | ✓ | Untested | Notes Episode 1: The Penal Zone |
@@ -260,6 +259,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Singularity | DX9 | x86 | ✓ | Untested | - |
 | Sins of a Solar Empire | DX9 | x86 | ✓ | ✅ Mostly Working | Background at wrong depth. |
 | Spore | DX9 | x86 | ✓ | Untested | - |
+| S.T.A.L.K.E.R.: Shadow of Chernobyl | DX9 | x86 | ✓ | ✅ Working | - |
 | Star Trek: Legacy | DX9 | x86 | ✓ | Untested | - |
 | Star Wars: Battlefront (2004) | DX9 | x86 | ✓ | Untested | - |
 | Star Wars: Battlefront II (2005) | DX9 | x86 | ✓ | Untested | - |
