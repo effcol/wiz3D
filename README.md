@@ -189,7 +189,6 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Ghostbusters: Sanctum of Slime | DX9 | x86 | ✓ | Untested | - |
 | Google Earth | OpenGL/DX9 | x86 | ✓ | Untested | [Google Earth Pro 7.1.5.1557](https://web.archive.org/web/20171014110844/https://dl.google.com/earth/client/GE7/release_7_1_8/googleearth-win-pro-7.1.8.3036.exe) |
 | Grand Theft Auto: San Andreas | DX9 | x86 | ✓ | Untested | - |
-| Grand Theft Auto IV | DX9 | x86 | ✓ | Untested | - |
 | GRID | DX9 | x86 | ✓ | Untested | - |
 | Guitar Hero III: Legends of Rock | DX9 | x86 | ✓ | Untested | - |
 | Half-Life 2 | DX9 | x86 | ✓ | ✅ Mostly Working | `steam_legacy` beta branch. Use `-game ` command line argument. Shadows have issues. |
@@ -370,6 +369,8 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Devil May Cry 4 Special Edition | DX9 | x86 | ✓ | Untested | `Stereo=ON` in `config.ini`. |
 | Dragon's Dogma: Dark Arisen | DX9 | x86 | ✕ | Untested | `Stereo=ON` in `config.ini`. |
 | Duke Nukem Forever | DX9/DX10 | x86 | ✕ | Untested | - |
+| Grand Theft Auto IV | DX9 | x32 | ✓ | Untested | `-stereo` command line argument. |
+| Grand Theft Auto V (Legacy) | DX11 | x64 | ✕ | Untested | `Stereo 3D` option in `Graphics` menu. |
 | GT Legends | DX9 | x86 | ✕ | Untested | - |
 | Hard Reset | DX9 | x86 | ✕ | Untested | - |
 | Inversion | DX9/DX11 | x86 | ✕ | Untested | - |
@@ -377,11 +378,12 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | L.A. Noire | DX9/DX11 | x86 | ✕ | Untested | - |
 | Lost Planet 2 | DX9/DX11 | x86 | ✓ | Untested | `Stereo=ON` in `config.ini`. |
 | Mafia II | DX9 | x86 | ✓ | Untested | - |
-| Max Payne 3 | DX9/DX11 | x86 | ✕ | Untested | - |
+| Max Payne 3 | DX9/DX11 | x86 | ✕ | Untested | `3D Vision` in `Graphics` menu. `-stereo 1` command line argument |
 | Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | Untested | Use Single Player only. |
 | Metro 2033 | DX9/DX11 | x86 | ✓ | Untested | - |
 | Metro: Last Light | DX9/DX11 | x86 | ✕ | Untested | Lists 3D Vision support in [Official PC Requirements](https://www.reddit.com/r/Games/comments/1cjh4l/metro_last_light_official_pc_requirements/) |
 | Oil Rush | OpenGL/DX9/DX11 | x86 | ✕ | Untested | - |
+| [Orbiter Space Flight Simulator](https://github.com/orbitersim/orbiter) | DX9 | x64 | ✕ | Untested | `Stereoscopic 3D` in settings. |
 | Resident Evil 5 | DX9/DX10 | x86 | ✓ | Untested | - |
 | Resident Evil 6 | DX9 | x86 | ✕ | Untested | `Stereo=ON` in `config.ini`. |
 | rFactor 2 | DX9/DX11 | x64 | ✕ | Untested | Use Single-player only. |
