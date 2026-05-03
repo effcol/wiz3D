@@ -374,7 +374,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Grand Theft Auto V (Legacy) | DX11 | x64 | ✕ | Untested | `Stereo 3D` option in `Graphics` menu. |
 | GT Legends | DX9 | x86 | ✕ | Untested | - |
 | Hard Reset | DX9 | x86 | ✕ | Untested | - |
-| Inversion | DX9/DX11 | x86 | ✕ | Untested | - |
+| Inversion | DX9/DX11 | x86 | ✕ | ❌ Not Working | - |
 | Just Cause 2 | DX10 | x86 | ✓ | Untested | - |
 | L.A. Noire | DX9/DX11 | x86 | ✕ | Untested | - |
 | Lost Planet 2 | DX9/DX11 | x86 | ✓ | Untested | `Stereo=ON` in `config.ini`. |
