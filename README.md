@@ -57,7 +57,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 |------|-----|------|--------|-------|
 | Battlefield 3 | DX11 | x86 | ✅ Working | Campaign only. Don't use with Multiplayer due to ban risks. |
 | Deus Ex: Human Revolution | DX11 | x86 | ✅ Working | Cursor doubled correctly. Check iZ3D Shader Fix. |
-| Deus Ex: Human Revolution Director's Cut | DX11 | x86 | ✅ Working | Undocumented AMD HD3D support. Cursor doubled correctly. |
+| Deus Ex: Human Revolution Director's Cut | DX11 | x86 | ✅ Working | Undocumented AMD HD3D support. Skybox at wrong depth, check iZ3D Shader Fix. |
 | DiRT 2 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | DiRT 3 | DX11 | x86 | Untested | `hardware_settings_config.xml` needs `stereo enabled="true"`. Check iZ3D Shader Fix. |
 | DiRT 3 Complete Edition | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
@@ -69,14 +69,14 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | F1 2013 | DX11 | x86 | Untested | Untested |
 | GRID 2 | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
 | GRID Autosport | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS visible. `hardware_settings_config.xml` needs `stereo enabled="true"` |
-| Hitman: Absolution | DX11 | x86 | ⚠️ Partial | UI,  menus and videos correct, gameplay is the top half of the view-port. Mouse not doubling. |
+| Hitman: Absolution | DX11 | x86 | ⚠️ Partial | UI,  menus and videos correct, gameplay is the top half of the view-port. |
 | Sleeping Dogs | DX11 | x86 | ✅ Working | Mouse not doubling. |
 | Sleeping Dogs: Definitive Edition | DX11 | x64 | ✅ Working | Undocumented AMD HD3D support. |
-| Sniper Elite V2 | DX11 | x86 | ✅ Working | Minor color shifting, and mouse not doubling. |
+| Sniper Elite V2 | DX11 | x86 | ✅ Working | Minor color shifting when seperation increased. |
 | Sniper Elite III | DX11| x86| ✅ Working | `customersupportlogging` beta branch only. Main branch skips HD3D driver loading. |
 | Sniper Elite 4 | DX11/12| x64| ✅ Working | DX11 only. DX12 might be possible in future. |
-| Sniper Elite: Nazi Zombie Army | DX11 | x86 | ✅ Working | Minor color shifting, and mouse not doubling. |
-| Sniper Elite: Nazi Zombie Army 2 | DX11 | x86 | ✅ Working | Minor color shifting, and mouse not doubling. |
+| Sniper Elite: Nazi Zombie Army | DX11 | x86 | ✅ Working | Minor color shifting when seperation increased. |
+| Sniper Elite: Nazi Zombie Army 2 | DX11 | x86 | ✅ Working | Minor color shifting when seperation increased. |
 | Zombie Army Trilogy | DX11 | x86 | ✅ Working | Colors appear correct. |
 | Thief (2014) | DX11 | x86/x64| ✅ Working | Both x86 and x64 versions working. |
 | Tomb Raider (2013) | DX11 | x86 | ⚠️ Partial | Only top half of Half SBS. Most stubborn HD3D game to get working. |
