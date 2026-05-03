@@ -212,7 +212,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Mercenaries 2: World in Flames | DX9 | x86 | ✓ | Untested | - |
 | Microsoft Flight Simulator 2004: A Century of Flight | DX9 | x86 | ✓ | Untested | - |
 | Mini Ninjas | DX9 | x86 | ✓ | Untested | - |
-| Mirror's Edge | DX9 | x86 | ✓ | Untested | - |
+| Mirror's Edge | DX9 | x86 | ✓ | ✅ Working | - |
 | Monday Night Combat | DX9 | x86 | ✓ | Untested | - |
 | MTX: Mototrax | DX9 | x86 | ✓ | Untested | - |
 | Mythos | DX9 | x86 | ✓ | Untested | Mythos (2009) maybe? Not sure which game this is. |
