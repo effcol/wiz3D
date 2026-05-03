@@ -124,10 +124,10 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Beowulf: The Game | DX9 | x86 | ✓ | Untested | - |
 | Bet on Soldier | DX9 | x86 | ✓ | Untested | - |
 | Beyond Good & Evil | DX9 | x86 | ✓ | ✅ Mostly Working | Artifacts when paused. |
-| Bionic Commando (2009) | DX9 | x86 | ✕ | Untested | - |
+| Bionic Commando (2009) | DX9 | x86 | ✕ | ❌ Not Working | Crash on startup on AMD. |
 | Bionic Commando Rearmed | DX9 | x86 | ✓ | Untested | - |
 | Black & White 2 | DX9 | x86 | ✓ | Untested | - |
-| BlazBlue: Calamity Trigger | DX9 | x86 | ✕ | Untested | - |
+| BlazBlue: Calamity Trigger | DX9 | x86 | ✕ | ❌ Not Working | Crash on startup. |
 | Borderlands | DX9 | x86 | ✓ | Untested | - |
 | Brothers in Arms: Road to Hill 30 | DX9 | x86 | ✓ | Untested | - |
 | Brothers in Arms: Earned in Blood | DX9 | x86 | ✓ | Untested | - |
@@ -150,8 +150,9 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Damnation | DX9 | x86 | ✓ | Untested | - |
 | Dark Messiah of Might and Magic | DX9 | x86 | ✓ | ✅ Working | Freezes on Linux. |
 | Dark Void | DX9 | x86 | ✓ | Untested | - |
+| Dead or Alive 5 Last Round | DX9 | x86 | ✓ | ✅ Working | - |
 | Dead Space | DX9 | x86 | ✓ | Untested | - |
-| Dead Space 2 | DX9 | x86 | ✓ | Untested | - |
+| Dead Space 2 | DX9 | x86 | ✓ | ✅ Working | - |
 | Defense Grid: The Awakening | DX9 | x86 | ✓ | Untested | - |
 | Delta Force: Xtreme | DX9 | x86 | ✓ | Untested | - |
 | Devil May Cry 3: Special Edition | DX9 | x86 | ✓ | Untested | - |
@@ -206,7 +207,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Madden NFL 08 | DX9 | x86 | ✓ | Untested | - |
 | Majesty 2: The Fantasy Kingdom Sim | DX9 | x86 | ✓ | Untested | - |
 | Mass Effect | DX9 | x86 | ✓ | Untested | - |
-| Mass Effect 2 | DX9 | x86 | ✓ | Untested | - |
+| Mass Effect 2 | DX9 | x86 | ✓ | ✅ Working | - |
 | Medal of Honor: Airborne | DX9 | x86 | ✓ | Untested | - |
 | Mercenaries 2: World in Flames | DX9 | x86 | ✓ | Untested | - |
 | Microsoft Flight Simulator 2004: A Century of Flight | DX9 | x86 | ✓ | Untested | - |
@@ -219,8 +220,8 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Need for Speed: Undercover | DX9 | x86 | ✓ | Untested | - |
 | Need for Speed: Hot Pursuit (2010) | DX9 | x86 | ✓ | Untested | - |
 | Need for Speed: Shift | DX9 | x86 | ✓ | Untested | - |
-| Need for Speed: Shift 2 Unleashed | DX9 | x86 | ✓ | Untested | - |
-| Ninja Blade | DX9 | x86 | ✓ | Untested | - |
+| Need for Speed: Shift 2 Unleashed | DX9 | x86 | ✓ | ❌ Not Working | Black screen on AMD. |
+| Ninja Blade | DX9 | x86 | ✓ | ❌ Not Working | Black screen on AMD. |
 | Operation Flashpoint: Dragon Rising | DX9 | x86 | ✓ | Untested | - |
 | OutRun 2006: Coast 2 Coast | DX9 | x86 | ✓ | Untested | - |
 | Overlord | DX9 | x86 | ✓ | Untested | - |
@@ -355,9 +356,9 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Game | API | Bits | iZ3D Profile | Testing | Notes |
 |------|-----|------|--------|-------|-------|
 | Assassin's Creed: Revelations | DX9 | x86 | ✕ | Untested | `3D Vision Fog` in game settings |
-| Batman: Arkham Asylum | DX9 | x86 | ✓ | ✅ Mostly Working | Enables `Nvidia Stereoscopic 3D` in game settings. Not working on Windows AMD GPU systems.  |
-| Batman: Arkham City | DX9/DX11 | x86 | ✕ | Untested | - |
-| Batman: Arkham Origins | DX9/DX11 | x86 | ✕ | Untested | - |
+| Batman: Arkham Asylum | DX9 | x86 | ✓ | ✅ Working | Enables `Nvidia Stereoscopic 3D` in game setting. |
+| Batman: Arkham City | DX9/DX11 | x86 | ✕ | ❌ Not Working | Not working in DX9. |
+| Batman: Arkham Origins | DX9/DX11 | x86 | ✕ | ❌ Not Working | Not working in DX9. |
 | Battlefield: Bad Company 2 | DX9/DX10/DX11 | x86 | ✓ | Untested | Including 'Vietnam' Expansion Pack |
 | Brave: The Video Game | DX9 | x86 | ✕ | Untested | - |
 | Call of Duty: Black Ops | DX9 | x86 | ✓ | Untested | - |
@@ -380,7 +381,7 @@ Configure your output mode (Half Side-by-Side, Anaglyph, etc.) and any other set
 | Mafia II | DX9 | x86 | ✓ | Untested | - |
 | Max Payne 3 | DX9/DX11 | x86 | ✕ | Untested | `3D Vision` in `Graphics` menu. `-stereo 1` command line argument |
 | Medal of Honor (2010) | DX9/DX11 | x86 | ✓ | Untested | Use Single Player only. |
-| Metro 2033 | DX9/DX11 | x86 | ✓ | Untested | - |
+| Metro 2033 | DX9/DX11 | x86 | ✓ | ✅ Mostly Working | Can't see weapon in hand. |
 | Metro: Last Light | DX9/DX11 | x86 | ✕ | Untested | Lists 3D Vision support in [Official PC Requirements](https://www.reddit.com/r/Games/comments/1cjh4l/metro_last_light_official_pc_requirements/) |
 | Oil Rush | OpenGL/DX9/DX11 | x86 | ✕ | Untested | - |
 | [Orbiter Space Flight Simulator](https://github.com/orbitersim/orbiter) | DX9 | x64 | ✕ | Untested | `Stereoscopic 3D` in settings. |
