@@ -240,8 +240,12 @@ HRESULT CBaseStereoRenderer::DoInitialize()
 		gData.ShutterMode = SHUTTER_MODE_DISABLED;
 		m_pOutputMethod = DNew MonoOutput(gInfo.SeparationMode != 2 ? 0 : 1, gInfo.OutputSpanMode);
 	}
-	if (g_outputConfig)
-		m_pOutputMethod->ReadConfigData(g_outputConfig);
+	// Pass the config as a serialized XML string, NOT the raw g_outputConfig
+	// TiXmlNode*: S3DAPI and this DLL link incompatible TinyXML/ticpp layouts,
+	// so dereferencing an S3DAPI-allocated node here crashes. GetOutputConfigXml()
+	// serializes it inside S3DAPI; the output method re-parses with its own parser.
+	if (const char* outputConfigXml = GetOutputConfigXml())
+		m_pOutputMethod->ReadConfigData(outputConfigXml);
 	m_pOutputMethod->StereoModeChanged(m_Input.StereoActive != 0);
 
 	m_bTwoWindows = m_pOutputMethod->GetOutputChainsNumber() > 1;

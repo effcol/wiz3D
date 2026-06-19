@@ -23,7 +23,7 @@ public:
 	virtual HRESULT InitializeResources();
 	virtual HRESULT InitializeSCResources(CBaseSwapChain* pSwapChain);
 	virtual HRESULT SetStates(CBaseSwapChain* pSwapChain);
-	virtual void	ReadConfigData(TiXmlNode* config);
+	virtual void	ReadConfigData(const char* configXml);
 	virtual HRESULT Output(bool bLeft, CBaseSwapChain* pSwapChain, RECT* pDestRect);
 
 	virtual DWORD SetNextSubMode();

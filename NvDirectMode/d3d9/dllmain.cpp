@@ -36,9 +36,9 @@ static int   g_loggingEnabled = 1;
 static int   g_verboseEnabled = 1;
 static int   g_swapEyes       = 0;
 static int   g_wrapDevices    = 1;
-static int   g_outputMode     = 1;   // DX9 default = SBS (mode 8/SR also implemented but unverified; opt in via XML)
+static int   g_outputMode     = 1;   // DX9 fallback (config absent) = SBS; mode 8/SR unverified here, opt in via XML. d3d11/dxgi default to 8 instead.
 static int   g_useLayoutStable = 0;   // 0=off  1=IDirect3D9 vtable patch (task #61)  2=+IDirect3DDevice9 vtable patch (task #68)
-static int   g_anaglyphColour  = 0;   // 0=RC (default), 1=GM, 2=AB
+static int   g_anaglyphColour  = 0;   // 0=RC (default), 1=GM, 2=AB, 3=TriOviz
 static int   g_anaglyphMethod  = 0;   // 0=Dubois (default), 1=Compromise, 2=Color, 3=HalfColor, 4=Optimised, 5=Grey, 6=True
 static int   g_disableComposite = 0;   // diagnostic — 1 = skip per-eye capture + SBS composite, do a straight shadow→tracked BB mono passthrough at Present. Isolates whether crashes originate in the composite path vs the vtable hooks themselves.
 static int   g_srSRGB           = 1;   // SR input color space. 1 = tell SR-Lib the SBS texture is sRGB (DX9 default — matches how Oil Rush + Hard Reset backbuffers actually contain colour: gamma-encoded even when the D3D9 format bit is a plain X8R8G8B8 rather than a _sRGB variant). 0 = tell SR-Lib the texture is linear. Flip to 0 if a game's colours look washed / darkened / gamma-shifted through the weave. Runtime effect: passed as the 2nd arg to SRInterfaceDX9::SetInputTexture.

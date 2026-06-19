@@ -119,16 +119,22 @@ struct DataInput
 	bool IsStereoParamChanged(DataInput& inputOther);
 	DataInput ()
 	{
-		ActivePreset = 0;
-		Preset[0].StereoBase		= DEFAULT_STEREOBASE;
+		ActivePreset = 1;  // start on the medium/default preset
+		// Low / default / strong depth ladder (hotkey-switchable). StereoBase is
+		// a separation percentage via PERCENT_TO_SEPARATION (15/20/30%). 20% is
+		// DEFAULT_STEREOBASE; 15% matches NVIDIA 3D Vision's conservative beginner
+		// default; 30% is upper-comfort (below HelixVision's 40%). Convergence
+		// (One_div_ZPS) stays at the engine default for all three. Keep distant
+		// on-screen parallax under the viewer's IPD (~63mm) to avoid divergence.
+		Preset[0].StereoBase		= PERCENT_TO_SEPARATION(15);  // low / comfort
 		Preset[0].One_div_ZPS		= DEFAULT_ONE_DIV_ZPS;
 		Preset[0].AutoFocusEnable	= false;
 		Preset[0].One_div_ZPS_Saved	= DEFAULT_ONE_DIV_ZPS;
-		Preset[1].StereoBase		= DEFAULT_STEREOBASE;
+		Preset[1].StereoBase		= DEFAULT_STEREOBASE;          // 20% default
 		Preset[1].One_div_ZPS		= DEFAULT_ONE_DIV_ZPS;
 		Preset[1].AutoFocusEnable	= false;
 		Preset[1].One_div_ZPS_Saved	= DEFAULT_ONE_DIV_ZPS;
-		Preset[2].StereoBase		= DEFAULT_STEREOBASE;
+		Preset[2].StereoBase		= PERCENT_TO_SEPARATION(30);  // strong
 		Preset[2].One_div_ZPS		= DEFAULT_ONE_DIV_ZPS;
 		Preset[2].AutoFocusEnable	= false;
 		Preset[2].One_div_ZPS_Saved	= DEFAULT_ONE_DIV_ZPS;

@@ -20,14 +20,25 @@ namespace NvDirectMode
 {
     struct AnaglyphMatrix { float lR[3], lG[3], lB[3], rR[3], rG[3], rB[3]; };
 
-    // Indexed [AnaglyphColour 0..2][AnaglyphMethod 0..6].
-    // Colour: 0=Red/Cyan, 1=Green/Magenta, 2=Amber/Blue
+    // Indexed [AnaglyphColour 0..3][AnaglyphMethod 0..6].
+    // Colour: 0=Red/Cyan, 1=Green/Magenta, 2=Amber/Blue, 3=TriOviz/Inficolor
     // Method: 0=Dubois, 1=Compromise, 2=Color, 3=HalfColor, 4=Optimised, 5=Grey, 6=True
     //
+    // TriOviz/Inficolor 3D (index 3): TriOviz Labs / Darkworks "Inficolor 3D" system.
+    // Left eye = green filter only; right eye = magenta (red+blue) filter.
+    // Differs from standard Green/Magenta in that the TriOviz glasses use
+    // spectrally-tuned filters that allow near-full-colour perception with
+    // reduced ghosting. The Dubois row uses spectral fits derived from the
+    // TriOviz filter transmission curves (green peak ~530 nm, magenta
+    // notch-filtered to pass red ~620 nm and blue ~450 nm). The Color row
+    // matches the SuperDepth3D.fx "Inficolor 3D" direct-channel encoding.
+    // Reference: Wikipedia "Anaglyph 3D § Inficolor 3D";
+    //            BlueSkyDefender/Depth3D SuperDepth3D.fx Inficolor_3D_Emulator.
+    //
     // 'static' (not 'inline') so this header works with C++14 — gives each
-    // including TU its own copy of the table (~1.5 KB, trivial). Switch to
+    // including TU its own copy of the table (~2 KB, trivial). Switch to
     // 'inline const' if NvDirectMode's project files ever bump to /std:c++17.
-    static const AnaglyphMatrix kAnaglyphMatrices[3][7] =
+    static const AnaglyphMatrix kAnaglyphMatrices[4][7] =
     {
         // ---- AC_RED_CYAN [0] ----
         {
@@ -100,6 +111,65 @@ namespace NvDirectMode
             // AM_TRUE
             {{ 0.299f, 0.587f, 0.114f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f},
              { 0.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}},
+        },
+        // ---- AC_TRIOVIZ [3] — TriOviz/Inficolor 3D ----
+        // Physical glasses: magenta lens on LEFT eye, green lens on RIGHT eye.
+        // (Confirmed by vpinball/vpinball#709 user report.)
+        //
+        // IMPORTANT: TriOviz is NOT a true anaglyph system. Both eyes see significant
+        // amounts of all colours (VPX source comment: "not truly anaglyph since both
+        // eyes see most of the colors"). Standard G/M Dubois produces ghosting because
+        // it assumes complementary filters, which TriOviz does not have.
+        //
+        // VPX (vpinball/vpinball Anaglyph.cpp) has measured TriOviz filter data:
+        //   Left (magenta) filter RGB transmission per primary:
+        //     R: (0.8561, 0.0026, 0.0500), G: (0.1827, 0.1562, 0.1148), B: (0.0097, 0.0002, 0.7355)
+        //   Right (green) filter RGB transmission per primary:
+        //     R: (0.5470, 0.0229, 0.0210), G: (0.0005, 0.8109, 0.2163), B: (0.0011, 0.0031, 0.3776)
+        // This data is used by VPX's LUMINANCE filter mode via SetLuminanceCalibration.
+        // No published Dubois-style least-squares fit for these specific filters exists.
+        //
+        // AM_COLOR = SuperDepth3D.fx "Inficolor 3D Emulation Alpha" (exact match):
+        //   out.R = L.R,  out.G = R.G,  out.B = L.B
+        //   Source: BlueSkyDefender/Depth3D SuperDepth3D.fx, Stereo_Convert(),
+        //   Inficolor_3D_Emulator branch, Stereoscopic_Mode==0.
+        //
+        // AM_HALF_COLOR = SuperDepth3D.fx "Inficolor 3D Emulation Beta" (exact match):
+        //   out.R = L.R,  out.G = luma(R),  out.B = L.B
+        //   Desaturates the right/green channel. Addresses the real-world observation
+        //   that "the magenta side is much lighter than the green side" (Kodi forum,
+        //   TamaraKama, 2015-10-29).
+        //
+        // AM_DUBOIS = standard Dubois 2001 G/M values with L/R swapped to match
+        //   TriOviz physical orientation (left=magenta, right=green). Best available
+        //   published approximation; will produce some ghosting on saturated content
+        //   due to TriOviz's non-complementary filter design.
+        {
+            // AM_DUBOIS — VPX luminance filter from measured TriOviz filter data.
+            // Computed via vpinball/vpinball Anaglyph.cpp Update() LUMINANCE method using
+            // measured filter transmission in SetPhotoCalibration (Trioviz block).
+            // rgb2Yl=[0.4668,0.3955,0.1377]  rgb2Yr=[0.1767,0.7842,0.0391]
+            // White (1,1,1) -> (1,1,1) verified.
+            {{ 0.9417f,  0.7979f,  0.2778f}, {-0.2591f,-0.2195f,-0.0764f}, { 0.9417f,  0.7979f,  0.2778f},
+             { 0.0583f, -0.7979f, -0.2778f}, { 0.2591f,  1.2195f,  0.0764f}, {-0.9417f,-0.7979f,  0.7222f}},
+            // AM_COMPROMISE — G/M compromise with L/R swapped
+            {{ 0.882f, 0.176f,-0.012f}, { 0.000f, 0.000f, 0.000f}, { 0.002f, 0.019f, 0.984f},
+             { 0.000f, 0.000f, 0.000f}, { 0.146f, 0.738f, 0.141f}, { 0.000f, 0.000f, 0.000f}},
+            // AM_COLOR — SuperDepth3D "Inficolor 3D Emulation Alpha": out.R=L.R, out.G=R.G, out.B=L.B
+            {{ 1.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 1.000f, 0.000f, 0.000f},
+             { 0.000f, 0.000f, 0.000f}, { 0.000f, 1.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}},
+            // AM_HALF_COLOR — SuperDepth3D "Inficolor 3D Emulation Beta": out.R=L.R, out.G=luma(R), out.B=L.B
+            {{ 1.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 1.000f, 0.000f, 0.000f},
+             { 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f}},
+            // AM_OPTIMISED — same as AM_COLOR (no better data available)
+            {{ 1.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 1.000f, 0.000f, 0.000f},
+             { 0.000f, 0.000f, 0.000f}, { 0.000f, 1.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}},
+            // AM_GREY — both eyes greyscale; near-zero ghosting, no colour
+            {{ 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f},
+             { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}},
+            // AM_TRUE — left magenta luma, right green luma
+            {{ 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f},
+             { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}},
         },
     };
 }

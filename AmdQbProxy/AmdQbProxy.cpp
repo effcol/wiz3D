@@ -105,7 +105,8 @@ static bool g_bSwapEyes = false;
 enum AnaglyphColour {
     AC_RED_CYAN      = 0,  // Red left / Cyan right  (most common)
     AC_GREEN_MAGENTA = 1,  // Green left / Magenta right
-    AC_AMBER_BLUE    = 2   // Amber left / Blue right (best colour rendition)
+    AC_AMBER_BLUE    = 2,  // Amber left / Blue right (best colour rendition)
+    AC_TRIOVIZ       = 3   // TriOviz/Inficolor 3D — magenta left, green right
 };
 static AnaglyphColour g_AnaglyphColour = AC_RED_CYAN;
 
@@ -120,6 +121,21 @@ enum AnaglyphMethod {
 };
 static AnaglyphMethod g_AnaglyphMethod = AM_DUBOIS;
 
+// Pull <Tag Value="N"/> ints out of the loaded config text. The needle is the
+// exact element-and-attribute prefix "<Tag Value=\"", so we never match the tag
+// name inside a comment or latch onto an unrelated downstream Value=" (the bare
+// strstr(buf,"Tag") approach this replaced did both). Matches the same loose
+// schema the NvDirectMode backends read, so the two stay in sync.
+static int ReadConfigInt(const char* xml, const char* tag, int defaultValue)
+{
+    char needle[64];
+    _snprintf_s(needle, sizeof(needle), _TRUNCATE, "<%s Value=\"", tag);
+    const char* p = strstr(xml, needle);
+    if (!p) return defaultValue;
+    p += strlen(needle);
+    return atoi(p);
+}
+
 static void LoadConfig()
 {
     wchar_t path[MAX_PATH] = {};
@@ -133,22 +149,32 @@ static void LoadConfig()
                                OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (hFile == INVALID_HANDLE_VALUE) return;
 
-    char buf[4096] = {};
+    // Read up to 16 KB into a heap buffer. The released wiz3D configs run to
+    // tens of KB; the old fixed 4 KB stack buffer silently truncated them, so
+    // any tag past the cut reverted to its default. 16 KB matches NvDirectMode.
+    DWORD fileSize = GetFileSize(hFile, nullptr);
+    if (fileSize == INVALID_FILE_SIZE || fileSize == 0 || fileSize > 16 * 1024)
+    {
+        CloseHandle(hFile);
+        return;
+    }
+    char* buf = static_cast<char*>(malloc(fileSize + 1));
+    if (!buf) { CloseHandle(hFile); return; }
     DWORD bytesRead = 0;
-    ReadFile(hFile, buf, sizeof(buf) - 1, &bytesRead, nullptr);
+    if (!ReadFile(hFile, buf, fileSize, &bytesRead, nullptr))
+    {
+        free(buf);
+        CloseHandle(hFile);
+        return;
+    }
+    buf[bytesRead] = '\0';
     CloseHandle(hFile);
 
     // Load OutputMode
-    const char* p = strstr(buf, "OutputMode");
-    if (p)
     {
-        const char* v = strstr(p, "Value=\"");
-        if (v)
-        {
-            int mode = atoi(v + 7);
-            if (mode >= OM_OU_HALF && mode <= OM_SR_WEAVE)
-                g_OutputMode = static_cast<OutputMode>(mode);
-        }
+        int mode = ReadConfigInt(buf, "OutputMode", g_OutputMode);
+        if (mode >= OM_OU_HALF && mode <= OM_SR_WEAVE)
+            g_OutputMode = static_cast<OutputMode>(mode);
     }
 
     // Some games crash if the SR runtime DLLs are loaded into their process
@@ -182,42 +208,23 @@ static void LoadConfig()
     // (CreateSRInterfaceDX11 returns E_NOINTERFACE) if they do.
 
     // Load SwapEyes setting
-    p = strstr(buf, "SwapEyes");
-    if (p)
-    {
-        const char* v = strstr(p, "Value=\"");
-        if (v)
-        {
-            int swap = atoi(v + 7);
-            g_bSwapEyes = (swap != 0);
-        }
-    }
+    g_bSwapEyes = (ReadConfigInt(buf, "SwapEyes", g_bSwapEyes ? 1 : 0) != 0);
 
     // Load AnaglyphColour
-    p = strstr(buf, "AnaglyphColour");
-    if (p)
     {
-        const char* v = strstr(p, "Value=\"");
-        if (v)
-        {
-            int col = atoi(v + 7);
-            if (col >= AC_RED_CYAN && col <= AC_AMBER_BLUE)
-                g_AnaglyphColour = static_cast<AnaglyphColour>(col);
-        }
+        int col = ReadConfigInt(buf, "AnaglyphColour", g_AnaglyphColour);
+        if (col >= AC_RED_CYAN && col <= AC_TRIOVIZ)
+            g_AnaglyphColour = static_cast<AnaglyphColour>(col);
     }
 
     // Load AnaglyphMethod
-    p = strstr(buf, "AnaglyphMethod");
-    if (p)
     {
-        const char* v = strstr(p, "Value=\"");
-        if (v)
-        {
-            int meth = atoi(v + 7);
-            if (meth >= AM_DUBOIS && meth <= AM_TRUE)
-                g_AnaglyphMethod = static_cast<AnaglyphMethod>(meth);
-        }
+        int meth = ReadConfigInt(buf, "AnaglyphMethod", g_AnaglyphMethod);
+        if (meth >= AM_DUBOIS && meth <= AM_TRUE)
+            g_AnaglyphMethod = static_cast<AnaglyphMethod>(meth);
     }
+
+    free(buf);
 }
 
 // ============================================================
@@ -242,6 +249,7 @@ static ID3D11PixelShader*        g_pLineInterleavedPS = nullptr;
 static ID3D11PixelShader*        g_pColInterleavedPS  = nullptr;
 static ID3D11PixelShader*        g_pCheckerboardPS    = nullptr;
 static ID3D11PixelShader*        g_pAnaglyphPS        = nullptr;
+static ID3D11PixelShader*        g_pAnaglyphTriovizPS = nullptr; // TriOviz variant with blend_RGB suppression
 static ID3D11Buffer*             g_pAnaglyphCB        = nullptr;
 static ID3D11DepthStencilState*  g_pDSState = nullptr;
 static ID3D11RasterizerState*    g_pRSState = nullptr;
@@ -311,6 +319,7 @@ static void ReleaseCompositorResources()
     if (g_pColInterleavedPS)  { g_pColInterleavedPS->Release();  g_pColInterleavedPS  = nullptr; }
     if (g_pCheckerboardPS)    { g_pCheckerboardPS->Release();    g_pCheckerboardPS    = nullptr; }
     if (g_pAnaglyphPS)        { g_pAnaglyphPS->Release();        g_pAnaglyphPS        = nullptr; }
+    if (g_pAnaglyphTriovizPS) { g_pAnaglyphTriovizPS->Release(); g_pAnaglyphTriovizPS = nullptr; }
     if (g_pAnaglyphCB)        { g_pAnaglyphCB->Release();        g_pAnaglyphCB        = nullptr; }
     if (g_pDSState)           { g_pDSState->Release();           g_pDSState           = nullptr; }
     if (g_pRSState)           { g_pRSState->Release();           g_pRSState           = nullptr; }
@@ -417,12 +426,39 @@ static const char s_PSAnaglyph[] =
     "  return float4(saturate(a),1.0);"
     "}";
 
+// TriOviz/Inficolor 3D anaglyph shader with blend_RGB ghosting suppression.
+// After the standard matrix composite, applies per-channel luminance suppression
+// to reduce ghosting caused by TriOviz's non-complementary filter design.
+// Matches SuperDepth3D.fx Inficolor_3D_Emulator post-processing pass:
+//   blend_RGB = channel-dominance vector (positive = that channel dominates)
+//   each channel is attenuated by 50% when it dominates (smoothstep ramp)
+// Thresholds from SuperDepth3D: R=-0.250..0, G=-0.375..0, B=-0.500..0
+// Reduce level 0.5 matches the default Inficolor_Reduce_RGB=0.5 from the
+// working preset (vpforums post #281, Gravy/Ryan Goodenough settings).
+static const char s_PSAnaglyph_Trioviz[] =
+    "Texture2D<float4> src:register(t0);SamplerState smp:register(s0);"
+    "cbuffer ACB:register(b2){float4 lR;float4 lG;float4 lB;float4 rR;float4 rG;float4 rB;};"
+    "float4 PSMain(float4 pos:SV_Position,float2 uv:TEXCOORD0):SV_Target{"
+    "  float3 L=src.Sample(smp,float2(uv.x,uv.y*0.5)).rgb;"
+    "  float3 R=src.Sample(smp,float2(uv.x,uv.y*0.5+0.5)).rgb;"
+    "  float3 a;"
+    "  a.r=dot(lR.xyz,L)+dot(rR.xyz,R);"
+    "  a.g=dot(lG.xyz,L)+dot(rG.xyz,R);"
+    "  a.b=dot(lB.xyz,L)+dot(rB.xyz,R);"
+    // blend_RGB ghosting suppression (SuperDepth3D Inficolor_3D_Emulator pass)
+    "  float3 blend_RGB=float3(dot(a,float3(1,-1,-1)),dot(a,float3(-1,1,-1)),dot(a,float3(-1,-1,1)));"
+    "  a.r*=lerp(1.0,lerp(1.0,0.5,smoothstep(-0.250,0.0,blend_RGB.r)),0.5);"
+    "  a.g*=lerp(1.0,lerp(1.0,0.5,smoothstep(-0.375,0.0,blend_RGB.g)),0.5);"
+    "  a.b*=lerp(1.0,lerp(1.0,0.5,smoothstep(-0.500,0.0,blend_RGB.b)),0.5);"
+    "  return float4(saturate(a),1.0);"
+    "}";
+
 // 6 coefficients (float3 each) per combination: lR, lG, lB (left-eye output rows), rR, rG, rB (right-eye).
 // Applied as: out.R = dot(lR, leftRGB) + dot(rR, rightRGB), etc.
 // Order: [AnaglyphColour][AnaglyphMethod] = [RC/GM/AB][Dubois/Compromise/Color/HalfColor/Optimised/Grey/True]
 struct AnaglyphMatrix { float lR[3], lG[3], lB[3], rR[3], rG[3], rB[3]; };
 
-static const AnaglyphMatrix g_AnaglyphMatrices[3][7] =
+static const AnaglyphMatrix g_AnaglyphMatrices[4][7] =
 {
     // ---- AC_RED_CYAN [0] ----
     {
@@ -495,6 +531,49 @@ static const AnaglyphMatrix g_AnaglyphMatrices[3][7] =
         // AM_TRUE [6] — amber luma in R+G, blue luma in B
         {{ 0.299f, 0.587f, 0.114f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f},
          { 0.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}},
+    },
+    // ---- AC_TRIOVIZ [3] — TriOviz/Inficolor 3D ----
+    // Physical glasses: magenta lens on LEFT eye, green lens on RIGHT eye.
+    // (Confirmed by vpinball/vpinball#709 user report.)
+    //
+    // IMPORTANT: TriOviz is NOT a true anaglyph system. Both eyes see significant
+    // amounts of all colours (VPX source comment: "not truly anaglyph since both
+    // eyes see most of the colors"). Standard G/M Dubois produces ghosting because
+    // it assumes complementary filters, which TriOviz does not have.
+    //
+    // VPX (vpinball/vpinball Anaglyph.cpp) has measured TriOviz filter data:
+    //   Left (magenta) filter: R:(0.8561,0.0026,0.0500) G:(0.1827,0.1562,0.1148) B:(0.0097,0.0002,0.7355)
+    //   Right (green) filter:  R:(0.5470,0.0229,0.0210) G:(0.0005,0.8109,0.2163) B:(0.0011,0.0031,0.3776)
+    // No published Dubois-style least-squares fit for these specific filters exists.
+    //
+    // AM_COLOR [2] = SuperDepth3D.fx "Inficolor 3D Emulation Alpha": out.R=L.R, out.G=R.G, out.B=L.B
+    // AM_HALF_COLOR [3] = SuperDepth3D.fx "Inficolor 3D Emulation Beta": out.R=L.R, out.G=luma(R), out.B=L.B
+    // AM_DUBOIS [0] = Dubois 2001 G/M with L/R swapped; best available approximation.
+    // Sources: vpinball/vpinball Anaglyph.cpp; BlueSkyDefender/Depth3D SuperDepth3D.fx;
+    //          vpinball/vpinball#709; Kodi forum TamaraKama 2015-10-29.
+    {
+        // AM_DUBOIS [0] — VPX luminance filter from measured TriOviz filter data.
+        // rgb2Yl=[0.4668,0.3955,0.1377]  rgb2Yr=[0.1767,0.7842,0.0391]  White->White verified.
+        {{ 0.9417f,  0.7979f,  0.2778f}, {-0.2591f,-0.2195f,-0.0764f}, { 0.9417f,  0.7979f,  0.2778f},
+         { 0.0583f, -0.7979f, -0.2778f}, { 0.2591f,  1.2195f,  0.0764f}, {-0.9417f,-0.7979f,  0.7222f}},
+        // AM_COMPROMISE [1] — G/M compromise with L/R swapped
+        {{ 0.882f, 0.176f,-0.012f}, { 0.000f, 0.000f, 0.000f}, { 0.002f, 0.019f, 0.984f},
+         { 0.000f, 0.000f, 0.000f}, { 0.146f, 0.738f, 0.141f}, { 0.000f, 0.000f, 0.000f}},
+        // AM_COLOR [2] — SuperDepth3D "Inficolor 3D Emulation Alpha": out.R=L.R, out.G=R.G, out.B=L.B
+        {{ 1.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 1.000f, 0.000f, 0.000f},
+         { 0.000f, 0.000f, 0.000f}, { 0.000f, 1.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}},
+        // AM_HALF_COLOR [3] — SuperDepth3D "Inficolor 3D Emulation Beta": out.R=L.R, out.G=luma(R), out.B=L.B
+        {{ 1.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 1.000f, 0.000f, 0.000f},
+         { 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f}},
+        // AM_OPTIMISED [4] — same as AM_COLOR (no better data available)
+        {{ 1.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}, { 1.000f, 0.000f, 0.000f},
+         { 0.000f, 0.000f, 0.000f}, { 0.000f, 1.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}},
+        // AM_GREY [5] — both eyes greyscale; near-zero ghosting, no colour
+        {{ 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f},
+         { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}},
+        // AM_TRUE [6] — left magenta luma, right green luma
+        {{ 0.000f, 0.000f, 0.000f}, { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f},
+         { 0.299f, 0.587f, 0.114f}, { 0.000f, 0.000f, 0.000f}, { 0.000f, 0.000f, 0.000f}},
     },
 };
 
@@ -617,6 +696,7 @@ static bool EnsureShaders()
     CompilePS(s_PSColInterleaved,  &g_pColInterleavedPS);
     CompilePS(s_PSCheckerboard,    &g_pCheckerboardPS);
     CompilePS(s_PSAnaglyph,        &g_pAnaglyphPS);
+    CompilePS(s_PSAnaglyph_Trioviz, &g_pAnaglyphTriovizPS);
 
     if (!g_pAnaglyphCB)
     {
@@ -1882,7 +1962,10 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
             vp.Height   = static_cast<float>(H);
             vp.MaxDepth = 1.0f;
             g_pContext->RSSetViewports(1, &vp);
-            g_pContext->PSSetShader(g_pAnaglyphPS, nullptr, 0);
+            // Use TriOviz-specific shader (with blend_RGB ghosting suppression) when AC_TRIOVIZ is selected
+            ID3D11PixelShader* anaPS = (g_AnaglyphColour == AC_TRIOVIZ && g_pAnaglyphTriovizPS)
+                                       ? g_pAnaglyphTriovizPS : g_pAnaglyphPS;
+            g_pContext->PSSetShader(anaPS, nullptr, 0);
             g_pContext->PSSetConstantBuffers(2, 1, &g_pAnaglyphCB);
             g_pContext->Draw(3, 0);
             g_pContext->PSSetShader(g_pPS, nullptr, 0);

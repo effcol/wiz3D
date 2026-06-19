@@ -27,7 +27,7 @@ public:
     virtual HRESULT Output(CBaseSwapChain* pSwapChain);
     virtual HRESULT InitializeSCData(CBaseSwapChain* pSwapChain);
     virtual void    Clear();
-    virtual void    ReadConfigData(TiXmlNode* config);
+    virtual void    ReadConfigData(const char* configXml);
 
 private:
     SimulatedReality::SRInterfaceDX9* m_pSRInterface;

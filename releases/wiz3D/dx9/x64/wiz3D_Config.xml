@@ -327,25 +327,38 @@
 
 			 One_div_ZPS = 1/ZPS (Zero Parallax Setting = convergence).
 			   Higher = objects pushed further into screen. Range: 0.0 - 1.0
-			 StereoBase = eye separation strength.
-			   Higher = stronger 3D depth. Range: 0.0 - 0.8
+			   0.5 is the engine default (1/(1+ZNear)); community guidance
+			   (NVIDIA 3D Vision / HelixVision) favours higher convergence so
+			   the player/screen plane sits comfortably and depth goes into
+			   the screen rather than popping out.
+			 StereoBase = eye separation strength. In this driver it maps to a
+			   separation percentage: StereoBase = percent * 0.008, so 0.12=15%,
+			   0.16=20%, 0.24=30%. NVIDIA's beginner default is 15%; HelixVision
+			   uses up to 40%. Keep distant-object parallax under your IPD
+			   (~63 mm on screen) to avoid eye divergence / strain.
 			 AutoFocusEnable = auto-adjust convergence to center object.
 			   0=manual, 1=auto
+
+			 The three presets form a low / default / strong depth ladder
+			 (Numpad 7/8/9): 15% comfort, 20% default, 30% strong.
 		-->
 		<Presets>
+			<!-- Preset 0 — Low / comfort: 15% separation (NVIDIA beginner default) -->
 			<Preset Index="0">
-				<One_div_ZPS Value="0.1"/>
-				<StereoBase Value="0.16"/>
+				<One_div_ZPS Value="0.5"/>
+				<StereoBase Value="0.12"/>
 				<AutoFocusEnable Value="0"/>
 			</Preset>
+			<!-- Preset 1 — Default / medium: 20% separation (engine DEFAULT_STEREOBASE) -->
 			<Preset Index="1">
-				<One_div_ZPS Value="0.1"/>
+				<One_div_ZPS Value="0.5"/>
 				<StereoBase Value="0.16"/>
 				<AutoFocusEnable Value="0"/>
 			</Preset>
+			<!-- Preset 2 — Strong: 30% separation (upper comfort, below HelixVision 40%) -->
 			<Preset Index="2">
-				<One_div_ZPS Value="0.1"/>
-				<StereoBase Value="0.16"/>
+				<One_div_ZPS Value="0.5"/>
+				<StereoBase Value="0.24"/>
 				<AutoFocusEnable Value="0"/>
 			</Preset>
 		</Presets>

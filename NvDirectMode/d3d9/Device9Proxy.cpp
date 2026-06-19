@@ -82,6 +82,7 @@ Device9Proxy::Device9Proxy(IDirect3DDevice9* real, bool isEx)
     , m_compositePS_Col(nullptr)
     , m_compositePS_Checker(nullptr)
     , m_compositePS_Anaglyph(nullptr)
+    , m_compositePS_Anaglyph_Trioviz(nullptr)
     , m_compositeVB(nullptr)
     , m_compositeDecl(nullptr)
     , m_shadersFailed(false)
@@ -132,6 +133,7 @@ void Device9Proxy::ReleaseShaderPipeline()
     if (m_compositeDecl)        { m_compositeDecl->Release();        m_compositeDecl = nullptr; }
     if (m_compositeVB)          { m_compositeVB->Release();          m_compositeVB = nullptr; }
     if (m_compositePS_Anaglyph) { m_compositePS_Anaglyph->Release(); m_compositePS_Anaglyph = nullptr; }
+    if (m_compositePS_Anaglyph_Trioviz) { m_compositePS_Anaglyph_Trioviz->Release(); m_compositePS_Anaglyph_Trioviz = nullptr; }
     if (m_compositePS_Checker)  { m_compositePS_Checker->Release();  m_compositePS_Checker = nullptr; }
     if (m_compositePS_Col)      { m_compositePS_Col->Release();      m_compositePS_Col = nullptr; }
     if (m_compositePS_Line)     { m_compositePS_Line->Release();     m_compositePS_Line = nullptr; }
@@ -293,6 +295,29 @@ namespace
         "  return float4(saturate(a), 1);\n"
         "}\n";
 
+    const char kCompositePS_Anaglyph_Trioviz_DX9[] =
+        "sampler leftS  : register(s0);\n"
+        "sampler rightS : register(s1);\n"
+        "float4 lR : register(c0);\n"
+        "float4 lG : register(c1);\n"
+        "float4 lB : register(c2);\n"
+        "float4 rR : register(c3);\n"
+        "float4 rG : register(c4);\n"
+        "float4 rB : register(c5);\n"
+        "float4 main(float4 vPos : VPOS, float2 uv : TEXCOORD0) : COLOR {\n"
+        "  float3 L = tex2D(leftS,  uv).rgb;\n"
+        "  float3 R = tex2D(rightS, uv).rgb;\n"
+        "  float3 a;\n"
+        "  a.r = dot(lR.xyz, L) + dot(rR.xyz, R);\n"
+        "  a.g = dot(lG.xyz, L) + dot(rG.xyz, R);\n"
+        "  a.b = dot(lB.xyz, L) + dot(rB.xyz, R);\n"
+        "  float3 blend_RGB = float3(dot(a, float3(1,-1,-1)), dot(a, float3(-1,1,-1)), dot(a, float3(-1,-1,1)));\n"
+        "  a.r *= lerp(1.0, lerp(1.0, 0.5, smoothstep(-0.250, 0.0, blend_RGB.r)), 0.5);\n"
+        "  a.g *= lerp(1.0, lerp(1.0, 0.5, smoothstep(-0.375, 0.0, blend_RGB.g)), 0.5);\n"
+        "  a.b *= lerp(1.0, lerp(1.0, 0.5, smoothstep(-0.500, 0.0, blend_RGB.b)), 0.5);\n"
+        "  return float4(saturate(a), 1);\n"
+        "}\n";
+
     bool CompilePS(const char* src, size_t len, const char* tag,
                    IDirect3DDevice9* dev, IDirect3DPixelShader9** out)
     {
@@ -373,6 +398,8 @@ bool Device9Proxy::EnsureShaderPipeline()
         ok = ok && CompilePS(kCompositePS_Checker_DX9, sizeof(kCompositePS_Checker_DX9) - 1, "ps_checker",  m_real, &m_compositePS_Checker);
     if (!m_compositePS_Anaglyph)
         ok = ok && CompilePS(kCompositePS_Anaglyph_DX9,sizeof(kCompositePS_Anaglyph_DX9)- 1, "ps_anaglyph", m_real, &m_compositePS_Anaglyph);
+    if (!m_compositePS_Anaglyph_Trioviz)
+        CompilePS(kCompositePS_Anaglyph_Trioviz_DX9, sizeof(kCompositePS_Anaglyph_Trioviz_DX9) - 1, "ps_anaglyph_trioviz", m_real, &m_compositePS_Anaglyph_Trioviz);
     if (!ok) { m_shadersFailed = true; return false; }
 
     LOG_VERBOSE("  d3d9 EnsureShaderPipeline: OK\n");
@@ -384,7 +411,7 @@ void Device9Proxy::UpdateAnaglyphConsts()
     if (!m_real) return;
     int colour = NvDM_AnaglyphColour();
     int method = NvDM_AnaglyphMethod();
-    if (colour < 0 || colour > 2) colour = 0;
+    if (colour < 0 || colour > 3) colour = 0;
     if (method < 0 || method > 6) method = 0;
     const NvDirectMode::AnaglyphMatrix& m = NvDirectMode::kAnaglyphMatrices[colour][method];
     const float* rows[6] = { m.lR, m.lG, m.lB, m.rR, m.rG, m.rB };
@@ -453,7 +480,9 @@ bool Device9Proxy::RunShaderComposite(int mode)
         case 4: ps = m_compositePS_Line;     break;
         case 5: ps = m_compositePS_Col;      break;
         case 6: ps = m_compositePS_Checker;  break;
-        case 7: ps = m_compositePS_Anaglyph; needsAnaglyph = true; break;
+        case 7: ps = (NvDM_AnaglyphColour() == 3 && m_compositePS_Anaglyph_Trioviz)
+                     ? m_compositePS_Anaglyph_Trioviz : m_compositePS_Anaglyph;
+                needsAnaglyph = true; break;
         default: sb->Release(); return false;
     }
 

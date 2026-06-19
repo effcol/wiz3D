@@ -39,7 +39,7 @@ static int   g_loggingEnabled = 1;
 static int   g_verboseEnabled = 1;
 static int   g_swapEyes       = 0;
 static int   g_wrapDevices    = 1;
-static int   g_outputMode      = 1;   // OpenGL default = SBS (mode 8/SR also implemented but unverified; opt in via XML)
+static int   g_outputMode      = 1;   // OpenGL fallback (config absent) = SBS; mode 8/SR unverified here, opt in via XML. d3d11/dxgi default to 8 instead.
 static int   g_anaglyphColour  = 0;
 static int   g_anaglyphMethod  = 0;
 

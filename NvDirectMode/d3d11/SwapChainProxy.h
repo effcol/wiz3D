@@ -172,6 +172,7 @@ private:
     ID3D11PixelShader*        m_compositePS_Col;
     ID3D11PixelShader*        m_compositePS_Checker;
     ID3D11PixelShader*        m_compositePS_Anaglyph;
+    ID3D11PixelShader*        m_compositePS_Anaglyph_Trioviz; // TriOviz variant with blend_RGB suppression
     ID3D11Buffer*             m_anaglyphCB;     // 6 float4 rows of colour-matrix coefficients (slot b2)
     ID3D11SamplerState*       m_compositeSampler;       // linear (SBS / TB / anaglyph)
     ID3D11SamplerState*       m_compositeSamplerPoint;  // point   (interleaved / checker — avoids row blending)

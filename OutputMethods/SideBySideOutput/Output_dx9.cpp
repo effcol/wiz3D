@@ -116,9 +116,18 @@ HRESULT SideBySideOutput::InitializeSCData(CBaseSwapChain* pSwapChain)
 	return hResult;
 }
 
-void SideBySideOutput::ReadConfigData( TiXmlNode* config )
+void SideBySideOutput::ReadConfigData( const char* configXml )
 {
-	TiXmlElement* item = config->ToElement();
+	// Re-parse with our own (ticpp-shim) TinyXML so no node crosses from S3DAPI.
+	if (!configXml || !*configXml)
+		return;
+	TiXmlDocument doc;
+	doc.Parse(configXml);
+	if (doc.Error())
+		return;
+	TiXmlElement* item = doc.RootElement();
+	if (!item)
+		return;
 	TiXmlElement* pitem = item->FirstChildElement("Gap");
 	while (pitem)
 	{

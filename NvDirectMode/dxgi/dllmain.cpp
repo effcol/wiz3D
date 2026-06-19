@@ -44,6 +44,10 @@ static int   g_loggingEnabled = 1;
 static int   g_verboseEnabled = 1;
 static int   g_swapEyes       = 0;
 static int   g_wrapDevices    = 1;
+// Fallback used only when 3DVision_Config.xml is absent (shipped configs set
+// OutputMode explicitly). d3d11/dxgi default to 8 (SR weave) by design — these
+// are the SR-targeted backends. d3d9/d3d10/opengl32 deliberately default to 1
+// (SBS) instead because SR weave is unverified there.
 static int   g_outputMode     = 8;
 
 static void LogOpen(void)

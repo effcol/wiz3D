@@ -28,7 +28,7 @@ public:
 	virtual UINT	GetOutputChainsNumber();
 	virtual HRESULT	Output(CBaseSwapChain* pSwapChain);
 	virtual HRESULT InitializeSCData(CBaseSwapChain* pSwapChain);
-	virtual void	ReadConfigData(TiXmlNode* config);
+	virtual void	ReadConfigData(const char* configXml);
 private:
 	bool	m_bCrosseyed;
 	std::vector<ResolutionGap>	m_Gap;

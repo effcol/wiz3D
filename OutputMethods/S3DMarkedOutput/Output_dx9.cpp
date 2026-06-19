@@ -359,15 +359,24 @@ HRESULT S3DMarkedOutput::InitializeResources()
 	return hResult;
 }
 
-void S3DMarkedOutput::ReadConfigData( TiXmlNode* config )
+void S3DMarkedOutput::ReadConfigData( const char* configXml )
 {
-	TiXmlElement* item = config->ToElement();
-	TiXmlElement* pitem = item->FirstChildElement("AngleCorrection");
 	m_bAngleCorrection = false;
+	m_bCheckersMode = false;
+	// Re-parse with our own (ticpp-shim) TinyXML so no node crosses from S3DAPI.
+	if (!configXml || !*configXml)
+		return;
+	TiXmlDocument doc;
+	doc.Parse(configXml);
+	if (doc.Error())
+		return;
+	TiXmlElement* item = doc.RootElement();
+	if (!item)
+		return;
+	TiXmlElement* pitem = item->FirstChildElement("AngleCorrection");
 	if (pitem)
 		pitem->QueryIntAttribute("Value", &m_bAngleCorrection);
 	pitem = item->FirstChildElement("CheckersMode");
-	m_bCheckersMode = false;
 	if (pitem)
 		pitem->QueryIntAttribute("Value", &m_bCheckersMode);
 }

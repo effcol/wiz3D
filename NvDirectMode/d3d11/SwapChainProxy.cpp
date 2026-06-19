@@ -158,6 +158,28 @@ const char kCompositePS_Anaglyph[] =
     "  return float4(saturate(a), 1.0);\n"
     "}\n";
 
+// TriOviz/Inficolor 3D variant with blend_RGB ghosting suppression.
+// Matches SuperDepth3D.fx Inficolor_3D_Emulator post-processing pass.
+const char kCompositePS_Anaglyph_Trioviz[] =
+    "Texture2D leftTex  : register(t0);\n"
+    "Texture2D rightTex : register(t1);\n"
+    "SamplerState sLinear : register(s0);\n"
+    "cbuffer ACB : register(b2) { float4 lR; float4 lG; float4 lB; float4 rR; float4 rG; float4 rB; };\n"
+    "struct VS_OUT { float4 pos : SV_Position; float2 uv : TEXCOORD0; };\n"
+    "float4 main(VS_OUT i) : SV_Target {\n"
+    "  float3 L = leftTex.Sample(sLinear, i.uv).rgb;\n"
+    "  float3 R = rightTex.Sample(sLinear, i.uv).rgb;\n"
+    "  float3 a;\n"
+    "  a.r = dot(lR.xyz, L) + dot(rR.xyz, R);\n"
+    "  a.g = dot(lG.xyz, L) + dot(rG.xyz, R);\n"
+    "  a.b = dot(lB.xyz, L) + dot(rB.xyz, R);\n"
+    "  float3 blend_RGB = float3(dot(a, float3(1,-1,-1)), dot(a, float3(-1,1,-1)), dot(a, float3(-1,-1,1)));\n"
+    "  a.r *= lerp(1.0, lerp(1.0, 0.5, smoothstep(-0.250, 0.0, blend_RGB.r)), 0.5);\n"
+    "  a.g *= lerp(1.0, lerp(1.0, 0.5, smoothstep(-0.375, 0.0, blend_RGB.g)), 0.5);\n"
+    "  a.b *= lerp(1.0, lerp(1.0, 0.5, smoothstep(-0.500, 0.0, blend_RGB.b)), 0.5);\n"
+    "  return float4(saturate(a), 1.0);\n"
+    "}\n";
+
 // Anaglyph colour-method matrix table — shared across all 4 NvDirectMode
 // proxies (d3d9/d3d10/d3d11/opengl32) via NvDirectMode/anaglyph_matrices.h.
 // Aliased into the anonymous namespace so the matrix-upload code below
@@ -244,6 +266,7 @@ SwapChainProxy::SwapChainProxy(IDXGISwapChain* real, Device11Proxy* parent)
     , m_compositePS_Col(nullptr)
     , m_compositePS_Checker(nullptr)
     , m_compositePS_Anaglyph(nullptr)
+    , m_compositePS_Anaglyph_Trioviz(nullptr)
     , m_anaglyphCB(nullptr)
     , m_compositeSampler(nullptr)
     , m_compositeSamplerPoint(nullptr)
@@ -315,6 +338,7 @@ void SwapChainProxy::ReleaseCompositePipeline()
     if (m_compositeSampler)      { m_compositeSampler->Release();      m_compositeSampler = nullptr; }
     if (m_anaglyphCB)            { m_anaglyphCB->Release();            m_anaglyphCB = nullptr; }
     if (m_compositePS_Anaglyph)  { m_compositePS_Anaglyph->Release();  m_compositePS_Anaglyph = nullptr; }
+    if (m_compositePS_Anaglyph_Trioviz) { m_compositePS_Anaglyph_Trioviz->Release(); m_compositePS_Anaglyph_Trioviz = nullptr; }
     if (m_compositePS_Checker)   { m_compositePS_Checker->Release();   m_compositePS_Checker = nullptr; }
     if (m_compositePS_Col)       { m_compositePS_Col->Release();       m_compositePS_Col = nullptr; }
     if (m_compositePS_Line)      { m_compositePS_Line->Release();      m_compositePS_Line = nullptr; }
@@ -592,6 +616,7 @@ bool SwapChainProxy::EnsureCompositeShaders()
     ID3DBlob* psColBlob = nullptr;
     ID3DBlob* psCheckerBlob = nullptr;
     ID3DBlob* psAnaglyphBlob = nullptr;
+    ID3DBlob* psAnaglyphTriovizBlob = nullptr;
     bool ok = true;
     ok = ok && CompileShader(kCompositeVS,                sizeof(kCompositeVS) - 1,                "vs", "vs_4_0", &vsBlob);
     ok = ok && CompileShader(kCompositePS_SBS,            sizeof(kCompositePS_SBS) - 1,            "ps", "ps_4_0", &psSbsBlob);
@@ -600,6 +625,8 @@ bool SwapChainProxy::EnsureCompositeShaders()
     ok = ok && CompileShader(kCompositePS_ColInterleaved, sizeof(kCompositePS_ColInterleaved) - 1, "ps", "ps_4_0", &psColBlob);
     ok = ok && CompileShader(kCompositePS_Checkerboard,   sizeof(kCompositePS_Checkerboard) - 1,   "ps", "ps_4_0", &psCheckerBlob);
     ok = ok && CompileShader(kCompositePS_Anaglyph,       sizeof(kCompositePS_Anaglyph) - 1,       "ps", "ps_4_0", &psAnaglyphBlob);
+    // TriOviz variant is non-critical — failure is tolerated (falls back to standard anaglyph)
+    CompileShader(kCompositePS_Anaglyph_Trioviz, sizeof(kCompositePS_Anaglyph_Trioviz) - 1, "ps", "ps_4_0", &psAnaglyphTriovizBlob);
     if (!ok)
     {
         LOG_VERBOSE("  EnsureCompositeShaders: D3DCompile failed\n");
@@ -628,8 +655,11 @@ bool SwapChainProxy::EnsureCompositeShaders()
         hr = dev->CreatePixelShader(psCheckerBlob->GetBufferPointer(), psCheckerBlob->GetBufferSize(), nullptr, &m_compositePS_Checker);
     if (SUCCEEDED(hr) && !m_compositePS_Anaglyph)
         hr = dev->CreatePixelShader(psAnaglyphBlob->GetBufferPointer(), psAnaglyphBlob->GetBufferSize(), nullptr, &m_compositePS_Anaglyph);
+    if (psAnaglyphTriovizBlob && !m_compositePS_Anaglyph_Trioviz)
+        dev->CreatePixelShader(psAnaglyphTriovizBlob->GetBufferPointer(), psAnaglyphTriovizBlob->GetBufferSize(), nullptr, &m_compositePS_Anaglyph_Trioviz);
     vsBlob->Release(); psSbsBlob->Release(); psTbBlob->Release();
     psLineBlob->Release(); psColBlob->Release(); psCheckerBlob->Release(); psAnaglyphBlob->Release();
+    if (psAnaglyphTriovizBlob) psAnaglyphTriovizBlob->Release();
     if (FAILED(hr)) { ReleaseCompositePipeline(); return false; }
 
     if (!m_anaglyphCB)
@@ -899,7 +929,7 @@ void SwapChainProxy::UpdateAnaglyphCB()
 
     int colour = NvDM_AnaglyphColour();
     int method = NvDM_AnaglyphMethod();
-    if (colour < 0 || colour > 2) colour = 0;
+    if (colour < 0 || colour > 3) colour = 0;
     if (method < 0 || method > 6) method = 0;
     const AnaglyphMatrix& m = kAnaglyphMatrices[colour][method];
 
@@ -1000,7 +1030,9 @@ bool SwapChainProxy::RunCompositePass()
         case 4:         ps = m_compositePS_Line;      modeTag = "LineInterl";   sampler = m_compositeSamplerPoint; break;
         case 5:         ps = m_compositePS_Col;       modeTag = "ColInterl";    sampler = m_compositeSamplerPoint; break;
         case 6:         ps = m_compositePS_Checker;   modeTag = "Checkerboard"; sampler = m_compositeSamplerPoint; break;
-        case 7:         ps = m_compositePS_Anaglyph;  modeTag = "Anaglyph";     needsAnaglyphCB = true; break;
+        case 7:         ps = (NvDM_AnaglyphColour() == 3 && m_compositePS_Anaglyph_Trioviz)
+                             ? m_compositePS_Anaglyph_Trioviz : m_compositePS_Anaglyph;
+                        modeTag = "Anaglyph"; needsAnaglyphCB = true; break;
         case 8:         ps = m_compositePS_SBS;       modeTag = "SBS (SR-fallback)"; break;
         default:        ps = m_compositePS_SBS;       modeTag = "SBS (fallback)";    break;
     }

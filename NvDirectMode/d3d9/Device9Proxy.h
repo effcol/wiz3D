@@ -218,6 +218,7 @@ private:
     IDirect3DPixelShader9*   m_compositePS_Col;
     IDirect3DPixelShader9*   m_compositePS_Checker;
     IDirect3DPixelShader9*   m_compositePS_Anaglyph;
+    IDirect3DPixelShader9*   m_compositePS_Anaglyph_Trioviz;
     IDirect3DVertexBuffer9*  m_compositeVB;             // fullscreen-quad VB (3 verts)
     IDirect3DVertexDeclaration9* m_compositeDecl;       // POSITION + TEX0
     bool                     m_shadersFailed;           // set to true on first compile/create failure; never retries

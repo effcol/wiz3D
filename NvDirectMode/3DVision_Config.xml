@@ -101,6 +101,18 @@
              0 = Red / Cyan      — most common; widely available glasses.
              1 = Green / Magenta — alt pair; better motion fidelity.
              2 = Amber / Blue    — best colour rendition; "ColorCode 3-D" style.
+             3 = TriOviz / Inficolor 3D — TriOviz Labs spectrally-tuned green/
+                 magenta variant. Left eye = magenta (red+blue) filter; right
+                 eye = green filter. Near-full-colour perception with reduced
+                 ghosting vs standard Green/Magenta. Requires genuine TriOviz
+                 Inficolor glasses (used in Batman: Arkham City, Gears of War 3,
+                 Assassin's Creed: Revelations, etc.).
+                 IMPORTANT: set AnaglyphMethod=2 (Color) when using this mode.
+                 Games with native TriOviz support already output the correct
+                 channel encoding — the Color matrix passes it through unchanged.
+                 Dubois/Compromise will shift colours away from what the game
+                 intended and make things look worse, not better.
+                 If you see left/right swapped, enable SwapEyes.
              Default: 0. -->
         <AnaglyphColour Value="0"/>
 

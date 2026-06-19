@@ -37,6 +37,10 @@ static int   g_loggingEnabled  = 1;  // overridden by 3DVision_Config.xml Loggin
 static int   g_verboseEnabled  = 1;  // overridden by VerboseLogging — default ON during pre-release
 static int   g_swapEyes        = 0;  // overridden by SwapEyes
 static int   g_wrapDevices     = 1;  // overridden by WrapDevices
+// Fallback used only when 3DVision_Config.xml is absent (shipped configs set
+// OutputMode explicitly). d3d11/dxgi default to 8 (SR weave) by design — these
+// are the SR-targeted backends (see commit 0f848c94). d3d9/d3d10/opengl32
+// deliberately default to 1 (SBS) instead because SR weave is unverified there.
 static int   g_outputMode      = 8;  // overridden by OutputMode — see 3DVision_Config.xml comments
                                      //   0/3 = Top-and-Bottom
                                      //   1/2 = Side-by-Side    (default)
@@ -45,7 +49,7 @@ static int   g_outputMode      = 8;  // overridden by OutputMode — see 3DVisio
                                      //   6   = Checkerboard
                                      //   7   = Anaglyph
                                      //   8   = SR weave (Leia / Samsung Odyssey ML displays)
-static int   g_anaglyphColour   = 0; // 0=RC (default), 1=GM, 2=AB
+static int   g_anaglyphColour   = 0; // 0=RC (default), 1=GM, 2=AB, 3=TriOviz
 static int   g_anaglyphMethod   = 0; // 0=Dubois (default), 1=Compromise, 2=Color, 3=HalfColor, 4=Optimised, 5=Grey, 6=True
 static int   g_blockEOSOverlay  = 0; // refuse to load EOSOVH-Win32-Shipping.dll (Epic Games Launcher overlay). Diagnostic/opt-in — for games that statically import EOSSDK (TR2013) the block runs too late and can't help anyway.
 

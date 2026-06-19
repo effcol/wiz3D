@@ -304,13 +304,21 @@ HRESULT SimulatedRealityWeaveOutput::OutputSBSFallback(CBaseSwapChain* pSwapChai
     return S_OK;
 }
 
-void SimulatedRealityWeaveOutput::ReadConfigData(TiXmlNode* config)
+void SimulatedRealityWeaveOutput::ReadConfigData(const char* configXml)
 {
     // Optional override under <Outputs><SimulatedRealityWeaveOutput><sRGB Value="0|1"/>.
     // Default (no element) keeps m_bSRGB at the constructor value (true).
-    if (!config)
+    // Re-parse with our own (ticpp-shim) TinyXML so no node crosses from S3DAPI.
+    if (!configXml || !*configXml)
         return;
-    TiXmlElement* el = config->FirstChildElement("sRGB");
+    TiXmlDocument doc;
+    doc.Parse(configXml);
+    if (doc.Error())
+        return;
+    TiXmlElement* root = doc.RootElement();
+    if (!root)
+        return;
+    TiXmlElement* el = root->FirstChildElement("sRGB");
     if (el)
     {
         int v = 1;

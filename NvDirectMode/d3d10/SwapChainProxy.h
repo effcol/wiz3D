@@ -127,6 +127,7 @@ private:
     ID3D10PixelShader*        m_compositePS_Col;
     ID3D10PixelShader*        m_compositePS_Checker;
     ID3D10PixelShader*        m_compositePS_Anaglyph;
+    ID3D10PixelShader*        m_compositePS_Anaglyph_Trioviz;
     ID3D10Buffer*             m_anaglyphCB;
     ID3D10SamplerState*       m_compositeSampler;       // linear (SBS / TB / anaglyph)
     ID3D10SamplerState*       m_compositeSamplerPoint;  // point  (interleaved / checker)

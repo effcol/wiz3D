@@ -39,7 +39,12 @@ public:
 	virtual DWORD GetSecondWindowCaps() { return 0; }
 	virtual DWORD SetNextSubMode() { return m_SubMode; }
 	virtual const TCHAR* GetSubModeName() { return _T(""); }
-	virtual void  ReadConfigData(TiXmlNode* config) { }
+	// configXml is the output method's config subtree serialized to a string by
+	// S3DAPI (GetOutputConfigXml()). Overrides re-parse it with their OWN parser
+	// so no TiXml object crosses the S3DAPI/OutputMethod DLL boundary (the two
+	// sides link incompatible TinyXML/ticpp layouts). configXml is never NULL
+	// when this is called (the caller guards), but may be an empty document.
+	virtual void  ReadConfigData(const char* configXml) { }
 	bool HandleGamma()	{ return m_bProcessGammaRamp; }
 	DWORD GetSubMode()	{ return m_SubMode; }
 	DWORD GetCaps()		{ return m_Caps; }

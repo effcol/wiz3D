@@ -216,13 +216,14 @@ namespace
     // OutputMode 4-7 shader pipeline state. One program per mode (Line/Col/
     // Checker/Anaglyph), shared fullscreen-quad VBO. Compiled lazily on first
     // composite. Anaglyph uniform array carries the selected coefficients.
-    enum ShaderProgIdx { PROG_LINE = 0, PROG_COL = 1, PROG_CHECKER = 2, PROG_ANAGLYPH = 3, PROG_COUNT = 4 };
+    enum ShaderProgIdx { PROG_LINE = 0, PROG_COL = 1, PROG_CHECKER = 2, PROG_ANAGLYPH = 3, PROG_ANAGLYPH_TRIOVIZ = 4, PROG_COUNT = 5 };
     struct CompositePrograms
     {
         GLuint prog[PROG_COUNT]    = {};
-        GLint  locLeftTex[PROG_COUNT]  = { -1, -1, -1, -1 };
-        GLint  locRightTex[PROG_COUNT] = { -1, -1, -1, -1 };
+        GLint  locLeftTex[PROG_COUNT]  = { -1, -1, -1, -1, -1 };
+        GLint  locRightTex[PROG_COUNT] = { -1, -1, -1, -1, -1 };
         GLint  locAnaglyphRows = -1;     // valid only on PROG_ANAGLYPH (slot 3)
+        GLint  locAnaglyphRows_Trioviz = -1; // valid only on PROG_ANAGLYPH_TRIOVIZ (slot 4)
         GLuint quadVBO         = 0;
         bool   compileFailed   = false;  // set if any compile/link errored — won't retry
     };
@@ -662,6 +663,27 @@ namespace
         "  gl_FragColor = vec4(clamp(a, 0.0, 1.0), 1.0);\n"
         "}\n";
 
+    // TriOviz/Inficolor 3D variant with blend_RGB ghosting suppression.
+    const char* const kCompositeFS_Anaglyph_Trioviz =
+        "#version 120\n"
+        "uniform sampler2D leftTex;\n"
+        "uniform sampler2D rightTex;\n"
+        "uniform vec4 gAnaglyphRows[6];\n"
+        "varying vec2 vUV;\n"
+        "void main() {\n"
+        "  vec3 L = texture2D(leftTex,  vUV).rgb;\n"
+        "  vec3 R = texture2D(rightTex, vUV).rgb;\n"
+        "  vec3 a;\n"
+        "  a.r = dot(gAnaglyphRows[0].xyz, L) + dot(gAnaglyphRows[3].xyz, R);\n"
+        "  a.g = dot(gAnaglyphRows[1].xyz, L) + dot(gAnaglyphRows[4].xyz, R);\n"
+        "  a.b = dot(gAnaglyphRows[2].xyz, L) + dot(gAnaglyphRows[5].xyz, R);\n"
+        "  vec3 blend_RGB = vec3(dot(a, vec3(1.0,-1.0,-1.0)), dot(a, vec3(-1.0,1.0,-1.0)), dot(a, vec3(-1.0,-1.0,1.0)));\n"
+        "  a.r *= mix(1.0, mix(1.0, 0.5, smoothstep(-0.250, 0.0, blend_RGB.r)), 0.5);\n"
+        "  a.g *= mix(1.0, mix(1.0, 0.5, smoothstep(-0.375, 0.0, blend_RGB.g)), 0.5);\n"
+        "  a.b *= mix(1.0, mix(1.0, 0.5, smoothstep(-0.500, 0.0, blend_RGB.b)), 0.5);\n"
+        "  gl_FragColor = vec4(clamp(a, 0.0, 1.0), 1.0);\n"
+        "}\n";
+
     // Compile + link a VS+FS pair. Returns 0 on failure (with the failure
     // recorded via NvDM_Log so the user can find it). The bound aPos
     // attribute is location 0 — we glBindAttribLocation before linking.
@@ -756,6 +778,18 @@ namespace
             }
         }
 
+        // Compile TriOviz variant — non-fatal, falls back to standard anaglyph if it fails.
+        if (!g_progs.prog[PROG_ANAGLYPH_TRIOVIZ])
+        {
+            g_progs.prog[PROG_ANAGLYPH_TRIOVIZ] = CompileProgram(kCompositeFS_Anaglyph_Trioviz);
+            if (g_progs.prog[PROG_ANAGLYPH_TRIOVIZ] && p_glGetUniformLocation)
+            {
+                g_progs.locLeftTex[PROG_ANAGLYPH_TRIOVIZ]  = p_glGetUniformLocation(g_progs.prog[PROG_ANAGLYPH_TRIOVIZ], "leftTex");
+                g_progs.locRightTex[PROG_ANAGLYPH_TRIOVIZ] = p_glGetUniformLocation(g_progs.prog[PROG_ANAGLYPH_TRIOVIZ], "rightTex");
+                g_progs.locAnaglyphRows_Trioviz = p_glGetUniformLocation(g_progs.prog[PROG_ANAGLYPH_TRIOVIZ], "gAnaglyphRows");
+            }
+        }
+
         // Fullscreen quad: two triangles, NDC positions (no separate UV — VS
         // derives uv from position).
         if (g_progs.quadVBO == 0)
@@ -789,7 +823,8 @@ namespace
             case 4: idx = PROG_LINE;     break;
             case 5: idx = PROG_COL;      break;
             case 6: idx = PROG_CHECKER;  break;
-            case 7: idx = PROG_ANAGLYPH; break;
+            case 7: idx = (NvDM_AnaglyphColour() == 3 && g_progs.prog[PROG_ANAGLYPH_TRIOVIZ])
+                          ? PROG_ANAGLYPH_TRIOVIZ : PROG_ANAGLYPH; break;
             default: return false;
         }
         GLuint prog = g_progs.prog[idx];
@@ -821,25 +856,29 @@ namespace
             if (g_progs.locRightTex[idx] >= 0) p_glUniform1i(g_progs.locRightTex[idx], 1);
         }
 
-        if (idx == PROG_ANAGLYPH && g_progs.locAnaglyphRows >= 0 && p_glUniform4fv)
+        if ((idx == PROG_ANAGLYPH || idx == PROG_ANAGLYPH_TRIOVIZ) && p_glUniform4fv)
         {
-            int colour = NvDM_AnaglyphColour();
-            int method = NvDM_AnaglyphMethod();
-            if (colour < 0 || colour > 2) colour = 0;
-            if (method < 0 || method > 6) method = 0;
-            const NvDirectMode::AnaglyphMatrix& m =
-                NvDirectMode::kAnaglyphMatrices[colour][method];
-            // 6 vec4 rows: lR, lG, lB, rR, rG, rB (xyz used; w = 0).
-            const float* rows[6] = { m.lR, m.lG, m.lB, m.rR, m.rG, m.rB };
-            float buf[6 * 4] = {};
-            for (int i = 0; i < 6; ++i)
+            GLint loc = (idx == PROG_ANAGLYPH_TRIOVIZ) ? g_progs.locAnaglyphRows_Trioviz : g_progs.locAnaglyphRows;
+            if (loc >= 0)
             {
-                buf[i * 4 + 0] = rows[i][0];
-                buf[i * 4 + 1] = rows[i][1];
-                buf[i * 4 + 2] = rows[i][2];
-                buf[i * 4 + 3] = 0.0f;
+                int colour = NvDM_AnaglyphColour();
+                int method = NvDM_AnaglyphMethod();
+                if (colour < 0 || colour > 3) colour = 0;
+                if (method < 0 || method > 6) method = 0;
+                const NvDirectMode::AnaglyphMatrix& m =
+                    NvDirectMode::kAnaglyphMatrices[colour][method];
+                // 6 vec4 rows: lR, lG, lB, rR, rG, rB (xyz used; w = 0).
+                const float* rows[6] = { m.lR, m.lG, m.lB, m.rR, m.rG, m.rB };
+                float buf[6 * 4] = {};
+                for (int i = 0; i < 6; ++i)
+                {
+                    buf[i * 4 + 0] = rows[i][0];
+                    buf[i * 4 + 1] = rows[i][1];
+                    buf[i * 4 + 2] = rows[i][2];
+                    buf[i * 4 + 3] = 0.0f;
+                }
+                p_glUniform4fv(loc, 6, buf);
             }
-            p_glUniform4fv(g_progs.locAnaglyphRows, 6, buf);
         }
 
         // Bind quad VBO and feed position to attribute 0.

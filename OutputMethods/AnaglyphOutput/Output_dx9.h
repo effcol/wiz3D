@@ -18,7 +18,7 @@ public:
 	~AnaglyphOutput(void);
 
 	virtual HRESULT InitializeResources();
-	virtual void	ReadConfigData(TiXmlNode* config);
+	virtual void	ReadConfigData(const char* configXml);
 private:
 	float m_CustomLeftMatrix[3][3];
 	float m_CustomRightMatrix[3][3];
