@@ -13,6 +13,9 @@
 # This script does NOT handle:
 # - The DX12 HD3D variant (D3d12VendorProxy) — no longer deployed; AmdQbProxy
 #   covers DX12 games via the dxgi.dll path.
+# - wiz3D-proxy-d3d12 / wiz3D-proxy-vulkan-1 (d3d12.dll, vulkan-1.dll) — M0a
+#   passthrough plumbing only (see S3DWrapper12/PLAN.md). No stereo wrapper
+#   DLL ships behind them yet, so they're dev-only and not deployed.
 #
 # Usage:
 #   .\bin\deploy_to_releases.ps1                # both Win32 + x64
@@ -190,18 +193,6 @@ foreach ($archName in $archs) {
     Copy-Files -SrcDir $proxyBinDir -DstDir $dst                          `
                -Files @('opengl32.dll')                                   `
                -Tag   "opengl-qbs/$archAlias proxies"
-
-    # --- dx12 stereo proxy (both archs; no wrapper sln output yet) ---
-    $dst = Join-Path $repoRoot "releases\wiz3D\dx12\$archAlias"
-    Copy-Files -SrcDir $proxyBinDir -DstDir $dst                          `
-               -Files @('d3d12.dll')                                      `
-               -Tag   "dx12/$archAlias proxy"
-
-    # --- vulkan stereo proxy (both archs; no wrapper sln output yet) ---
-    $dst = Join-Path $repoRoot "releases\wiz3D\vulkan\$archAlias"
-    Copy-Files -SrcDir $proxyBinDir -DstDir $dst                          `
-               -Files @('vulkan-1.dll')                                   `
-               -Tag   "vulkan/$archAlias proxy"
 
     # --- NvDirectMode (3D Vision Direct Mode proxies) ---
     # Layout: releases/wiz3D/3d-vision-direct/<api>/<archAlias>/<dll>

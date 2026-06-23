@@ -12,16 +12,16 @@ on:
       - 'VERSION.txt'
 
 jobs:
-  build:
-    # Matrix on configuration only — both Win32 and x64 are built sequentially
-    # within each leg via doubled msbuild calls. Debug and Release legs are
-    # smoke-tests; Final Release is the shipped config and the only one that
-    # produces an artifact.
+  # Debug/Release x Win32/x64 smoke-test matrix — all four legs build in
+  # parallel so CI reports each variant's status independently. These only
+  # compile S3DDriver.sln; they don't produce a shippable artifact.
+  smoke-test:
     runs-on: windows-2025-vs2026
     strategy:
       fail-fast: false
       matrix:
-        configuration: [Debug, Release, "Final Release"]
+        configuration: [Debug, Release]
+        platform: [Win32, x64]
 
     steps:
       - uses: actions/checkout@v6
@@ -33,50 +33,56 @@ jobs:
       - name: Generate version header
         run: .\bin\generate_version.ps1
 
-      # -----------------------------------------------------------------------
-      # Build the primary solution in all six configurations.
-      # Only the Final Release legs will produce an artifact, but building the 
-      # others ensures the code compiles correctly in all scenarios.
+      - name: Build S3DDriver.sln
+        run: msbuild S3DDriver.sln /p:Configuration="${{ matrix.configuration }}" /p:Platform=${{ matrix.platform }} /m /nologo /verbosity:minimal
+
+  # Runs only after all four smoke-test legs succeed. Builds the shipped
+  # Final Release config plus the proxy/NvDirectMode solutions, stages the
+  # releases/ tree, and uploads it as the build artifact.
+  final-release:
+    needs: smoke-test
+    runs-on: windows-2025-vs2026
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup MSBuild
+        uses: microsoft/setup-msbuild@v3
+
+      # Writes bin/temp_version.h from VERSION.txt + git SHA before any build.
+      - name: Generate version header
+        run: .\bin\generate_version.ps1
+
       - name: Build S3DDriver.sln (Win32)
-        run: msbuild S3DDriver.sln /p:Configuration="${{ matrix.configuration }}" /p:Platform=Win32 /m /nologo /verbosity:minimal
+        run: msbuild S3DDriver.sln /p:Configuration="Final Release" /p:Platform=Win32 /m /nologo /verbosity:minimal
 
       - name: Build S3DDriver.sln (x64)
-        run: msbuild S3DDriver.sln /p:Configuration="${{ matrix.configuration }}" /p:Platform=x64 /m /nologo /verbosity:minimal
+        run: msbuild S3DDriver.sln /p:Configuration="Final Release" /p:Platform=x64 /m /nologo /verbosity:minimal
 
       # Proxy solution only defines Debug/Release (no Final Release config).
-      # Only built on the Final Release leg since that's the only leg that
-      # assembles an artifact — Debug isn't interesting here.
       - name: Build wiz3D-proxy.sln (Release, Win32)
-        if: matrix.configuration == 'Final Release'
         run: msbuild wiz3D-proxy\wiz3D-proxy.sln /p:Configuration=Release /p:Platform=Win32 /m /nologo /verbosity:minimal
 
       - name: Build wiz3D-proxy.sln (Release, x64)
-        if: matrix.configuration == 'Final Release'
         run: msbuild wiz3D-proxy\wiz3D-proxy.sln /p:Configuration=Release /p:Platform=x64 /m /nologo /verbosity:minimal
 
       # NvDirectMode solution only defines Debug/Release (no Final Release config).
-      # Only built on the Final Release leg.
       - name: Build NvDirectMode.sln (Release, Win32)
-        if: matrix.configuration == 'Final Release'
         run: msbuild NvDirectMode\NvDirectMode.sln /p:Configuration=Release /p:Platform=Win32 /m /nologo /verbosity:minimal
 
       - name: Build NvDirectMode.sln (Release, x64)
-        if: matrix.configuration == 'Final Release'
         run: msbuild NvDirectMode\NvDirectMode.sln /p:Configuration=Release /p:Platform=x64 /m /nologo /verbosity:minimal
-      # -----------------------------------------------------------------------
 
       # deploy_to_releases.ps1 with no -Arch defaults to 'both' and pairs
       # S3DDriver's Final Release output with the proxy's Release output for
       # both Win32 and x64 in one pass.
       - name: Stage releases tree
-        if: matrix.configuration == 'Final Release'
         run: .\bin\deploy_to_releases.ps1
 
       # Mirrors the parse rule in bin/generate_version.ps1: strip any
       # "-suffix" (e.g. "0.2.4-rc1" -> "0.2.4") so the artifact name stays
       # in lockstep with the version baked into the DLLs.
       - name: Read version from VERSION.txt
-        if: matrix.configuration == 'Final Release'
         id: version
         shell: pwsh
         run: |
@@ -87,7 +93,6 @@ jobs:
 
       - name: Upload combined release artifact
         # Single artifact, name pulled from VERSION.txt (e.g. wiz3D.v0.2.4).
-        if: matrix.configuration == 'Final Release'
         uses: actions/upload-artifact@v6
         with:
           name: wiz3D.v${{ steps.version.outputs.version }}
