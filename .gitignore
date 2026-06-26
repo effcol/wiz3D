@@ -40,7 +40,7 @@ bld/
 !releases/
 !releases/**/
 !releases/**/*.bat
-!releases/**/wiz3D_Config.xml
+!releases/**/*_Config.xml
 
 # Specifically avoid the releases/3d-vision-direct directory, because the
 # originals properly live in root of the NvDirectMode project, not here.

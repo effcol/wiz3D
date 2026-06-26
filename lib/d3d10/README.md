@@ -48,8 +48,8 @@ referenced from a smaller number of sites.
 
 The `ThirdPartyLibs/` convention is for libraries that come from a
 distinct upstream vendor with a live upstream and follow a
-`<Name>_v<Version>/` drop layout (e.g. `ThirdPartyLibs/TinyXML_v2.6.2/`,
-`ThirdPartyLibs/LlamaXML_v1.0.1/`). This bundle is a curated extract of
+`<Name>_v<Version>/` drop layout (e.g. `ThirdPartyLibs/MinHook_v1.3.4/`,
+`ThirdPartyLibs/zlib_v1.3.2/`). This bundle is a curated extract of
 Microsoft WDK headers with no upstream — same shape as `lib/d3d7/` and
 `lib/d3d8/`, which also stay under `lib/`. Treating it as "third-party"
 would over-promote it and trigger pointless migration churn for no

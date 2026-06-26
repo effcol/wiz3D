@@ -2,8 +2,9 @@
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
 
 	<!-- LlamaXML shim wiring — imported by every project that consumes XML
-	     through the shim layer, either directly (S3DWrapper9 via CommandDumper,
-	     S3DWrapper10 via the Streamer subfolder, DX9GenerateCodeFromDump) or
+	     through the shim layer, either directly (S3DAPI via ReadData,
+	     S3DWrapper9 via CommandDumper, S3DWrapper10 via the Streamer subfolder,
+	     DX9GenerateCodeFromDump) or
 	     transitively (OutputLib + every OutputMethod via the include chain
 	     ...→ S3DWrapper10/Commands/Command.h → CmdFlowStreamers.h →
 	     XMLStreamer.h → LlamaXML/XMLReader.h → ticpp.h → tinyxml.h, and the

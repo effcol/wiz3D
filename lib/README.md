@@ -21,7 +21,7 @@ The two trees use the same word ("vendor drop") but mean different things.
 - Consumed by many projects across the solution
 - Generally a recognizable, still-maintained upstream — vcpkg-port-shaped
 
-Current `ThirdPartyLibs/`: MinHook, SR-Lib, zlib, Xerces-C, TinyXML 2.6.2,
+Current `ThirdPartyLibs/`: MinHook, SR-Lib, zlib, Xerces-C,
 libsquish, DevIL, DirectX SDK (June 2010), Boost.
 
 **`lib/`** is for the misfits:
@@ -48,19 +48,15 @@ This is the largest entry under `lib/`, and the reason this README exists.
 The codebase has two distinct XML clients — one project, one *everyone else* —
 and routing them cleanly required the structure documented below.
 
-### The two consumers
+### Consumers
 
-- **`S3DAPI`** is the lone TinyXML 2.6.2 client and the only user of
-  `QueryBoolAttribute` across the entire codebase. Its XML wiring lives
-  inline in `S3DAPI/S3DAPI.vcxproj` and points exclusively at
-  `ThirdPartyLibs/TinyXML_v2.6.2/`. S3DAPI does not see ticpp or the shim.
-- **Everything else that touches XML** — `S3DWrapper7/8/9/10/OGL`,
-  `DX9GenerateCodeFromDump`, `DX10GenerateCodeFromDump`, every
-  `OutputMethod` (via the transitive include chain through
-  `S3DWrapper10/Commands/Command.h → CmdFlowStreamers.h → XMLStreamer.h`,
-  and the parallel chain through `S3DWrapper9`'s
-  `BaseStereoRenderer-inl.h → CommandDumper.h`) — gets the ticpp/shim
-  wiring automatically. See "How the wiring is applied" below.
+**Every project that touches XML** — `S3DAPI`, `S3DWrapper7/8/9/10/OGL`,
+`DX9GenerateCodeFromDump`, `DX10GenerateCodeFromDump`, every
+`OutputMethod` (via the transitive include chain through
+`S3DWrapper10/Commands/Command.h → CmdFlowStreamers.h → XMLStreamer.h`,
+and the parallel chain through `S3DWrapper9`'s
+`BaseStereoRenderer-inl.h → CommandDumper.h`) — gets the ticpp/shim
+wiring automatically. See "How the wiring is applied" below.
 
 ### Why ticpp lives here, not in `ThirdPartyLibs/`
 
@@ -113,51 +109,29 @@ A single shared props file, `lib/LlamaXML_shim.props`, declares all of:
 - the `ticpp.lib` link reference and its arch/config-specific lib dir
 
 This props file is auto-imported by the root `Directory.Build.props` for
-every project in the tree **except** `S3DAPI`. The exclusion is a single
-conditional `Import` gated on `'$(MSBuildProjectName)' != 'S3DAPI'`. See
-the comment block in `Directory.Build.props` for the structural rationale
-(S3DAPI links against `tinyxml.lib` built *without* `TIXML_USE_TICPP`, so
-leaking the define into S3DAPI would flip `TiXmlBase` to derive from
-`TiCppRC` — a silent `sizeof(TiXmlBase)` ABI mismatch).
+every project in the tree — no exclusions.
 
 **Net effect: no per-project shim wiring exists in any vcxproj.** The
 single source of truth lives in two files (`LlamaXML_shim.props` for
 the *what*, `Directory.Build.props` for the *who*). New projects added
-to the tree automatically inherit the shim; new bucket-1 projects (none
-currently anticipated) would need to be named in the exclusion list.
+to the tree automatically inherit the shim.
 
-### Why the two libs coexist instead of one winning
+### History: TinyXML 2.6.2 removal
 
-A natural instinct is "pick one and route everything through it." Both
-collapse paths have a sharp edge:
+S3DAPI previously linked a separate TinyXML 2.6.2 drop (without
+`TIXML_USE_TICPP`) because it used `QueryBoolAttribute`, which is absent
+in ticpp's bundled TinyXML 2.5.3. This created a cross-DLL ABI mismatch:
+`TiXmlNode` objects created by S3DAPI (plain layout) were passed to
+OutputMethod DLLs (ticpp layout with `TiCppRC` base class), causing
+vtable corruption and crashes in `ReadConfigData`. The fix replaced S3DAPI's
+`QueryBoolAttribute` calls with a `QueryIntAttribute`-based helper, allowing
+S3DAPI to join ticpp like everyone else — one ABI across all DLLs.
 
-- **Force everything onto ticpp 2.5.3:** ticpp bundles an older TinyXML
-  2.5.3 (predates `QueryBoolAttribute`, added in TinyXML 2.6.0). S3DAPI
-  uses `QueryBoolAttribute` at multiple call sites — moving it to
-  ticpp's bundled headers requires either patching the vendor drop to
-  backport the method (modifying frozen vendor code, brittle) or
-  rewriting every call site to use `Attribute()` + manual parsing.
-- **Force everything onto TinyXML 2.6.2:** the shim's `ticpp.lib` was
-  built against the 2.5.3 headers with `TIXML_USE_TICPP` on, which
-  changes `TiXmlBase` to derive from `TiCppRC`. Compiling shim
-  consumers against 2.6.2 headers (which don't have that base) is a
-  silent `sizeof(TiXmlBase)` ABI mismatch — corruption with no compiler
-  error.
-
-Keeping the libs parallel — TinyXML 2.6.2 explicitly wired into S3DAPI,
-ticpp 2.5.3 auto-imported for everyone else — avoids both problems.
-S3DAPI never sees the ticpp/shim wiring (excluded by name); every other
-project never sees TinyXML 2.6.2. No translation unit ever has both
-`tinyxml.h` files on its search path. The collision risk is closed
-structurally, not by per-project discipline.
-
-- **Recommendation:** Remove _all_ XML parsing libraries in favor of a 
+- **Recommendation:** Remove _all_ XML parsing libraries in favor of a
 modern version of TinyXML-2 with a single, unified API. Will require
 refactoring all call sites but will be more maintainable long-term. If
 that ever happens, this entire entry — `ticpp_2.5.3/`, `LlamaXML/`,
-`LlamaXML_shim.props`, S3DAPI's inline TinyXML 2.6.2 wiring, and the
-S3DAPI exclusion in `Directory.Build.props` — collapses together as a
-single removal.
+`LlamaXML_shim.props` — collapses together as a single removal.
 
 ---
 

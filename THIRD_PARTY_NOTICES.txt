@@ -47,9 +47,9 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ============================================================================
 Simple, small, C++ XML parser
 https://sourceforge.net/projects/tinyxml/
-Vendor drop: ThirdPartyLibs/TinyXML_v2.6.2/ (version 2.6.2)
+Bundled inside lib/ticpp_2.5.3/ (ticpp wraps TinyXML 2.5.3)
 
-Used in: S3DWrapperD3D9.dll
+Used in: S3DAPI.dll, S3DWrapperD3D9.dll, OutputMethod DLLs (transitively)
 
 Original code by Lee Thomason (www.grinninglizard.com)
 
