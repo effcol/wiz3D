@@ -2,14 +2,10 @@ name: Release Build
 
 on:
   # Can be triggered manually from the Actions tab for ad-hoc releases or testing.
-  #
-  # Also auto-fire whenever VERSION.txt changes — bumping the version is the
-  # canonical "cut a release" signal, so the artifact gets built without
-  # needing a manual workflow_dispatch.
   workflow_dispatch:
+  # Auto-fire on every push for CI. The smoke-test matrix runs for all pushes;
+  # final-release uploads an artifact so every push produces a downloadable build.
   push:
-    paths:
-      - 'VERSION.txt'
 
 jobs:
   # Debug/Release x Win32/x64 smoke-test matrix — all four legs build in
