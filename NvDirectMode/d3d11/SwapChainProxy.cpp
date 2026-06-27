@@ -717,8 +717,14 @@ static bool IsSRIncompatibleExe()
         // something the SR weaver constructor touches. Neither the two-step
         // HWND-defer pattern nor reordering ctx->initialize() helped — both
         // landed on the same EOSOVH+0x18060 strlen-loop crash. SBS fallback
-        // is the answer until/unless we ship a stub EOSSDK in the game folder.
-        // See project_tr2013_sr_dead_end memory for the full investigation.
+        // was the answer until/unless we neutralise the overlay itself.
+        // RESOLVED 2026-06-26: EOSSDK is a static import and loads the overlay
+        // wiz3D-proxy/EOSStub project (a hard-stub EOSSDK whose exports all
+        // return 0) disables EOS - and thus the overlay - entirely. Confirmed
+        // in-game: with the stub in the game folder, TR runs SR weave on an SR
+        // device, no crash. This entry STAYS as the safe SBS default for users
+        // without the stub; the SR path is opt-in via EOSStub + ForceSRWeave=1.
+        // See project_tr2013_sr_dead_end / project_eosstub memories.
         L"tombraider.exe",
     };
     for (auto entry : kBlacklist)
