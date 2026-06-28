@@ -238,6 +238,13 @@ foreach ($archName in $archs) {
         # CreateDXGIFactory -> CreateSwapChain (caught by dxgi.dll).
         Copy-Files -SrcDir $nvDirectModeBin -DstDir $dx11Dst  -Files @('d3d11.dll','dxgi.dll') -Tag "ndm/dx11/$archAlias"
         Copy-NdmExtras -LeafDir $dx11Dst
+        # EOSStub ships alongside NvDirectMode-d3d11 x86 only. It replaces
+        # EOSSDK-Win32-Shipping.dll to disable Epic Online Services and its
+        # overlay, which crashes SR weave (see AmdQbProxy/HD3D_Troubleshooting_Notes.md).
+        # x64 variant does not yet exist — the stub covers 32-bit games only.
+        if ($archAlias -eq 'x86') {
+            Copy-Files -SrcDir $proxyBinDir -DstDir $dx11Dst -Files @('EOSSDK-Win32-Shipping.dll') -Tag "ndm/dx11/x86 EOSStub"
+        }
     } else {
         Write-Host ("  ndm/$archAlias            SKIP (NvDirectMode bin not built: $nvDirectModeBin)") -ForegroundColor Yellow
     }
