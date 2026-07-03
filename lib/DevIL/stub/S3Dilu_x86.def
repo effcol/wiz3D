@@ -1,5 +1,0 @@
-LIBRARY S3Dilu
-EXPORTS
-    iluFlipImage@0 = _iluFlipImage@0
-    iluInit@0 = _iluInit@0
-    iluScale@12 = _iluScale@12

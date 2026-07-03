@@ -26,4 +26,4 @@
 #undef	DEBUG_MESSAGE
 #define DEBUG_MESSAGE	__noop
 
-extern DWORD CalculateCRC32(const void *p, UINT size, UINT startValue = 0xFFFFFFFF);
+#include "..\..\CommonUtils\System.h"

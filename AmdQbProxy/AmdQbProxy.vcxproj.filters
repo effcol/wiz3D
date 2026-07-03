@@ -21,4 +21,7 @@
       <Filter>Source Files</Filter>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="AmdQbProxy.rc" />
+  </ItemGroup>
 </Project>

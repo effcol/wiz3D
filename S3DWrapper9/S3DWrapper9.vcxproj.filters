@@ -226,6 +226,8 @@
     <ClInclude Include="CommandDumper.h">
       <Filter>Features</Filter>
     </ClInclude>
+    <ClInclude Include="ShaderOverrideLoader.h" />
+    <ClInclude Include="Wiz3DStereoApi.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="BackgroundPresenterThread.cpp">
@@ -393,6 +395,8 @@
     <ClCompile Include="DeviceState.cpp">
       <Filter>Features</Filter>
     </ClCompile>
+    <ClCompile Include="ShaderOverrideLoader.cpp" />
+    <ClCompile Include="Wiz3DStereoApi.cpp" />
   </ItemGroup>
   <ItemGroup>
     <None Include="S3DWrapperD3D9.def">

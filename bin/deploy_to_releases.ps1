@@ -1,18 +1,21 @@
 # wiz3D - deploy_to_releases.ps1
 #
 # Copies freshly-built DLLs from:
-#   - bin/Release/<arch>/                 (S3DDriver.sln)
+#   - bin/Final Release/<arch>/           (S3DDriver.sln)
 #   - wiz3D-proxy/bin/Release/<arch>/     (wiz3D-proxy.sln)
 #   - NvDirectMode/bin/Release/<arch>/    (NvDirectMode.sln)
 # into the appropriate releases/wiz3D/<api>/<arch>/ subfolders so a release is
 # ready to install into a game directory. Run AFTER building all three slns.
 #
+# S3DDriver ships its Final Release build (FINAL_RELEASE, best optimization).
+# The proxy ships its Release build (no Final Release config on that solution).
+#
 # This script does NOT handle:
-# - Vendor-path proxy DLLs that auto-deploy via their own vcxproj OutDir:
-#   atidxx32/64.dll (AmdQbProxy), atiadlxy.dll (AmdAdlProxy),
-#   dxgi.dll (DxgiVendorProxy), nvapi/nvapi64.dll (NvApiProxy) — these go
-#   into releases/wiz3D/hd3d/. The DX12 HD3D variant (D3d12VendorProxy) is
-#   no longer deployed; AmdQbProxy covers DX12 games via the dxgi.dll path.
+# - The DX12 HD3D variant (D3d12VendorProxy) — no longer deployed; AmdQbProxy
+#   covers DX12 games via the dxgi.dll path.
+# - wiz3D-proxy-d3d12 / wiz3D-proxy-vulkan-1 (d3d12.dll, vulkan-1.dll) — M0a
+#   passthrough plumbing only (see S3DWrapper12/PLAN.md). No stereo wrapper
+#   DLL ships behind them yet, so they're dev-only and not deployed.
 #
 # Usage:
 #   .\bin\deploy_to_releases.ps1                # both Win32 + x64
@@ -29,8 +32,7 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $archs = if ($Arch -eq 'both') { @('Win32', 'x64') } else { @($Arch) }
 
 # Common dependency DLLs shared across most release subfolders
-$commonDeps    = @('S3DAPI.dll', 'S3DDevIL.dll', 'S3DUtils.dll', 'ZLOg.dll')
-$dx10ExtraDeps = @('S3Dilu.dll')           # dx10-11 only
+$commonDeps    = @('S3DAPI.dll', 'S3DUtils.dll', 'ZLOg.dll')
 # OpenGL wrapper only ships ZLOg.dll (statically imported via zlog::VldReportHook).
 # It has no LoadLibrary calls and never references S3DAPI/S3DUtils — those are
 # DX-wrapper helpers. nvapi is also excluded (no NvAPI usage on the OGL path).
@@ -50,7 +52,7 @@ $openglDeps    = @('ZLOg.dll')
 # different code), Avitrid / DualProjection / Lenovo (variant) / Taerim /
 # VR920 / Z800 — all target hardware that's effectively dead. Users who
 # want any of the source-only ones can drop the built DLL from
-# bin/Release/.../OutputMethods/ into their game folder manually.
+# bin/Final Release/.../OutputMethods/ into their game folder manually.
 $standardOMs = @(
     'AnaglyphOutput.dll',
     'ATIDLP3DOutput.dll',
@@ -111,10 +113,8 @@ function Copy-Files {
 foreach ($archName in $archs) {
     $archAlias = if ($archName -eq 'Win32') { 'x86' } else { 'x64' }
     $outDirName = if ($archName -eq 'Win32') { 'Win32' } else { 'Win64' }
-    $binDir    = Join-Path $repoRoot "bin\Release\$outDirName"
+    $binDir    = Join-Path $repoRoot "bin\Final Release\$outDirName"
     $omSrcDir  = Join-Path $binDir   'OutputMethods'
-    # Vendored upstream DevIL artifacts (S3DDevIL.dll, S3Dilu.dll) — not built by sln
-    $devilFallback = Join-Path $repoRoot "lib\DevIL\lib\$archAlias"
     # wiz3D-proxy.sln output (entry-point DLLs games actually load: d3d9.dll, etc)
     $proxyBinDir       = Join-Path $repoRoot "wiz3D-proxy\bin\Release\$archName"
     $nvDirectModeBin   = Join-Path $repoRoot "NvDirectMode\bin\Release\$archName"
@@ -157,8 +157,7 @@ foreach ($archName in $archs) {
     $dst = Join-Path $repoRoot "releases\wiz3D\dx9\$archAlias"
     Copy-Files -SrcDir $binDir   -DstDir $dst                          `
                -Files (@('S3DWrapperD3D9.dll') + $commonDeps)          `
-               -Tag   "dx9/$archAlias wrappers+deps"                   `
-               -FallbackDirs @($devilFallback)
+               -Tag   "dx9/$archAlias wrappers+deps"
     Copy-Files -SrcDir $omSrcDir -DstDir (Join-Path $dst 'OutputMethods') `
                -Files $standardOMs -Tag "dx9/$archAlias OutputMethods"
     Copy-Files -SrcDir $proxyBinDir -DstDir $dst                          `
@@ -168,9 +167,8 @@ foreach ($archName in $archs) {
     # --- dx10-11 (both archs) ---
     $dst = Join-Path $repoRoot "releases\wiz3D\dx10-11\$archAlias"
     Copy-Files -SrcDir $binDir   -DstDir $dst                                          `
-               -Files (@('S3DWrapperD3D10.dll') + $commonDeps + $dx10ExtraDeps)        `
-               -Tag   "dx10-11/$archAlias wrappers+deps"                               `
-               -FallbackDirs @($devilFallback)
+               -Files (@('S3DWrapperD3D10.dll') + $commonDeps)                         `
+               -Tag   "dx10-11/$archAlias wrappers+deps"
     Copy-Files -SrcDir $omSrcDir -DstDir (Join-Path $dst 'OutputMethods')              `
                -Files $standardOMs -Tag "dx10-11/$archAlias OutputMethods"
     Copy-Files -SrcDir $proxyBinDir -DstDir $dst                                       `
@@ -190,23 +188,11 @@ foreach ($archName in $archs) {
         Copy-Files -SrcDir $omSrcDir -DstDir (Join-Path $dst 'OutputMethods') `
                    -Files $openglOMs -Tag "opengl-qbs/$archAlias OutputMethods"
     } else {
-        Write-Host ("  {0,-22}  (none — OGL uses built-in modes)" -f "opengl-qbs/$archAlias OutputMethods")
+        Write-Host ("  {0,-22}  (none - OGL uses built-in modes)" -f "opengl-qbs/$archAlias OutputMethods")
     }
     Copy-Files -SrcDir $proxyBinDir -DstDir $dst                          `
                -Files @('opengl32.dll')                                   `
                -Tag   "opengl-qbs/$archAlias proxies"
-
-    # --- dx12 stereo proxy (both archs; no wrapper sln output yet) ---
-    $dst = Join-Path $repoRoot "releases\wiz3D\dx12\$archAlias"
-    Copy-Files -SrcDir $proxyBinDir -DstDir $dst                          `
-               -Files @('d3d12.dll')                                      `
-               -Tag   "dx12/$archAlias proxy"
-
-    # --- vulkan stereo proxy (both archs; no wrapper sln output yet) ---
-    $dst = Join-Path $repoRoot "releases\wiz3D\vulkan\$archAlias"
-    Copy-Files -SrcDir $proxyBinDir -DstDir $dst                          `
-               -Files @('vulkan-1.dll')                                   `
-               -Tag   "vulkan/$archAlias proxy"
 
     # --- NvDirectMode (3D Vision Direct Mode proxies) ---
     # Layout: releases/wiz3D/3d-vision-direct/<api>/<archAlias>/<dll>
@@ -252,18 +238,36 @@ foreach ($archName in $archs) {
         # CreateDXGIFactory -> CreateSwapChain (caught by dxgi.dll).
         Copy-Files -SrcDir $nvDirectModeBin -DstDir $dx11Dst  -Files @('d3d11.dll','dxgi.dll') -Tag "ndm/dx11/$archAlias"
         Copy-NdmExtras -LeafDir $dx11Dst
+        # EOSStub ships alongside NvDirectMode-d3d11 x86 only. It replaces
+        # EOSSDK-Win32-Shipping.dll to disable Epic Online Services and its
+        # overlay, which crashes SR weave (see AmdQbProxy/HD3D_Troubleshooting_Notes.md).
+        # x64 variant does not yet exist — the stub covers 32-bit games only.
+        if ($archAlias -eq 'x86') {
+            Copy-Files -SrcDir $proxyBinDir -DstDir $dx11Dst -Files @('EOSSDK-Win32-Shipping.dll') -Tag "ndm/dx11/x86 EOSStub"
+        }
     } else {
         Write-Host ("  ndm/$archAlias            SKIP (NvDirectMode bin not built: $nvDirectModeBin)") -ForegroundColor Yellow
     }
 
-    # hd3d/* not handled here — those vendor proxy DLLs auto-deploy via vcxproj OutDir.
+    # --- hd3d (AMD HD3D vendor-path proxies) ---
+    # atidxx32/64 (AmdQbProxy), atiadlxy/atiadlxx (AmdAdlProxy), dxgi
+    # (DxgiVendorProxy), d3d11 (D3d11VendorProxy) — all built by S3DDriver.sln,
+    # shipped from Final Release like the rest of that solution.
+    # (Uninstall_HD3D.bat is checked in directly under the hd3d leaves.)
+    $hd3dDst   = Join-Path $repoRoot "releases\wiz3D\hd3d\$archAlias"
+    $hd3dFiles = if ($archAlias -eq 'x86') {
+        @('atidxx32.dll', 'atiadlxy.dll', 'dxgi.dll', 'd3d11.dll')
+    } else {
+        @('atidxx64.dll', 'atiadlxx.dll', 'dxgi.dll', 'd3d11.dll')
+    }
+    Copy-Files -SrcDir $binDir -DstDir $hd3dDst -Files $hd3dFiles -Tag "hd3d/$archAlias"
 }
 
-# --- Spread auto-deployed shared DLLs across all api subfolders ---
-# NvApiProxy auto-deploys to releases/wiz3D/dx9/<arch>/ via its vcxproj OutDir,
-# but games using other render APIs need their own copy. Mirror them here.
+# --- Spread nvapi[64].dll across all api subfolders that need it ---
+# NvApiProxy builds with NvDirectMode.sln into NvDirectMode/bin/Release/<arch>/;
+# every DX leaf ships a copy beside its proxy DLL.
 # (Other OutputMethods incl. SimulatedRealityWeaveOutput build to the standard
-#  bin/Release/<arch>/OutputMethods/ and are distributed by the loops above.)
+#  bin/Final Release/<arch>/OutputMethods/ and are distributed by the loops above.)
 function Spread-File {
     param(
         [Parameter(Mandatory)] [string] $SrcPath,
@@ -282,17 +286,41 @@ function Spread-File {
 }
 
 Write-Host ""
-Write-Host "=== Spreading shared DLLs ===" -ForegroundColor Cyan
+Write-Host "=== Spreading shared files ===" -ForegroundColor Cyan
 $relRoot = Join-Path $repoRoot 'releases\wiz3D'
-foreach ($archAlias in $archs | ForEach-Object { if ($_ -eq 'Win32') { 'x86' } else { 'x64' } }) {
+
+# --- BaseProfile.xml into every DX wrapper folder ---
+$baseProfileSrc = Join-Path $repoRoot 'S3DDriverSetup\Content\BaseProfile.xml'
+$profileTargets = @(
+    "$relRoot\dx7",
+    "$relRoot\dx8",
+    "$relRoot\dx9\x86",
+    "$relRoot\dx9\x64",
+    "$relRoot\dx10-11\x86",
+    "$relRoot\dx10-11\x64"
+)
+Spread-File -SrcPath $baseProfileSrc -DstDirs $profileTargets -Tag 'BaseProfile.xml'
+
+# --- Root docs: license + notices + user quick-start ---
+# Canonical copies live at the repo root (they're part of the GitHub repo);
+# the release root gets LICENSE renamed to LICENSE.txt for Windows users.
+Copy-Item -Path (Join-Path $repoRoot 'LICENSE')                  -Destination (Join-Path $relRoot 'LICENSE.txt') -Force
+Copy-Item -Path (Join-Path $repoRoot 'THIRD_PARTY_NOTICES.txt')  -Destination $relRoot -Force
+Copy-Item -Path (Join-Path $repoRoot 'README.txt')               -Destination $relRoot -Force
+Write-Host ("  {0,-30}  copied to release root" -f 'LICENSE.txt, NOTICES, README')
+
+# --- nvapi[64].dll across DX subfolders that need it ---
+foreach ($archName in $archs) {
+    $archAlias = if ($archName -eq 'Win32') { 'x86' } else { 'x64' }
     $nvapiName = if ($archAlias -eq 'x86') { 'nvapi.dll' } else { 'nvapi64.dll' }
-    $srcNvapi  = Join-Path $relRoot "dx9\$archAlias\$nvapiName"
+    $srcNvapi  = Join-Path $repoRoot "NvDirectMode\bin\Release\$archName\$nvapiName"
     # nvapi spreads into:
-    #   - regular wiz3D dx10-11 (3D Vision-aware games using passive)
-    #   - all four 3d-vision-direct/<api>/<arch>/ leaves (Direct Mode games need NvApiProxy
+    #   - regular wiz3D dx9 and dx10-11 (3D Vision-aware games using passive)
+    #   - all three 3d-vision-direct/<api>/<arch>/ leaves (Direct Mode games need NvApiProxy
     #     beside the NvDirectMode proxy DLL because they call NvAPI_Stereo_SetActiveEye etc.)
     # NOT into opengl-quad-buffer-stereo: the OGL wrapper never touches NvAPI.
     $nvapiTargets = @(
+        "$relRoot\dx9\$archAlias",
         "$relRoot\dx10-11\$archAlias",
         "$relRoot\3d-vision-direct\dx9\$archAlias",
         "$relRoot\3d-vision-direct\dx10\$archAlias",

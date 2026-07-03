@@ -31,17 +31,6 @@ bld/
 [Ll]og/
 [Ll]ogs/
 
-# Re-include the entire lib/ tree. Vendored dependencies (boost, MinHook,
-# zLib, etc.) ship with folder names that collide with the VS build-output
-# patterns above — boost has internal `debug/` source folders, MinHook has
-# build outputs in `Win32/`, `x64/`, `Release/`, and so on. Without this
-# re-inclusion a fresh clone is missing files those subprojects need to
-# build, and contributors can't rebuild from source. Specific lib/*
-# exclusions further down (lib/Simulated Reality/, lib/NVAPI/, etc.) still
-# take precedence over this.
-!lib/
-!lib/**
-
 # Track wiz3D release uninstaller scripts + per-API Config XMLs (manual
 # deployment artifacts). Negations must come AFTER the broad excludes above
 # (incl. x86/, x64/) so they take precedence — order matters in .gitignore.
@@ -51,7 +40,11 @@ bld/
 !releases/
 !releases/**/
 !releases/**/*.bat
-!releases/**/wiz3D_Config.xml
+!releases/**/*_Config.xml
+
+# Specifically avoid the releases/3d-vision-direct directory, because the
+# originals properly live in root of the NvDirectMode project, not here.
+/releases/wiz3D/3d-vision-direct
 
 # Track wiz3D scripts at the repo's bin/ root. Other contents of bin/ stay
 # ignored (build artefacts, unrelated tools).
@@ -381,63 +374,16 @@ MigrationBackup/
 *.lastbuildstate
 *.manifest
 
-# ----- WiZ3D: external SDKs (not included — download separately, see README) -----
-# Leia/Immersity Simulated Reality SDK: https://www.immersity.ai/developers
-lib/Simulated Reality/
-# Same SDK, alternative install location used by some build setups —
-# kept here so the broader `!lib/**` re-inclusion further up doesn't
-# accidentally surface multi-thousand-file Leia runtime binaries.
-lib/SR-lib/
-# NVAPI SDK: https://developer.nvidia.com/nvapi
-lib/nvapi_2026/
-lib/NVAPI/
-# NVPerfSDK (deprecated NVIDIA proprietary, code referencing it is #if 0'd out)
-lib/PerfSDK/
-# madCodeHook binary stubs (replaced by WiZ3D's MinHook shim in lib/madCHook/madCHook.h)
-lib/madCHook/*.lib
-# UDK / Unreal documentation — large reference dump, kept locally only.
-lib/UDK_Documentation/
-
-# Microsoft DirectX SDK header dumps — © Microsoft, redistribution is
-# license-grey. DX9/DX10/DX11 ship with the modern Windows 10/11 SDK so
-# any contributor on VS2022 or VS2026 already has them via system include
-# paths; pinning them in the repo is unnecessary and risky. (Migration of
-# the wrapper .vcxproj include paths from these local copies to the
-# Windows SDK is tracked separately — until that lands, dev machines with
-# these folders locally will still build.)
-lib/d3d9/
-lib/d3d10/
-# DX7 + DX8 are the exception — Microsoft removed both from the Windows
-# SDK ~20 years ago, so vendoring those headers is the only practical way
-# for the DX7 / DX8 wrappers to build. Tracked. (Same retro-modding
-# standard practice as the rest of the legacy-DX community.)
-
-# Other lib/ subfolders kept local-only (Helifax wrapper reference,
-# Tutorial07 demo source, VR sample apps, etc.) — useful for development
-# context but not shipped as part of wiz3D.
-lib/OGL-3DVision-Wrapper/
-lib/3D-Vision-Direct/
-lib/VRScreenCap/
-lib/opengl-3d-vision-bridge/
-# Build-output staging directory (pure intermediate artefacts).
-lib/Preparing/
-
-# LlamaXML — replaced by our LGPL 2.1 ticpp-backed shim at S3DAPI/LlamaXML/.
-# The upstream lib/LlamaXML/ contains GPL v2 source which would taint the
-# combined wiz3D binary (Section 3 of LGPL 2.1 forces conversion to GPL).
-# Kept here so any contributor with a stale local copy can't accidentally
-# re-introduce the GPL code by `git add lib/LlamaXML/`.
-lib/LlamaXML/
-
-# Intermediate build artefacts inside the vendored deps (MSBuild .recipe
-# bookkeeping etc.). The deps' actual built outputs live in lib/<name>/lib/
-# and stay tracked; the obj/ trees regenerate on every build.
-lib/**/obj/
+# ----- AI assistant files (not for source control) -----
+# Claude Code project folder
+.claude/
+# GitHub Copilot instructions
+.github/copilot-instructions.md
 
 # ----- WiZ3D: misc build/temp artifacts -----
+# vcpkg manifest-mode install tree (per-triplet, restored on build from vcpkg.json)
+vcpkg_installed/
 pp_out.xml
-# Generated shader headers (produced by compile_shaders_dx10.bat at build time)
-OutputMethods/*/Shaders_dx10/*.h
 
 # ----- WiZ3D: build configurations with spaces (don't match [Rr]elease/) -----
 Final Release/
@@ -449,8 +395,6 @@ Testing/Logs/
 # (e.g. Bo3b's Tutorial07 from lib/3D-Vision-Direct/) — keep them local.
 Testing/Tutorial07-DX9-DM/
 
-# ----- AI assistant files (not for source control) -----
-# Claude Code project folder
-.claude/
-# GitHub Copilot instructions
-.github/copilot-instructions.md
+# ----- Vendor-dropped libraries are always OK. -----
+!lib/**
+!ThirdPartyLibs/**

@@ -1,14 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <!-- 
+	<!-- 
     Set the platform toolset early enough for MSBuild to find the build tools.
     The original Common.props sets this too late (after Microsoft.Cpp.Default.props).
     Directory.Build.props is auto-imported before any project evaluation.
   -->
-  <PropertyGroup>
-    <PlatformToolset Condition="'$(PlatformToolset)' == ''">v145</PlatformToolset>
-    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <!-- ATL is used pervasively (CComPtr, etc.) — enable it for all projects -->
-    <UseOfAtl>Static</UseOfAtl>
-  </PropertyGroup>
+	<PropertyGroup>
+		<PlatformToolset>v145</PlatformToolset>
+		<!-- Pinned so fxc and other SDK-bin tools (shader compiler especially)
+         produce deterministic output across machines. Bump when the team
+         agrees to move; do NOT use the "10.0" wildcard. -->
+		<WindowsTargetPlatformVersion>10.0.26100.0</WindowsTargetPlatformVersion>
+		<!-- ATL is used pervasively (CComPtr, etc.) — enable it for all projects -->
+		<UseOfAtl>Static</UseOfAtl>
+	</PropertyGroup>
+
+	<!-- DirectXSDK DxErr.lib (and other legacy DX libs) references _vsnwprintf /
+           _vsnprintf as external symbols. These used to live inline in the CRT
+           headers but were externalized; the Windows SDK ships them in
+           legacy_stdio_definitions.lib. Without this, anything linking DxErr
+           (directly or via OutputLib.lib, which merges DxErr's .objs in)
+           fails with "unresolved external symbol __vsnwprintf". -->
+	<ItemDefinitionGroup>
+		<Link>
+			<AdditionalDependencies>legacy_stdio_definitions.lib;%(AdditionalDependencies)</AdditionalDependencies>
+		</Link>
+	</ItemDefinitionGroup>
+
+	<!-- DevIL's IL/il.h defaults its API decls to __declspec(dllimport), which
+           emits __imp__ symbols at the callsite. We link the *-windows-static
+           triplet's DevIL.lib, which only provides the plain symbols, so the
+           header must be told this is a static-lib build. -->
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<PreprocessorDefinitions>IL_STATIC_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ClCompile>
+	</ItemDefinitionGroup>
+
+	<!--BOOST_ALL_NO_LIB disables Boost's #pragma comment(lib, ...) auto-link
+        directives. Our code only uses header-only Boost (shared_ptr,
+        lexical_cast, pool, bind, etc.) but a transitive include chain emits an
+        auto-link for boost_thread's *release* variant, which triggers an
+        LNK2038 RuntimeLibrary mismatch in Debug builds (Debug is /MTd, the
+        release boost_thread is /MT). With auto-link off and no actual boost
+        compiled-lib symbol use, nothing needs to be added explicitly.
+	-->
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<PreprocessorDefinitions>BOOST_ALL_NO_LIB;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+		</ClCompile>
+	</ItemDefinitionGroup>
+
+	<!--Add all Third Party Libs to the build. These are stored in the ThirdPartyLibs
+		directory as a common file for all projects to use. 
+    -->
+	<Import Project="$(MSBuildThisFileDirectory)ThirdPartyLibs\ThirdPartyLibs.props" />
+
+	<!-- LlamaXML shim wiring for every project that touches XML through the
+     shim layer — directly (S3DWrapper9/10, DX9GenerateCodeFromDump, S3DAPI)
+     or transitively (OutputLib + every OutputMethod via the XMLStreamer.h
+     include chain). See lib/LlamaXML_shim.props for the details.
+
+     S3DAPI was previously excluded because it used TinyXML 2.6.2's
+     QueryBoolAttribute (absent in ticpp's bundled 2.5.3). Those calls are
+     now replaced with a QueryIntAttribute-based helper, so S3DAPI links
+     ticpp like everyone else — one ABI for TiXmlNode across all DLLs.
+	 -->
+	<Import Project="$(MSBuildThisFileDirectory)lib\LlamaXML_shim.props" />
+	
 </Project>

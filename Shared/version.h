@@ -9,8 +9,12 @@
  * Original framework: iZ3D Stereo Driver. Copyright lines below preserved
  * for legal attribution; the wiz3D fork retains them per iZ3D's license.
  */
-#include "..\BuildSetup\version.h"
+#include "..\bin\temp_version.h"
 #include "ProductNames.h"
+
+// Pre-release suffix shown next to the version string (e.g. "-rc1", "-beta").
+// Leave empty for stable releases.
+#define VERSION_NAME_SUFFIX     ""
 
 #define _STR(x) #x
 #define STR(x) _STR(x)

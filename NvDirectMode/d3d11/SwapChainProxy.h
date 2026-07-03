@@ -34,6 +34,11 @@
 #include <dxgi1_2.h>
 #include <d3d11.h>
 
+namespace SimulatedReality
+{
+    class SRInterfaceDX11;  // forward declaration to avoid including SR.hpp in the header
+}
+
 namespace NvDirectMode
 {
 
@@ -184,25 +189,23 @@ private:
 
     // OutputMode 8 — Simulated Reality weave (Leia / Samsung Odyssey ML displays).
     // SR runtime DLLs are delay-loaded (vcxproj's DelayLoadDLLs); first call to
-    // EnsureSRWeaver attempts to create the context via SafeSRContextCreate's
-    // SEH-protected wrapper. If the runtime isn't installed (MOD_NOT_FOUND on
-    // delay-load) or no display device responds (ServerNotAvailableException),
-    // the wrap downgrades OutputMode to SBS for the remainder of the session.
+    // EnsureSRWeaver attempts CreateSRInterfaceDX11 from SR-Lib. If the runtime
+    // isn't installed or no SR display is connected, the HRESULT fails and the
+    // wrap downgrades OutputMode to SBS for the remainder of the session.
     //
     // Pipeline: composite SBS-shader writes to m_srSBSTex (2W × H intermediate),
-    // m_srWeaver->setInputViewTexture(m_srSBSSRV) + weave() writes the weaved
-    // frame to the currently-bound RTV (we bind m_realBBRTV first).
+    // SetInputTexture(m_srSBSSRV) binds once on texture creation, Weave() writes
+    // the weaved frame to the currently-bound RTV (we bind m_realBBRTV first).
     bool EnsureSRWeaver();
     bool EnsureSRSBSTexture();
     void ReleaseSRPipeline();
     bool RunSRWeave();
-    // Sticky flag — set if SR runtime missing OR context create failed OR
-    // weaver create failed OR the game is on the SR-incompatible blacklist.
-    // Once set the rest of the session falls back to SBS without re-trying.
-    bool                      m_srBlacklistedOrFailed;
-    void*                     m_srContextOpaque;   // SR::SRContext* (kept void* to avoid SDK
-                                                   // header pollution outside the .cpp)
-    void*                     m_srWeaverOpaque;    // SR::IDX11Weaver1*
+    // Sticky flag — set if SR runtime missing OR interface create failed OR
+    // the game is on the SR-incompatible blacklist. Once set the rest of the
+    // session falls back to SBS without re-trying.
+    bool                               m_srBlacklistedOrFailed;
+    SimulatedReality::SRInterfaceDX11* m_srInterfaceDX11;  
+                                                   
     ID3D11Texture2D*          m_srSBSTex;
     ID3D11RenderTargetView*   m_srSBSRTV;
     ID3D11ShaderResourceView* m_srSBSSRV;

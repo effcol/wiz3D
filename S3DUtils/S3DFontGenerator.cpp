@@ -19,9 +19,9 @@
 #include <set>
 #include "tinyxml.h"
 #include "ProductNames.h"
-#include "..\..\CommonUtils\System.h"
-#include "..\..\CommonUtils\StringUtils.h"
-#include "..\..\CommonUtils\CommonResourceFolders.h"
+#include "CommonUtils\System.h"
+#include "CommonUtils\StringUtils.h"
+#include "CommonUtils\CommonResourceFolders.h"
 
 using namespace std;
 

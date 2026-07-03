@@ -9,12 +9,10 @@
 #include "S3DWrapper9\BaseSwapChain.h"
 #include <tinyxml.h>
 
-// SR SDK headers — identical include paths for both platforms:
-// x64: LeiaSR-SDK-1.36.2-win64  (IDX9Weaver1 / CreateDX9Weaver factory API)
-// Win32: simulatedreality-1.34.10-win32-Release  (same IDX9Weaver1 / CreateDX9Weaver factory API)
-#include "sr/weaver/dx9weaver.h"
-#include "sr/management/srcontext.h"
-#include "sr/utility/exception.h"
+// SR-Lib simplified C-style factory API. Static lib with the SR runtime DLLs
+// delay-loaded — see SR.hpp for the rationale and the linker setup that
+// pairs with it (DelayLoadDLLs in the vcxproj).
+#include "SR.hpp"
 
 using namespace DX9Output;
 
@@ -78,8 +76,7 @@ OUTPUT_API BOOL CALLBACK EnumOutputModes(DWORD num, char* name, DWORD size)
 
 SimulatedRealityWeaveOutput::SimulatedRealityWeaveOutput(DWORD mode, DWORD spanMode)
     : OutputMethod(mode, spanMode)
-    , m_Weaver(nullptr)
-    , m_pSRContext(nullptr)
+    , m_pSRInterface(nullptr)
     , m_pSBSTexture(nullptr)
     , m_ViewWidth(0)
     , m_ViewHeight(0)
@@ -115,12 +112,15 @@ HRESULT SimulatedRealityWeaveOutput::InitializeSCData(CBaseSwapChain* pSwapChain
         m_pSBSTexture->Release();
         m_pSBSTexture = nullptr;
     }
-    // Invalidate weaver D3D pool resources so they can be recreated at new dimensions
-    if (m_WeaverInitialized) {
-        if (m_Weaver)
-            m_Weaver->invalidateDeviceObjects();
-        m_WeaverInitialized = false;
+    // SR-Lib has no invalidate/restore device-objects API; the supported pattern
+    // on device reset (resize, windowed↔fullscreen) is destroy + lazy-recreate.
+    // Output() will rebuild via InitializeWeaver() on the next frame against the
+    // new device state and SBS texture dimensions.
+    if (m_pSRInterface) {
+        m_pSRInterface->Delete();
+        m_pSRInterface = nullptr;
     }
+    m_WeaverInitialized = false;
 
     if (!m_pd3dDevice || !pSwapChain->m_pPrimaryBackBuffer)
         return S_OK;
@@ -141,40 +141,31 @@ HRESULT SimulatedRealityWeaveOutput::InitializeSCData(CBaseSwapChain* pSwapChain
     return S_OK;
 }
 
-HRESULT SimulatedRealityWeaveOutput::InitializeWeaver(IDirect3DDevice9* pDevice, HWND hWnd, UINT width, UINT height)
+HRESULT SimulatedRealityWeaveOutput::InitializeWeaver(IDirect3DDevice9* pDevice, HWND hWnd)
 {
-    // Tear down any previously created weaver (re-init path after device reset / resize)
-    if (m_Weaver) {
-        m_Weaver->destroy();
-        m_Weaver = nullptr;
-    }
-    if (m_pSRContext) {
-        SR::SRContext::deleteSRContext(m_pSRContext);
-        m_pSRContext = nullptr;
+    // Tear down any previously created interface (re-init path after device reset / resize)
+    if (m_pSRInterface) {
+        m_pSRInterface->Delete();
+        m_pSRInterface = nullptr;
     }
 
-    try {
-        // NonBlockingClientMode: connects once, throws ServerNotAvailableException if SR Service is not running
-        m_pSRContext = SR::SRContext::create();
-    }
-    catch (const SR::ServerNotAvailableException&) {
-        return E_FAIL;
-    }
-    catch (...) {
-        return E_FAIL;
-    }
+    // CreateSRInterfaceDX9 manages the lifecycle internally and
+    // probes runtime availability via LoadLibrary before touching any of the
+    // delay-loaded SR DLLs — returns E_NOINTERFACE when the runtime is absent
+    // (the soft path that lets us fall back to Half SBS instead of crashing),
+    // or another failing HRESULT for server-down / no-SR-display / etc.
+    HRESULT hr = SimulatedReality::CreateSRInterfaceDX9(pDevice, hWnd, &m_pSRInterface);
+    if (FAILED(hr) || !m_pSRInterface)
+        return FAILED(hr) ? hr : E_FAIL;
 
-    // IDX9Weaver1 factory API (SDK 1.36.2 x64 / SDK 1.34.10 Win32): no explicit SBS dimensions needed
-    WeaverErrorCode result = SR::CreateDX9Weaver(m_pSRContext, pDevice, hWnd, &m_Weaver);
-    if (result != WeaverSuccess) {
-        SR::SRContext::deleteSRContext(m_pSRContext);
-        m_pSRContext = nullptr;
-        return E_FAIL;
-    }
-
-    // initialize() must be called after all weavers/senses are created
-    m_pSRContext->initialize();
     m_WeaverInitialized = true;
+
+    // Bind the SBS texture once here rather than every Output() frame —
+    // it only changes on device reset, which tears down and recreates
+    // everything via InitializeSCData → InitializeWeaver.
+    if (m_pSBSTexture)
+        m_pSRInterface->SetInputTexture(m_pSBSTexture, m_bSRGB);
+
     return S_OK;
 }
 
@@ -182,7 +173,7 @@ HRESULT SimulatedRealityWeaveOutput::InitializeWeaver(IDirect3DDevice9* pDevice,
 // shutdown). The base OutputMethod::Clear() doesn't know about SR-specific
 // resources, so without this override the weaver and our DEFAULT-pool SBS
 // texture would survive Reset as dangling pointers - next Output() crashes
-// inside m_Weaver->weave() when SR tries to bind its now-invalid vertex
+// inside m_pSRInterface->Weave() when SR tries to bind its now-invalid vertex
 // shader (Max Payne 3 -stereo 1 reproducer, 2026-05-08). After Clear,
 // the wrapper's StartEngine() calls Initialize()/InitializeSCData() to
 // rebuild for the new device state.
@@ -203,13 +194,9 @@ void SimulatedRealityWeaveOutput::Clear()
 
 void SimulatedRealityWeaveOutput::CleanupWeaver()
 {
-    if (m_Weaver) {
-        m_Weaver->destroy();
-        m_Weaver = nullptr;
-    }
-    if (m_pSRContext) {
-        SR::SRContext::deleteSRContext(m_pSRContext);
-        m_pSRContext = nullptr;
+    if (m_pSRInterface) {
+        m_pSRInterface->Delete();
+        m_pSRInterface = nullptr;
     }
     if (m_pSBSTexture) {
         m_pSBSTexture->Release();
@@ -233,7 +220,7 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
     // black frame, and we don't keep retrying SR every Present.
     if (!m_WeaverInitialized && !m_bSRFallbackActive) {
         HWND hWnd = pSwapChain->GetAppWindow();
-        HRESULT hr = InitializeWeaver(m_pd3dDevice, hWnd, m_ViewWidth, m_ViewHeight);
+        HRESULT hr = InitializeWeaver(m_pd3dDevice, hWnd);
         if (FAILED(hr)) {
             m_bSRFallbackActive = true;
             OutputDebugStringA("[SimulatedRealityWeaveOutput] SR runtime unavailable — falling back to Half SBS for this session.\n");
@@ -243,7 +230,7 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
     if (m_bSRFallbackActive)
         return OutputSBSFallback(pSwapChain);
 
-    if (!m_Weaver || !m_pSBSTexture)
+    if (!m_pSRInterface || !m_pSBSTexture)
         return S_OK;
 
     IDirect3DSurface9* pLeft  = pSwapChain->GetLeftBackBufferRT();
@@ -277,18 +264,11 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
     IDirect3DStateBlock9* pSavedState = nullptr;
     HRESULT hrSB = m_pd3dDevice->CreateStateBlock(D3DSBT_ALL, &pSavedState);
 
-    // SEH safety net around weave(). On Tales of Berseria x64 we see SR's
-    // weave() body call back into our wrapper's SetVertexShader with a
-    // pointer that crashes inside d3d9.dll +0x258FF (READ of -1). With this
-    // crash mid-weave the state-block Apply() never runs, the wrapper sees
-    // the corrupted state on the next frame, and the game dies. Wrapping
-    // the weave call in __try/__except lets us catch the AV here, mark the
-    // session as SR-failed, and fall back to plain Half SBS for the rest of
-    // the session so the game keeps running. The session stays in SBS even
-    // if the next frame's weave() would have succeeded — once SR has shown
-    // it can crash this device, we trust it not at all for the duration.
-    bool weaveOK = SafeWeave(m_Weaver, m_pSBSTexture,
-                             m_ViewWidth, m_ViewHeight, m_ViewFormat, m_bSRGB);
+    // SR-Lib builds its own clean D3D objects internally, so the old
+    // wrapped-pointer crash path (Tales of Berseria, SR SDK era) should be
+    // closed. No SEH wrapper needed; if SR-Lib ever crashes here the
+    // minidump will point at the real problem.
+    m_pSRInterface->Weave();
 
     if (SUCCEEDED(hrSB) && pSavedState)
     {
@@ -296,39 +276,7 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
         pSavedState->Release();
     }
 
-    if (!weaveOK)
-    {
-        OutputDebugStringA("[SimulatedRealityWeaveOutput] weave() raised AV — disabling SR for this session, falling back to Half SBS.\n");
-        m_bSRFallbackActive = true;
-        return OutputSBSFallback(pSwapChain);
-    }
-
     return S_OK;
-}
-
-// SEH-protected weave() invocation. Factored into its own function because
-// __try/__except cannot share scope with C++ try/catch (which the surrounding
-// Output() / InitializeWeaver have elsewhere in this TU). Returns true on
-// success, false if SR's weave() raised an access violation (or any other
-// fatal SEH exception — we treat all of those as "SR is broken on this
-// device, switch to SBS").
-bool SimulatedRealityWeaveOutput::SafeWeave(
-    SR::IDX9Weaver1* weaver,
-    IDirect3DTexture9* sbsTexture,
-    UINT width, UINT height, D3DFORMAT format, bool isSRGB)
-{
-    __try {
-        weaver->setInputViewTexture(sbsTexture, width, height, format, isSRGB);
-        weaver->setOutputSRGBWrite(isSRGB);
-        weaver->weave();
-        return true;
-    }
-    __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION
-                ? EXCEPTION_EXECUTE_HANDLER
-                : EXCEPTION_CONTINUE_SEARCH)
-    {
-        return false;
-    }
 }
 
 // Plain Half SBS rendering, invoked when SR weave is unavailable. Mirrors the

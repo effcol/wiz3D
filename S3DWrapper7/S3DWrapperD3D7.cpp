@@ -18,8 +18,8 @@
 #include <initguid.h>
 #include <algorithm>
 #include "Trace.h"
-#include "../../CommonUtils/StringUtils.h"
-#include "../../CommonUtils/CommonResourceFolders.h"
+#include "CommonUtils/StringUtils.h"
+#include "CommonUtils/CommonResourceFolders.h"
 
 #define PROFILES_VERSION 1
 

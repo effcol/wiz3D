@@ -2,10 +2,9 @@
 //
 
 #include "stdafx.h"
-#include "S3DAPI.h"
 #include "GlobalData.h"
 #include "StereoAPI.h"
-#include "..\BuildSetup\version.h"
+#include "Shared\version.h"
 
 HRESULT StereoAPI::GetDriverVersion(DWORD* pMajor, DWORD* pMinor, DWORD* pBuild, DWORD* pQFE)
 {

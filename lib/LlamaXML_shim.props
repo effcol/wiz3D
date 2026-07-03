@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<!-- LlamaXML shim wiring — imported by every project that consumes XML
+	     through the shim layer, either directly (S3DAPI via ReadData,
+	     S3DWrapper9 via CommandDumper, S3DWrapper10 via the Streamer subfolder,
+	     DX9GenerateCodeFromDump) or
+	     transitively (OutputLib + every OutputMethod via the include chain
+	     ...→ S3DWrapper10/Commands/Command.h → CmdFlowStreamers.h →
+	     XMLStreamer.h → LlamaXML/XMLReader.h → ticpp.h → tinyxml.h, and the
+	     parallel chain through S3DWrapper9's BaseStereoRenderer-inl.h).
+
+	     What this wires:
+	       - lib/LlamaXML and lib/ticpp_2.5.3/Include on the include path
+	       - TIXML_USE_TICPP define (matches how ticpp.lib was built — adds
+	         the TiCppRC base to TiXmlBase, a structural ABI change; MUST be
+	         set consistently for every TU that touches a TiXml* type,
+	         including transitive ones)
+	       - ticpp.lib + its arch/config-specific lib dir on the link line
+
+	     StaticLibrary consumers (e.g. OutputLib) inherit the Link block too;
+	     lib-mode build silently ignores Link properties so this is harmless.
+
+	     Named LlamaXML_shim.props rather than ticpp.props because the wiring
+	     exists *to support the shim*. ticpp is the implementation detail.
+	     When (per lib/README.md's recommendation) the XML stack is collapsed
+	     onto a single modern TinyXML-2, this file and its props consumers go
+	     away as a single removal — that's the unit of work this file isolates. -->
+
+	<PropertyGroup>
+		<_LIB>$(MSBuildThisFileDirectory)</_LIB>
+		<!-- ticpp uses x86/x64 for its arch lib folders (under capital-L `Lib\`). -->
+		<_Arch86 Condition="'$(Platform)' == 'Win32'">x86</_Arch86>
+		<_Arch86 Condition="'$(Platform)' == 'x64'">x64</_Arch86>
+		<!-- ticpp ships only Debug and Release lib subdirs; Final Release
+		     reuses the optimized Release libs (there is no FR subdir). -->
+		<_Config>$(Configuration)</_Config>
+		<_Config Condition="'$(Configuration)' == 'Final Release'">Release</_Config>
+	</PropertyGroup>
+
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<PreprocessorDefinitions>TIXML_USE_TICPP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+			<AdditionalIncludeDirectories>$(_LIB)ticpp_2.5.3\Include;$(_LIB)LlamaXML;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+		</ClCompile>
+		<Link>
+			<AdditionalDependencies>ticpp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+			<AdditionalLibraryDirectories>$(_LIB)ticpp_2.5.3\Lib\$(_Arch86)\$(_Config);%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+		</Link>
+	</ItemDefinitionGroup>
+
+</Project>

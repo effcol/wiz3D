@@ -16,7 +16,7 @@
 #include "..\S3DAPI\ReadData.h"
 #include "ShaderAnalyzer.h"
 #include <tinyxml.h>
-#include "../../CommonUtils/CommonResourceFolders.h"
+#include "CommonUtils/CommonResourceFolders.h"
 #include "CommandDumper.h"
 
 void InitDirectories()

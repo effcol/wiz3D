@@ -13,7 +13,12 @@
 
 #include "SharedInclude.h"
 
+// _CRTDBG_MAP_ALLOC (via SharedInclude.h) redefines 'free' as '_free_dbg',
+// which corrupts boost::object_pool::free(). Shield the Pool header only.
+#pragma push_macro("free")
+#undef free
 #include <boost\pool\pool_alloc.hpp>
+#pragma pop_macro("free")
 
 // DX10
 typedef LARGE_INTEGER PHYSICAL_ADDRESS, *PPHYSICAL_ADDRESS;

@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+
+	<PropertyGroup>
+		<_TPL>$(MSBuildThisFileDirectory)</_TPL>
+		<!-- The two arch spellings vendors use for their lib folders/filenames.
+		     Pick the one a given lib happens to ship. -->
+		<_Arch86 Condition="'$(Platform)' == 'Win32'">x86</_Arch86>
+		<_Arch86 Condition="'$(Platform)' == 'x64'">x64</_Arch86>
+		<_Arch32 Condition="'$(Platform)' == 'Win32'">x32</_Arch32>
+		<_Arch32 Condition="'$(Platform)' == 'x64'">x64</_Arch32>
+		<!-- Libs only ship Debug and Release lib folders; Final Release reuses
+		     the optimized Release libs (there is no "Final Release" folder). -->
+		<_Config>$(Configuration)</_Config>
+		<_Config Condition="'$(Configuration)' == 'Final Release'">Release</_Config>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<!-- Per-lib import names. Projects reference these (e.g. $(MinHookLib)) in their
+	     <AdditionalDependencies> instead of hand-typing the arch/config-specific
+	     filename, so the right variant is picked here once and can't drift per
+	     project/config. MinHook's filenames use x32/x64 (not x86) with a 'd' suffix
+	     in Debug. As more libs move out of vcpkg into ThirdPartyLibs, add their
+	     name properties here alongside it. -->
+		<MinHookLib>minhook.$(_Arch32).lib</MinHookLib>
+		<MinHookLib Condition="'$(Configuration)' == 'Debug'">minhook.$(_Arch32)d.lib</MinHookLib>
+
+		<!-- SR-Lib ships four CRT variants per arch (mt/mtd/md/mdd) and uses
+		     x32/x64 folder names. Every config builds with the static CRT
+		     (/MTd Debug, /MT Release+Final Release), so we pick the mt/mtd
+		     variant on Configuration; the md/mdd DLL-CRT libs go unused. The
+		     consumer that links $(SRLib) must delay-load the SR runtime DLLs
+		     (see SR.hpp). -->
+		<SRLib>SR-mt.lib</SRLib>
+		<SRLib Condition="'$(Configuration)' == 'Debug'">SR-mtd.lib</SRLib>
+
+		<!-- zlib: vcpkg port artifact names are zs.lib (Release) / zsd.lib (Debug);
+		     kept as-is on vendor drop so existing consumer references stay valid. -->
+		<ZlibLib>zs.lib</ZlibLib>
+		<ZlibLib Condition="'$(Configuration)' == 'Debug'">zsd.lib</ZlibLib>
+
+		<!-- Xerces-C 3.3 (built with the xmlch-wchar feature so XMLCh == wchar_t).
+		     vcpkg artifact names are xerces-c_3.lib / xerces-c_3D.lib (Debug). No
+		     XERCES_STATIC_LIBRARY define is needed: the vendored static drop's
+		     Xerces_autoconf_config.hpp self-defines it (and 3.x keys static mode off
+		     XERCES_DLL_EXPORT, which it leaves undefined). -->
+		<XercesLib>xerces-c_3.lib</XercesLib>
+		<XercesLib Condition="'$(Configuration)' == 'Debug'">xerces-c_3D.lib</XercesLib>
+
+		<!-- libsquish 1.15: vcpkg artifact names squish.lib / squishd.lib (Debug). -->
+		<SquishLib>squish.lib</SquishLib>
+		<SquishLib Condition="'$(Configuration)' == 'Debug'">squishd.lib</SquishLib>
+
+		<!-- DevIL 1.8.0, built [core,libpng,libjpeg] (PNG+JPG; BMP/DDS/TGA are core).
+		     Component name properties so each consumer links only the parts it uses:
+		     DevIL (il* base API), ILU (ilu* utilities), ILUT (ilut* GL/D3D bridge),
+		     plus DevIL's codec deps libpng16 and libjpeg (jpeg/turbojpeg). zlib is its
+		     own existing $(ZlibLib). Only libpng16 differs by config (libpng16d). The
+		     bundled zs.lib is kept faithful to the drop but is shadowed by
+		     zlib_v1.3.2 on the search path (listed first); link zlib via $(ZlibLib). -->
+		<DevILLib>DevIL.lib</DevILLib>
+		<ILULib>ILU.lib</ILULib>
+		<LibPngLib>libpng16.lib</LibPngLib>
+		<LibPngLib Condition="'$(Configuration)' == 'Debug'">libpng16d.lib</LibPngLib>
+		<JpegLib>jpeg.lib</JpegLib>
+
+		<!-- DirectX SDK (June 2010): legacy D3DX, vendored for the retro D3D9/10/11
+		     paths. d3dx9/10/11 are import libs for the d3dx*_43.dll redistributables
+		     (provided by the DirectX End-User Runtime, not shipped here), each with a
+		     'd'-suffix Debug variant. DxErr.lib is byte-identical in Debug/Release
+		     (no variant). d3dxof.lib and dsetup.lib are vendored faithfully but
+		     unused. d3d9.lib is also vendored (the Jun2010 import lib, no variant) and
+		     linked by literal name where needed; on the prepended search path it keeps
+		     the whole tree on the Jun2010 D3D9 surface, coherent with the vendored
+		     d3d9.h. It is functionally identical to the Windows SDK copy (both merely
+		     import the system d3d9.dll). -->
+		<D3DX9Lib>d3dx9.lib</D3DX9Lib>
+		<D3DX9Lib Condition="'$(Configuration)' == 'Debug'">d3dx9d.lib</D3DX9Lib>
+		<D3DX10Lib>d3dx10.lib</D3DX10Lib>
+		<D3DX10Lib Condition="'$(Configuration)' == 'Debug'">d3dx10d.lib</D3DX10Lib>
+		<D3DX11Lib>d3dx11.lib</D3DX11Lib>
+		<D3DX11Lib Condition="'$(Configuration)' == 'Debug'">d3dx11d.lib</D3DX11Lib>
+		<DxErrLib>DxErr.lib</DxErrLib>
+		
+		<!-- Boost 1.91.0 unit_test_framework: the only compiled boost lib in use,
+		     linked by the dormant-but-kept TestsPack regression suite. BOOST_ALL_NO_LIB
+		     disables boost's #pragma auto-link, so the test projects name it explicitly.
+		     Unlike the other vendored libs, boost's filenames already encode every
+		     variant axis: toolset (vc145), threading (mt), the debug tag (gd), address
+		     model (x32/x64), and version (1_91). So the drop is a single FLAT lib\ folder
+		     holding all four self-named variants (no arch\config subtree) — a minimal,
+		     deliberately-different layout. We select by name: $(_Arch32) supplies the
+		     x32/x64 address-model tag (Win32->x32, x64->x64) and Debug adds the '-gd-'
+		     infix; Final Release uses the plain release lib. -->
+		<BoostLib>boost_unit_test_framework-vc145-mt-$(_Arch32)-1_91.lib</BoostLib>
+		<BoostLib Condition="'$(Configuration)' == 'Debug'">boost_unit_test_framework-vc145-mt-gd-$(_Arch32)-1_91.lib</BoostLib>
+
+	</PropertyGroup>
+
+	<ItemDefinitionGroup>
+		<ClCompile>
+			<AdditionalIncludeDirectories>
+				$(_TPL)MinHook_v1.3.4\include;
+				$(_TPL)SR-Lib_v2.0.0\include;
+				$(_TPL)zlib_v1.3.2\Include;
+				$(_TPL)Xerces-C_v3.3.0\Include;
+				$(_TPL)libsquish_v1.15\Include;
+				$(_TPL)DevIL_v1.8.0\Include;
+				$(_TPL)DirectXSDK_Jun2010\Include;
+				$(_TPL)boost_v1.91.0\Include;
+				%(AdditionalIncludeDirectories)
+			</AdditionalIncludeDirectories>
+		</ClCompile>
+		<Link>
+			<AdditionalLibraryDirectories>
+				$(_TPL)MinHook_v1.3.4\lib\$(_Arch86)\$(_Config);
+				$(_TPL)SR-Lib_v2.0.0\lib\$(_Arch86)\$(_Config);
+				$(_TPL)zlib_v1.3.2\lib\$(_Arch86)\$(_Config);
+				$(_TPL)Xerces-C_v3.3.0\lib\$(_Arch86)\$(_Config);
+				$(_TPL)libsquish_v1.15\lib\$(_Arch86)\$(_Config);
+				$(_TPL)DevIL_v1.8.0\lib\$(_Arch86)\$(_Config);
+				$(_TPL)DirectXSDK_Jun2010\lib\$(_Arch86)\$(_Config);
+				$(_TPL)boost_v1.91.0\lib;
+				%(AdditionalLibraryDirectories)
+			</AdditionalLibraryDirectories>
+		</Link>
+	</ItemDefinitionGroup>
+
+</Project>

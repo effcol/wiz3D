@@ -30,17 +30,10 @@
 #include "log.h"
 #include "../anaglyph_matrices.h"
 
-#ifdef SR_WEAVE_ENABLED
-// Leia / Simulated Reality SDK headers (DelayLoad'd via vcxproj — DLLs
-// are only attempted on first weaver create, so non-SR systems pay no
-// cost beyond import-table entries).
-#include "sr/weaver/glweaver.h"
-
-// OpenCV-free stub: SR's Exception header references cv::String::deallocate.
-// Same trick as d3d9/d3d10/d3d11 — provide an empty body so the linker is
-// happy without pulling in opencv_world343.lib (~10 MB).
-void cv::String::deallocate() {}
-#endif
+// SR-Lib — static library wrapping the Simulated Reality SDK.
+// All SR import libs are merged into SR-mt[d].lib; the final DLL must
+// delay-load the SR runtime DLLs (see SR.hpp header comment for the list).
+#include "SR.hpp"
 
 #include <ctype.h>
 
@@ -177,23 +170,21 @@ namespace
     };
     EyeFbos g_fbos;
 
-#ifdef SR_WEAVE_ENABLED
     // OutputMode 8 SR weave state. SR runtime DLLs are delay-loaded; first
-    // RunSRWeave() call lazy-creates the context + IGLWeaver1 + 2W × H SBS
+    // RunSRWeave() call lazy-creates the SR-Lib interface + 2W × H SBS
     // intermediate texture + its FBO wrapper. ReleaseSRPipeline() tears it
     // all down on context loss / window resize / DLL detach.
     struct SRState
     {
-        bool   blacklistedOrFailed = false;
-        void*  contextOpaque       = nullptr;   // SR::SRContext*
-        void*  weaverOpaque        = nullptr;   // SR::IGLWeaver1*
+        bool                              blacklistedOrFailed = false;
+        SimulatedReality::SRInterfaceOGL* srInterfaceOGL      = nullptr;
+
         GLuint sbsTex              = 0;         // 2W × H, RGBA8
         GLuint sbsFbo              = 0;         // FBO whose color attachment is sbsTex
         int    sbsW                = 0;
         int    sbsH                = 0;
     };
     SRState g_sr;
-#endif
 
     // Shader / program / VBO entry points for OutputMode 4-7.
     PFN_glCreateShader            p_glCreateShader            = nullptr;
@@ -436,21 +427,7 @@ void EyeFbosDestroy()
 #define GL_COLOR_BUFFER_BIT               0x00004000
 #endif
 
-#ifdef SR_WEAVE_ENABLED
-
-// SEH-protected wrapper for SR::SRContext::create(). Mirrors d3d9/d3d10/d3d11.
-static SR::SRContext* SafeSRContextCreate(bool* pDllMissing)
-{
-    *pDllMissing = false;
-    __try { return SR::SRContext::create(); }
-    __except (GetExceptionCode() == 0xC06D007E ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
-    {
-        *pDllMissing = true;
-        return nullptr;
-    }
-}
-
-// Mirror of the d3d9/d3d10/d3d11 blacklist. Keep aligned manually.
+// Mirror of the d3d11 blacklist. Keep aligned manually.
 static bool IsSRIncompatibleExe()
 {
     wchar_t exePath[MAX_PATH] = {};
@@ -472,17 +449,10 @@ static void ReleaseSRPipeline()
         p_glDeleteTextures(1, &g_sr.sbsTex);
     g_sr.sbsFbo = 0; g_sr.sbsTex = 0; g_sr.sbsW = 0; g_sr.sbsH = 0;
 
-    if (g_sr.weaverOpaque)
+    if (g_sr.srInterfaceOGL)
     {
-        SR::IGLWeaver1* w = static_cast<SR::IGLWeaver1*>(g_sr.weaverOpaque);
-        w->destroy();
-        g_sr.weaverOpaque = nullptr;
-    }
-    if (g_sr.contextOpaque)
-    {
-        SR::SRContext* c = static_cast<SR::SRContext*>(g_sr.contextOpaque);
-        SR::SRContext::deleteSRContext(c);
-        g_sr.contextOpaque = nullptr;
+        g_sr.srInterfaceOGL->Delete();
+        g_sr.srInterfaceOGL = nullptr;
     }
 }
 
@@ -533,13 +503,18 @@ static bool EnsureSRSBSTexture()
 
     g_sr.sbsTex = tex; g_sr.sbsFbo = fbo;
     g_sr.sbsW = wantW;  g_sr.sbsH = wantH;
+
+    // Bind SBS texture to the SR interface once per texture creation (not per frame).
+    if (g_sr.srInterfaceOGL)
+        g_sr.srInterfaceOGL->SetInputTexture(g_sr.sbsTex);
+
     return true;
 }
 
 static bool EnsureSRWeaver()
 {
     if (g_sr.blacklistedOrFailed) return false;
-    if (g_sr.weaverOpaque) return true;
+    if (g_sr.srInterfaceOGL) return true;
 
     static bool s_blacklistChecked = false;
     static bool s_isBlacklisted    = false;
@@ -562,24 +537,6 @@ static bool EnsureSRWeaver()
     }
     if (s_isBlacklisted) { g_sr.blacklistedOrFailed = true; return false; }
 
-    bool dllMissing = false;
-    SR::SRContext* ctx = nullptr;
-    try { ctx = SafeSRContextCreate(&dllMissing); }
-    catch (...)
-    {
-        NvDM_Log("  opengl32 EnsureSRWeaver: SRContext::create threw exception (SR Service down or other failure)\n");
-        g_sr.blacklistedOrFailed = true;
-        return false;
-    }
-    if (dllMissing)
-    {
-        if (NvDM_VerboseEnabled())
-            NvDM_Log("  opengl32 EnsureSRWeaver: SR runtime DLLs not installed; downgrading SR weave -> SBS\n");
-        g_sr.blacklistedOrFailed = true;
-        return false;
-    }
-    if (!ctx) { g_sr.blacklistedOrFailed = true; return false; }
-
     // HWND from the current GL context's HDC. Resolve wglGetCurrentDC via
     // g_hRealOpenGL32 — our own DLL IS opengl32 from the game's POV, so we
     // can't directly link against opengl32.lib's wglGetCurrentDC; calling
@@ -592,27 +549,18 @@ static bool EnsureSRWeaver()
     HDC  hdc  = s_pWglGetCurrentDC ? s_pWglGetCurrentDC() : nullptr;
     HWND hWnd = hdc ? WindowFromDC(hdc) : nullptr;
 
-    // Two-step weaver init — see d3d11 EnsureSRWeaver for rationale.
-    // NOTE: CreateGLWeaver takes SRContext by reference, NOT pointer
-    // (unlike the DX variants — caught the hard way by mirroring DX10).
-    SR::IGLWeaver1* weaver = nullptr;
-    WeaverErrorCode res = SR::CreateGLWeaver(*ctx, nullptr, &weaver);
-    if (res != WeaverSuccess || !weaver)
+    // SR-Lib: single-call init — creates SRContext + weaver internally.
+    HRESULT hr = SimulatedReality::CreateSRInterfaceOGL(hWnd, &g_sr.srInterfaceOGL);
+    if (FAILED(hr) || !g_sr.srInterfaceOGL)
     {
-        NvDM_Log("  opengl32 EnsureSRWeaver: CreateGLWeaver failed (err=%d hWnd=%p)\n",
-                 (int)res, (void*)hWnd);
-        SR::SRContext::deleteSRContext(ctx);
+        NvDM_Log("  opengl32 EnsureSRWeaver: CreateSRInterfaceOGL failed (hr=0x%08lX hWnd=%p)\n",
+                 hr, (void*)hWnd);
         g_sr.blacklistedOrFailed = true;
         return false;
     }
-    weaver->setWindowHandle(hWnd);
 
-    ctx->initialize();
-
-    g_sr.contextOpaque = ctx;
-    g_sr.weaverOpaque  = weaver;
-    NvDM_Log("  opengl32 EnsureSRWeaver: ready (hWnd=%p ctx=%p weaver=%p)\n",
-             (void*)hWnd, (void*)ctx, (void*)weaver);
+    NvDM_Log("  opengl32 EnsureSRWeaver: ready (hWnd=%p srInterface=%p)\n",
+             (void*)hWnd, (void*)g_sr.srInterfaceOGL);
     return true;
 }
 
@@ -644,14 +592,14 @@ static bool RunSRWeave()
                         W, 0, 2 * W, H,
                         GL_COLOR_BUFFER_BIT, GL_LINEAR);
 
-    // Step B: bind default FB and let the SR weaver write into it.
+    // Step B: bind default FB and call Weave() — the SR-Lib interface
+    // already has the SBS texture from SetInputTexture (bound once in
+    // EnsureSRSBSTexture).
     p_glBindFramebuffer(GL_FRAMEBUFFER, 0);
     if (p_glViewport) p_glViewport(0, 0, W, H);
 
-    SR::IGLWeaver1* weaver = static_cast<SR::IGLWeaver1*>(g_sr.weaverOpaque);
-    NVDM_TRACE_FIRST_N(5, "  opengl32 RunSRWeave: weave call - weaver=%p\n", (void*)weaver);
-    weaver->setInputViewTexture(g_sr.sbsTex, g_sr.sbsW, g_sr.sbsH, GL_RGBA8);
-    weaver->weave();
+    NVDM_TRACE_FIRST_N(5, "  opengl32 RunSRWeave: weave call - srInterface=%p\n", (void*)g_sr.srInterfaceOGL);
+    g_sr.srInterfaceOGL->Weave();
     NVDM_TRACE_FIRST_N(5, "  opengl32 RunSRWeave: weave returned OK\n");
 
     static volatile long s_weaveCount = 0;
@@ -661,11 +609,6 @@ static bool RunSRWeave()
 
     return true;
 }
-
-#else  // !SR_WEAVE_ENABLED — keep call sites compiling without the SDK headers
-static void ReleaseSRPipeline() {}
-static bool RunSRWeave()        { return false; }
-#endif
 
 void EyeFbosBindForActiveEye(GLenum target)
 {

@@ -1,9 +1,14 @@
 # wiz3D - build_and_deploy.ps1
 #
-# One-shot: builds all three wiz3D solutions (S3DDriver.sln, wiz3D-proxy.sln,
-# NvDirectMode.sln) for one or both architectures (Release), then runs
-# deploy_to_releases.ps1 to copy every freshly-built DLL into the appropriate
-# releases/wiz3D/ subfolder.
+# One-shot: builds all three wiz3D solutions for one or both architectures,
+# then runs deploy_to_releases.ps1 to copy every freshly-built DLL into the
+# appropriate releases/wiz3D/ subfolder.
+#
+# Configurations match what deploy_to_releases.ps1 ships:
+#   S3DDriver.sln    -> Final Release (the shipping config; deploy reads
+#                       bin/Final Release/<arch>/)
+#   wiz3D-proxy.sln  -> Release (no Final Release config on that solution)
+#   NvDirectMode.sln -> Release
 #
 # Usage:
 #   .\bin\build_and_deploy.ps1                       # all slns, both archs
@@ -27,12 +32,6 @@ $repoRoot         = Split-Path -Parent $PSScriptRoot
 $mainSln          = Join-Path $repoRoot 'S3DDriver.sln'
 $proxySln         = Join-Path $repoRoot 'wiz3D-proxy\wiz3D-proxy.sln'
 $nvDirectModeSln  = Join-Path $repoRoot 'NvDirectMode\NvDirectMode.sln'
-# NvApiProxy is a standalone vcxproj (not in any sln) — its OutDir writes
-# directly into releases/wiz3D/dx9/<arch>/, then deploy_to_releases.ps1
-# spreads nvapi[64].dll to all six leaves that need it. Without this
-# explicit build, edits to NvApiProxy.cpp are silently dropped from the
-# deployed binary because no .sln pulls it in.
-$nvApiProxyProj   = Join-Path $repoRoot 'NvApiProxy\NvApiProxy.vcxproj'
 $msbuild          = 'C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe'
 
 if (-not (Test-Path $msbuild)) {
@@ -55,29 +54,17 @@ if (-not $SkipNvDirectMode -and (Test-Path $nvDirectModeSln)) {
 if (-not $SkipBuild) {
     foreach ($s in $slnsToBuild) {
         $slnName = Split-Path -Leaf $s
+        $cfg = if ($s -eq $mainSln) { 'Final Release' } else { 'Release' }
         foreach ($a in $archs) {
             Write-Host ""
-            Write-Host "=== Building $slnName  Release|$a ===" -ForegroundColor Cyan
-            & $msbuild $s /p:Configuration=Release /p:Platform=$a /m /nologo /verbosity:minimal
+            Write-Host "=== Building $slnName  $cfg|$a ===" -ForegroundColor Cyan
+            & $msbuild $s "/p:Configuration=$cfg" /p:Platform=$a /m /nologo /verbosity:minimal
             # MSBuild returns nonzero when ANY project fails. Most failing
             # projects are pre-existing test EXEs (boost x64, DXUT D3DX9
             # stubs); the user-facing release DLLs build first and deploy
             # will pick them up. So we just warn rather than abort.
             if ($LASTEXITCODE -ne 0) {
                 Write-Host "  (msbuild exit $LASTEXITCODE - continuing; deploy will skip any DLLs that didn't build)" -ForegroundColor Yellow
-            }
-        }
-    }
-
-    # NvApiProxy.vcxproj sits outside any .sln — build it explicitly so
-    # edits to NvApiProxy.cpp don't get silently dropped from deploy.
-    if (Test-Path $nvApiProxyProj) {
-        foreach ($a in $archs) {
-            Write-Host ""
-            Write-Host "=== Building NvApiProxy.vcxproj  Release|$a ===" -ForegroundColor Cyan
-            & $msbuild $nvApiProxyProj /p:Configuration=Release /p:Platform=$a /m /nologo /verbosity:minimal
-            if ($LASTEXITCODE -ne 0) {
-                Write-Host "  (msbuild exit $LASTEXITCODE - continuing; deploy will skip nvapi.dll if it didn't build)" -ForegroundColor Yellow
             }
         }
     }

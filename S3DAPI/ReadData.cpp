@@ -51,6 +51,20 @@ TiXmlDocument *g_docConfig = NULL;
 TiXmlNode* g_outputConfig = NULL;
 int g_PreTransformProjectionId = 0;
 
+// QueryBoolAsInt is a helper function that reads an integer attribute from an 
+// XML element and converts it to a boolean value. This was previously using
+// QueryBoolAttribute, but that function is not available in the ticpp version
+// we are using, so this is a helper to avoid needing the a different version
+// of TinyXML. 
+static int QueryBoolAsInt(TiXmlElement* elem, const char* name, bool* bval)
+{
+	int ival;
+	int result = elem->QueryIntAttribute(name, &ival);
+	if (result == TIXML_SUCCESS)
+		*bval = (ival != 0);
+	return result;
+}
+
 enum ValueType
 {
 	vtInt,
@@ -82,7 +96,7 @@ void XmlValue::ReadData(TiXmlElement* pElem, char* pAttribute)
 			pElem->QueryIntAttribute("Value", (int*)pVal);
 			break;
 		case vtBool:
-			pElem->QueryBoolAttribute("Value", (bool*)pVal);
+			QueryBoolAsInt(pElem, "Value", (bool*)pVal);
 			break;
 		case vtFloat:
 			pElem->QueryFloatAttribute("Value", (float*)pVal);
@@ -471,19 +485,19 @@ void ReadInputData(TiXmlNode* node)
 	TiXmlElement* item = node->ToElement();
 	TiXmlElement* pitem = item->FirstChildElement("ShowWizardAtStartup");
 	if (pitem)
-		pitem->QueryBoolAttribute("Value", &gInfo.Input.ShowWizardAtStartup);
+		QueryBoolAsInt(pitem, "Value", &gInfo.Input.ShowWizardAtStartup);
 	pitem = item->FirstChildElement("SwapEyes");
 	if (pitem)
-		pitem->QueryBoolAttribute("Value", &gInfo.Input.SwapEyes);
+		QueryBoolAsInt(pitem, "Value", &gInfo.Input.SwapEyes);
 	pitem = item->FirstChildElement("LaserSightEnable");
 	if (pitem)
-		pitem->QueryBoolAttribute("Value", &gInfo.Input.LaserSightEnable);
+		QueryBoolAsInt(pitem, "Value", &gInfo.Input.LaserSightEnable);
 	// NvAPI bridge: stereo on/off persists in UserProfile so the in-game
 	// 3D Vision-style toggle round-trips across sessions (and across the
 	// launcher/game split for titles like Batman AA).
 	pitem = item->FirstChildElement("StereoActive");
 	if (pitem)
-		pitem->QueryBoolAttribute("Value", &gInfo.Input.StereoActive);
+		QueryBoolAsInt(pitem, "Value", &gInfo.Input.StereoActive);
 	node = node->FirstChild("Presets");
 	if (node)
 	{
@@ -506,7 +520,7 @@ void ReadInputData(TiXmlNode* node)
 
 				pitem = item->FirstChildElement("AutoFocusEnable");
 				if (pitem)
-					pitem->QueryBoolAttribute("Value", &gInfo.Input.Preset[i].AutoFocusEnable);
+					QueryBoolAsInt(pitem, "Value", &gInfo.Input.Preset[i].AutoFocusEnable);
 			}
 		}
 	}
@@ -995,7 +1009,7 @@ void ReadShaderData( TiXmlElement* elem, int shaderType, float fMultiplier, floa
 	pProfile->m_ConvergenceShift = fConvergenceShift;
 
 	bool bModifyShader = false;
-	if (shaderType == 1 && elem->QueryBoolAttribute("Modify", &bModifyShader)==TIXML_SUCCESS)
+	if (shaderType == 1 && QueryBoolAsInt(elem, "Modify", &bModifyShader)==TIXML_SUCCESS)
 		pProfile->m_bModifyShader = bModifyShader;
 
 	float ZNear;

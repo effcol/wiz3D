@@ -13,18 +13,10 @@
 #include "log.h"
 #include "../anaglyph_matrices.h"
 
-#ifdef SR_WEAVE_ENABLED
-// Leia / Simulated Reality SDK headers (DelayLoad'd via vcxproj — DLLs
-// are only attempted on first weaver create, so non-SR systems pay no
-// cost beyond import-table entries).
-#include "sr/weaver/dx9weaver.h"
-
-// OpenCV-free stub: SR's Exception header references cv::String::deallocate.
-// Same trick as d3d11/d3d10 — provide an empty body so the linker is happy
-// without pulling in opencv_world343.lib (~10 MB of OpenCV static init).
-// See d3d11/SwapChainProxy.cpp for full rationale.
-void cv::String::deallocate() {}
-#endif
+// SR-Lib — static library wrapping the Simulated Reality SDK.
+// All SR import libs are merged into SR-mt[d].lib; the final DLL must
+// delay-load the SR runtime DLLs (see SR.hpp header comment for the list).
+#include "SR.hpp"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -95,8 +87,7 @@ Device9Proxy::Device9Proxy(IDirect3DDevice9* real, bool isEx)
     , m_compositeDecl(nullptr)
     , m_shadersFailed(false)
     , m_srBlacklistedOrFailed(false)
-    , m_srContextOpaque(nullptr)
-    , m_srWeaverOpaque(nullptr)
+    , m_srInterfaceDX9(nullptr)
     , m_srSBSTex(nullptr)
     , m_srSBSSurf(nullptr)
     , m_srSBSW(0)
@@ -509,23 +500,7 @@ bool Device9Proxy::RunShaderComposite(int mode)
     return true;
 }
 
-#ifdef SR_WEAVE_ENABLED
-
-// SEH-protected wrapper for SR::SRContext::create(). DelayLoad'd SR DLLs
-// raise VcppException 0xC06D007E (MOD_NOT_FOUND) when missing, which
-// C++ try/catch can't intercept — same trick as d3d10/d3d11.
-static SR::SRContext* SafeSRContextCreate(bool* pDllMissing)
-{
-    *pDllMissing = false;
-    __try { return SR::SRContext::create(); }
-    __except (GetExceptionCode() == 0xC06D007E ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
-    {
-        *pDllMissing = true;
-        return nullptr;
-    }
-}
-
-// Mirror of the d3d10/d3d11 blacklist. Keep the three lists aligned manually.
+// Mirror of the d3d11 blacklist. Keep the lists aligned manually.
 static bool IsSRIncompatibleExe()
 {
     wchar_t exePath[MAX_PATH] = {};
@@ -540,33 +515,21 @@ static bool IsSRIncompatibleExe()
     return false;
 }
 
-#endif // SR_WEAVE_ENABLED
-
 void Device9Proxy::ReleaseSRPipeline()
 {
-#ifdef SR_WEAVE_ENABLED
     if (m_srSBSSurf) { m_srSBSSurf->Release(); m_srSBSSurf = nullptr; }
     if (m_srSBSTex)  { m_srSBSTex->Release();  m_srSBSTex  = nullptr; }
     m_srSBSW = 0; m_srSBSH = 0; m_srSBSFmt = D3DFMT_UNKNOWN;
 
-    if (m_srWeaverOpaque)
+    if (m_srInterfaceDX9)
     {
-        SR::IDX9Weaver1* w = static_cast<SR::IDX9Weaver1*>(m_srWeaverOpaque);
-        w->destroy();
-        m_srWeaverOpaque = nullptr;
+        m_srInterfaceDX9->Delete();
+        m_srInterfaceDX9 = nullptr;
     }
-    if (m_srContextOpaque)
-    {
-        SR::SRContext* c = static_cast<SR::SRContext*>(m_srContextOpaque);
-        SR::SRContext::deleteSRContext(c);
-        m_srContextOpaque = nullptr;
-    }
-#endif
 }
 
 bool Device9Proxy::EnsureSRSBSTexture()
 {
-#ifdef SR_WEAVE_ENABLED
     if (!m_real) return false;
     if (m_logicalWidth == 0 || m_logicalHeight == 0) return false;
 
@@ -606,17 +569,18 @@ bool Device9Proxy::EnsureSRSBSTexture()
     }
 
     m_srSBSW = wantW; m_srSBSH = wantH; m_srSBSFmt = wantFmt;
+
+    // Bind SBS texture to the SR interface once per texture creation (not per frame).
+    if (m_srInterfaceDX9)
+        m_srInterfaceDX9->SetInputTexture(m_srSBSTex, false);
+
     return true;
-#else
-    return false;
-#endif
 }
 
 bool Device9Proxy::EnsureSRWeaver()
 {
-#ifdef SR_WEAVE_ENABLED
     if (m_srBlacklistedOrFailed) return false;
-    if (m_srWeaverOpaque) return true;
+    if (m_srInterfaceDX9) return true;
     if (!m_real) return false;
 
     static bool s_blacklistChecked = false;
@@ -640,25 +604,6 @@ bool Device9Proxy::EnsureSRWeaver()
     }
     if (s_isBlacklisted) { m_srBlacklistedOrFailed = true; return false; }
 
-    LOG_VERBOSE("  d3d9 EnsureSRWeaver: entering, tid=%lu\n", GetCurrentThreadId());
-
-    bool dllMissing = false;
-    SR::SRContext* ctx = nullptr;
-    try { ctx = SafeSRContextCreate(&dllMissing); }
-    catch (...)
-    {
-        LOG_VERBOSE("  d3d9 EnsureSRWeaver: SRContext::create threw exception (SR Service down or other failure)\n");
-        m_srBlacklistedOrFailed = true;
-        return false;
-    }
-    if (dllMissing)
-    {
-        LOG_VERBOSE("  d3d9 EnsureSRWeaver: SR runtime DLLs not installed; downgrading SR weave -> SBS\n");
-        m_srBlacklistedOrFailed = true;
-        return false;
-    }
-    if (!ctx) { m_srBlacklistedOrFailed = true; return false; }
-
     // Output-window HWND comes from the swap-chain's presentation parameters.
     // GetCreationParameters gives us the device focus window, which matches
     // the present window in 99%+ of cases.
@@ -678,34 +623,23 @@ bool Device9Proxy::EnsureSRWeaver()
         }
     }
 
-    // Two-step weaver init — see d3d11 EnsureSRWeaver for rationale.
-    SR::IDX9Weaver1* weaver = nullptr;
-    WeaverErrorCode res = SR::CreateDX9Weaver(ctx, m_real, nullptr, &weaver);
-    if (res != WeaverSuccess || !weaver)
+    // SR-Lib: single-call init — creates SRContext + weaver internally.
+    HRESULT hr = SimulatedReality::CreateSRInterfaceDX9(m_real, hWnd, &m_srInterfaceDX9);
+    if (FAILED(hr) || !m_srInterfaceDX9)
     {
-        LOG_VERBOSE("  d3d9 EnsureSRWeaver: CreateDX9Weaver failed (err=%d hWnd=%p dev=%p)\n",
-                    (int)res, (void*)hWnd, (void*)m_real);
-        SR::SRContext::deleteSRContext(ctx);
+        LOG_VERBOSE("  d3d9 EnsureSRWeaver: CreateSRInterfaceDX9 failed (hr=0x%08lX hWnd=%p dev=%p)\n",
+                    hr, (void*)hWnd, (void*)m_real);
         m_srBlacklistedOrFailed = true;
         return false;
     }
-    weaver->setWindowHandle(hWnd);
 
-    ctx->initialize();
-
-    m_srContextOpaque = ctx;
-    m_srWeaverOpaque  = weaver;
-    LOG_VERBOSE("  d3d9 EnsureSRWeaver: ready (hWnd=%p ctx=%p weaver=%p)\n",
-                (void*)hWnd, (void*)ctx, (void*)weaver);
+    LOG_VERBOSE("  d3d9 EnsureSRWeaver: ready (hWnd=%p srInterface=%p)\n",
+                (void*)hWnd, m_srInterfaceDX9);
     return true;
-#else
-    return false;
-#endif
 }
 
 bool Device9Proxy::RunSRWeave()
 {
-#ifdef SR_WEAVE_ENABLED
     if (!EnsureSRWeaver())     return false;
     if (!EnsureSRSBSTexture()) return false;
     if (!m_leftEyeSurf || !m_rightEyeSurf || !m_pTrackedBackBuffer) return false;
@@ -730,9 +664,9 @@ bool Device9Proxy::RunSRWeave()
     hr = m_real->StretchRect(rightSrc, nullptr, m_srSBSSurf, &rightHalf, D3DTEXF_LINEAR);
     if (FAILED(hr)) return false;
 
-    // Step B: bind the real BB as RT and let the SR weaver write into it.
-    // The weaver internally manages all its own state (shaders, samplers,
-    // blend); we just need a valid RT and a BeginScene/EndScene framing.
+    // Step B: bind the real BB as RT and call Weave() — the SR-Lib
+    // interface already has the SBS texture from SetInputTexture
+    // (bound once in EnsureSRSBSTexture).
     IDirect3DSurface9* prevRT = nullptr;
     m_real->GetRenderTarget(0, &prevRT);
     m_real->SetRenderTarget(0, m_pTrackedBackBuffer);
@@ -741,11 +675,9 @@ bool Device9Proxy::RunSRWeave()
     m_real->SetViewport(&vp);
 
     bool sceneBegun = SUCCEEDED(m_real->BeginScene());
-    SR::IDX9Weaver1* weaver = static_cast<SR::IDX9Weaver1*>(m_srWeaverOpaque);
-    NVDM_TRACE_FIRST_N(5, "  d3d9 RunSRWeave: weave call - weaver=%p SBS=%ux%u fmt=%d\n",
-                       (void*)weaver, m_srSBSW, m_srSBSH, (int)m_srSBSFmt);
-    weaver->setInputViewTexture(m_srSBSTex, (int)m_srSBSW, (int)m_srSBSH, m_srSBSFmt, /*isSRGB*/ false);
-    weaver->weave();
+    NVDM_TRACE_FIRST_N(5, "  d3d9 RunSRWeave: weave call - srInterface=%p SBS=%ux%u\n",
+                       (void*)m_srInterfaceDX9, m_srSBSW, m_srSBSH);
+    m_srInterfaceDX9->Weave();
     NVDM_TRACE_FIRST_N(5, "  d3d9 RunSRWeave: weave returned OK\n");
     if (sceneBegun) m_real->EndScene();
 
@@ -757,9 +689,6 @@ bool Device9Proxy::RunSRWeave()
         NvDM_Log("  d3d9 RunSRWeave: heartbeat #%ld (SR still alive)\n", n);
 
     return true;
-#else
-    return false;
-#endif
 }
 
 void Device9Proxy::CompositeAndPresent()

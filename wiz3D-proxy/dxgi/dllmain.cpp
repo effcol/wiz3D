@@ -899,7 +899,7 @@ static void LoadWrapper(void)
     {
         WCHAR depPath[MAX_PATH];
         static const WCHAR* localDeps[] = {
-            L"S3DAPI.dll", L"S3DUtils.dll", L"ZLOg.dll", L"S3DDevIL.dll", L"S3Dilu.dll", NULL
+            L"S3DAPI.dll", L"S3DUtils.dll", L"ZLOg.dll", NULL
         };
         static const WCHAR* systemDeps[] = {
             L"PSAPI.DLL", L"d3dx9_43.dll", L"WINMM.dll", L"D3DCOMPILER_47.dll", NULL

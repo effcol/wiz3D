@@ -4,8 +4,8 @@
 #include <SDKmesh.h>
 #include <D3DX9Mesh.h>
 #include <shlwapi.h>
-#include "../../../Shared/ProductNames.h"
-#include "../../S3DAPI/StereoAPI.h"
+#include "../Shared/ProductNames.h"
+#include "../S3DAPI/StereoAPI.h"
 
 //--------------------------------------------------------------------------------------
 // D3D9 data

@@ -8,10 +8,9 @@
 
 #include "OutputMethod_dx9.h"
 
-// Forward declarations — both x64 (SDK 1.36.2) and Win32 (SDK 1.34.10) use IDX9Weaver1
-namespace SR {
-    class IDX9Weaver1;
-    class SRContext;
+// Forward declaration — full definition in ThirdPartyLibs/SR-Lib_v1.1.2/include/SR.hpp.
+namespace SimulatedReality {
+    class SRInterfaceDX9;
 }
 
 namespace DX9Output
@@ -31,8 +30,7 @@ public:
     virtual void    ReadConfigData(TiXmlNode* config);
 
 private:
-    SR::IDX9Weaver1*   m_Weaver;
-    SR::SRContext*     m_pSRContext;
+    SimulatedReality::SRInterfaceDX9* m_pSRInterface;
     IDirect3DTexture9* m_pSBSTexture;
     UINT               m_ViewWidth;
     UINT               m_ViewHeight;
@@ -42,15 +40,9 @@ private:
     bool               m_bSRGB;             // Treat input as sRGB and write sRGB output. Default true (modern games / SR sample default). Override per-game via config.
     bool               m_bSRFallbackActive; // Sticky: set to true when InitializeWeaver fails (no Simulated Reality runtime / no SR display / SR Service down). Once set, Output() renders plain Half SBS instead of attempting SR weave again.
 
-    HRESULT InitializeWeaver(IDirect3DDevice9* pDevice, HWND hWnd, UINT width, UINT height);
+    HRESULT InitializeWeaver(IDirect3DDevice9* pDevice, HWND hWnd);
     void    CleanupWeaver();
     HRESULT OutputSBSFallback(CBaseSwapChain* pSwapChain);  // Plain Half SBS (two StretchRects into primary BB) — invoked when SR weave is unavailable
-    // SEH-protected weaver invocation. Factored out of Output() so __try/__except
-    // doesn't share scope with C++ try/catch elsewhere in the .cpp. Returns
-    // false on access violation; caller treats that as "SR is broken on this
-    // device" and switches to SBS for the rest of the session.
-    static bool SafeWeave(SR::IDX9Weaver1* weaver, IDirect3DTexture9* sbsTexture,
-                          UINT width, UINT height, D3DFORMAT format, bool isSRGB);
 };
 
 }

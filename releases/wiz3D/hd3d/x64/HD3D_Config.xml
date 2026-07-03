@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Config>
+    <AmdQbProxy>
+        <!-- OutputMode: selects the stereo output format.
+             0 = Half Top-and-Bottom  — game runs at full resolution; each eye gets half the vertical height (stacked)
+             1 = Half Side-by-Side    — game runs at full resolution; each eye gets half the horizontal width
+             2 = Full Side-by-Side    — set the game to HALF the display's horizontal resolution;
+                                        each eye is output at full display width (ideal for AR glasses / VR headsets)
+             3 = Full Top-and-Bottom  — set the game to HALF the display's vertical resolution;
+                                        each eye is output at full display height
+             4 = Row Interleaved      — alternating horizontal rows (odd rows = left eye, even = right eye);
+                                        for passive polarised 3D TVs and compatible monitors
+             5 = Column Interleaved   — alternating vertical columns (odd cols = left eye, even = right eye);
+                                        for column-polarised displays
+             6 = Checkerboard         — alternating pixels in a checkerboard pattern;
+                                        for DLP projectors and checkerboard-capable displays
+             7 = Anaglyph             — colour-filtered stereo; configure filter pair and method below
+             8 = Simulated Reality    — weaved output for Moving Lightfield displays (default)
+                                        (Leia / Samsung Odyssey 3D / Acer SpatialLabs);
+                                        requires the SR / LeiaSR runtime service to be installed
+        -->
+        <OutputMode Value="8"/>
+        <!-- SwapEyes: swap left/right eye views. Works with ALL output modes.
+             0 = normal  (left eye on left/top/odd, right eye on right/bottom/even)
+             1 = swapped (right eye on left/top/odd, left eye on right/bottom/even)
+        -->
+        <SwapEyes Value="0"/>
+        <!-- AnaglyphColour: colour of the anaglyph filter pair. Only used when OutputMode = 7.
+             0 = Red / Cyan    — most common; widest filter availability (default)
+             1 = Green / Magenta — rarer; slightly better colour for some scenes
+             2 = Amber / Blue  — best colour rendition; Trioscopic / ColorCode glasses
+        -->
+        <AnaglyphColour Value="0"/>
+        <!-- AnaglyphMethod: conversion algorithm. Only used when OutputMode = 7.
+             0 = Dubois      — best for glasses use; minimises ghosting via spectral least-squares fit (default)
+             1 = Compromise  — best for mixed audiences; designed to look good with AND without glasses
+                               (Ahtik 2011 — averages Color/HalfColor/Dubois/Optimised with grey preservation)
+             2 = Color       — full colour passthrough; zero ghosting but severe colour fringing without glasses
+             3 = Half-Color  — primary eye desaturated, secondary eye keeps colour; reduced fringing
+             4 = Optimised   — Wimmer weighted-channel blend; good ghosting, less colour loss than Dubois
+             5 = Grey        — both eyes greyscale; near-zero ghosting, no colour at all
+             6 = True        — classic single-channel luma per eye; maximum ghosting, historical only
+        -->
+        <AnaglyphMethod Value="0"/>
+    </AmdQbProxy>
+</Config>

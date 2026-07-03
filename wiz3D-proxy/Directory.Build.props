@@ -28,4 +28,10 @@
           BeforeTargets="ResourceCompile;ClCompile">
     <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(_WiZ3DRepoBin)generate_version.ps1&quot;" />
   </Target>
+
+  <!-- 
+    Standalone ThirdPartyLibs.props for the full solution. Common to all projects.
+  -->
+  <Import Project="$(MSBuildThisFileDirectory)..\ThirdPartyLibs\ThirdPartyLibs.props" />
+
 </Project>

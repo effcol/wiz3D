@@ -1,6 +1,0 @@
-C:/Users/effie/OneDrive/Documents/Coding/WiZ3D/iZ3D-master/lib/minhook/out/install/x64-Debug/share/minhook/minhook-config.cmake
-C:/Users/effie/OneDrive/Documents/Coding/WiZ3D/iZ3D-master/lib/minhook/out/install/x64-Debug/share/minhook/minhook-config-version.cmake
-C:/Users/effie/OneDrive/Documents/Coding/WiZ3D/iZ3D-master/lib/minhook/out/install/x64-Debug/lib/minhook.x64d.lib
-C:/Users/effie/OneDrive/Documents/Coding/WiZ3D/iZ3D-master/lib/minhook/out/install/x64-Debug/share/minhook/minhook-targets.cmake
-C:/Users/effie/OneDrive/Documents/Coding/WiZ3D/iZ3D-master/lib/minhook/out/install/x64-Debug/share/minhook/minhook-targets-debug.cmake
-C:/Users/effie/OneDrive/Documents/Coding/WiZ3D/iZ3D-master/lib/minhook/out/install/x64-Debug/./include/MinHook.h

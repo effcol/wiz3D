@@ -1,5 +1,7 @@
-#include "..\BuildSetup\version.h"
+#include "..\bin\temp_version.h"
 #include "..\Shared\ProductNames.h"
+
+#define VERSION_NAME_SUFFIX ""
 
 #define VERSION					Str(PRODUCT_VERSION_MAJOR) + "." + Str(PRODUCT_VERSION_MINOR) + "." + Str(PRODUCT_VERSION_QFE)
 #define DISPLAYED_VERSION       Str(PRODUCT_VERSION_MAJOR) + "." + Str(PRODUCT_VERSION_MINOR) + VERSION_NAME_SUFFIX + "(" + Str(PRODUCT_VERSION_QFE) + ")"
@@ -274,10 +276,6 @@ Source: {#FILESDIR}\Win32\S3DWrapperD3D10.dll; DestDir: {app}\Win32; Components:
 Source: {#FILESDIR}\Win64\S3DWrapperD3D10.dll; DestDir: {app}\Win64; Components: Drivers\D3D10Driver; Check: IsWin64(); Flags: ignoreversion
 Source: ..\lib\d3d9\dll\x32\D3D9VistaNoSP1.dll; DestDir: {app}\Win32; Components: Drivers\D3D89Driver; Flags: ignoreversion
 Source: ..\lib\d3d9\dll\x64\D3D9VistaNoSP1.dll; DestDir: {app}\Win64; Components: Drivers\D3D89Driver; Check: IsWin64(); Flags: ignoreversion
-Source: ..\lib\DevIL\lib\x86\S3DDevIL.DLL; DestDir: {app}\Win32; Components: Drivers; Flags: ignoreversion
-Source: ..\lib\DevIL\lib\x64\S3DDevIL.DLL; DestDir: {app}\Win64; Components: Drivers; Check: IsWin64(); Flags: ignoreversion
-Source: ..\lib\DevIL\lib\x86\S3DILU.DLL; DestDir: {app}\Win32; Components: Drivers; Flags: ignoreversion
-Source: ..\lib\DevIL\lib\x64\S3DILU.DLL; DestDir: {app}\Win64; Components: Drivers; Check: IsWin64(); Flags: ignoreversion
 Source: Content\bin\bmfont.exe; DestDir: {app}\Win32; Components: Drivers; Flags: ignoreversion
 
 Source: Content\bin\PCGW32.DLL; DestDir: {sys}; Components: Outputs

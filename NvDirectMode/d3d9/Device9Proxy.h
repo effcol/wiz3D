@@ -10,6 +10,11 @@
 #include <windows.h>
 #include <d3d9.h>
 
+namespace SimulatedReality
+{
+	class SRInterfaceDX9;  // forward declaration to avoid including SR.hpp in header
+}
+
 namespace NvDirectMode
 {
 
@@ -237,15 +242,15 @@ private:
     //   - Eye contents are copied via StretchRect from m_leftEyeSurf / m_rightEyeSurf
     //     into the left/right halves of the SBS texture's surface (no shader pass
     //     needed — DX9's StretchRect is the cheap path for surface→surface blits)
-    //   - IDX9Weaver1::setInputViewTexture(m_srSBSTex, ...) + weave() with the
-    //     real back buffer bound as RT produces the weaved frame
+    //   - SetInputTexture(m_srSBSTex, isSRGB) binds once on texture creation,
+    //     Weave() with the real back buffer bound as RT produces the weaved frame
     bool EnsureSRWeaver();
     bool EnsureSRSBSTexture();
     void ReleaseSRPipeline();
     bool RunSRWeave();
-    bool                  m_srBlacklistedOrFailed;
-    void*                 m_srContextOpaque;   // SR::SRContext*  (void* to keep SDK out of header)
-    void*                 m_srWeaverOpaque;    // SR::IDX9Weaver1*
+    bool                              m_srBlacklistedOrFailed;
+    SimulatedReality::SRInterfaceDX9* m_srInterfaceDX9; 
+                                                
     IDirect3DTexture9*    m_srSBSTex;
     IDirect3DSurface9*    m_srSBSSurf;         // surface-level-0 of m_srSBSTex, cached
     UINT                  m_srSBSW;            // == m_logicalWidth * 2

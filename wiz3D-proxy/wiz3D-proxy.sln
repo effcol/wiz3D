@@ -21,6 +21,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "wiz3D-proxy-dxgi", "dxgi\wi
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "wiz3D-proxy-vulkan-1", "vulkan-1\wiz3D-proxy-vulkan-1.vcxproj", "{E6F7A8B9-AAAA-BBBB-CCCC-DDDDEEEEFFFF}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "wiz3D-proxy-EOSStub", "EOSStub\wiz3D-proxy-EOSStub.vcxproj", "{89D11C43-623A-4B21-BAD4-C9B1ED2795E7}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Win32 = Debug|Win32
@@ -99,6 +101,12 @@ Global
 		{E6F7A8B9-AAAA-BBBB-CCCC-DDDDEEEEFFFF}.Release|Win32.Build.0 = Release|Win32
 		{E6F7A8B9-AAAA-BBBB-CCCC-DDDDEEEEFFFF}.Release|x64.ActiveCfg = Release|x64
 		{E6F7A8B9-AAAA-BBBB-CCCC-DDDDEEEEFFFF}.Release|x64.Build.0 = Release|x64
+		{89D11C43-623A-4B21-BAD4-C9B1ED2795E7}.Debug|Win32.ActiveCfg = Debug|Win32
+		{89D11C43-623A-4B21-BAD4-C9B1ED2795E7}.Debug|Win32.Build.0 = Debug|Win32
+		{89D11C43-623A-4B21-BAD4-C9B1ED2795E7}.Debug|x64.ActiveCfg = Debug|Win32
+		{89D11C43-623A-4B21-BAD4-C9B1ED2795E7}.Release|Win32.ActiveCfg = Release|Win32
+		{89D11C43-623A-4B21-BAD4-C9B1ED2795E7}.Release|Win32.Build.0 = Release|Win32
+		{89D11C43-623A-4B21-BAD4-C9B1ED2795E7}.Release|x64.ActiveCfg = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

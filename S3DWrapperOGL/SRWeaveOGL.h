@@ -1,20 +1,18 @@
 /*
  * Simulated Reality OpenGL weaver integration for S3DWrapperOGL (mode 9).
  *
- * Glue layer that hides the Simulated Reality SDK's C++ headers (exception types,
- * IDestroyable / IQueryInterface bases, etc.) behind a small C-style API.
+ * Glue layer that wraps SR-Lib's SRInterfaceOGL behind a small C-style API.
  * Renderer.cpp only sees opaque-pointer get/set functions plus the
- * once-per-frame Render call — it doesn't include any sr/* headers.
+ * once-per-frame Render call — it doesn't include SR.hpp.
  *
  * Mirrors how the DX9 SR weave is structured (OutputMethods/Simulated
  * RealityWeaveOutput/) except this isn't a separate plugin DLL — OGL has
  * no OutputMethod plugin loader, so SR lives inside S3DWrapperOGL.dll.
  *
- * Runtime fallback: SimulatedRealityCore.dll and SimulatedRealityOpenGL.dll
- * are linked via /DELAYLOAD, so the wrapper still loads on machines
- * without the Simulated Reality runtime. If either DLL is missing — or the SR Service
- * isn't running — initialisation throws and we sticky-flag fallback mode
- * (the caller renders plain SBS instead, same Half-SBS fallback as DX9).
+ * Runtime fallback: SR runtime DLLs are linked via /DELAYLOAD; SR-Lib's
+ * CreateSRInterfaceOGL probes via LoadLibrary and returns E_NOINTERFACE
+ * when the runtime is absent. We sticky-flag fallback mode and the caller
+ * renders plain SBS instead (same Half-SBS fallback as DX9).
  */
 
 #pragma once

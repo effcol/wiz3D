@@ -8,30 +8,9 @@
 
 #include <GL/gl.h>
 
-// The SR header chain pulls in opencv2/core/types.hpp which uses
-// reinterpret_cast between related classes (cv::Matx <-> cv::Scalar_).
-// Common.props promotes C4946 to an error; harmless here because we
-// never touch those types ourselves, so suppress just for this TU.
-#pragma warning(disable: 4946)
-
-// Simulated Reality SDK. Headers are identical across the two SDK versions we vendor:
-//   x64:   lib/Simulated Reality/LeiaSR-SDK-1.36.2-win64/include
-//   Win32: lib/Simulated Reality/simulatedreality-1.34.10-win32-Release/include
-// Both export the same IGLWeaver1 / CreateGLWeaver surface; the include
-// path is set per-arch in S3DWrapperOGL.vcxproj.
-#include "sr/management/srcontext.h"
-#include "sr/weaver/glweaver.h"
-#include "sr/utility/exception.h"
-
-// OpenCV-free link stub. SR's Exception class has a cv::String message
-// member, so the compiler emits a reference to cv::String::deallocate
-// anywhere an SR exception might be destroyed during stack unwind.
-// We never actually construct cv::String at runtime — only the SR runtime
-// throws SR exceptions, and our catch(...) doesn't bind the typed exception.
-// This empty stub satisfies the linker without pulling in the ~10 MB of
-// OpenCV static init that opencv_world343.lib would drag in.  Same trick
-// NvDirectMode/d3d11/SwapChainProxy.cpp uses for the DX11 SR weave path.
-void cv::String::deallocate() {}
+// SR-Lib: simplified C-style factory API. Returns HRESULT instead of
+// throwing exceptions, so no _HAS_EXCEPTIONS override needed for this TU.
+#include "SR.hpp"
 
 // GL FBO entry points — loaded via wglGetProcAddress so we don't introduce
 // a static dep on a specific GL header version. Same pattern S3DWrapperOGL
@@ -50,8 +29,7 @@ typedef GLenum (APIENTRY *PFN_CheckFramebufferStatus)(GLenum target);
 #endif
 
 struct SRWeaveOGLContext {
-    SR::SRContext*  srContext;
-    SR::IGLWeaver1* weaver;
+    SimulatedReality::SRInterfaceOGL* srInterface;
     GLuint          sbsTexture;       // size = (viewWidth*2) x viewHeight, RGBA8/sRGB
     GLuint          sbsFramebuffer;
     unsigned int    viewWidth;        // per-eye width (sbs texture is 2x this)
@@ -96,8 +74,7 @@ bool SRWeaveOGL_Initialize(SRWeaveOGLContext** outCtx, HWND hWnd,
 {
     *outCtx = nullptr;
     SRWeaveOGLContext* ctx = new SRWeaveOGLContext();
-    ctx->srContext = nullptr;
-    ctx->weaver = nullptr;
+    ctx->srInterface = nullptr;
     ctx->sbsTexture = 0;
     ctx->sbsFramebuffer = 0;
     ctx->viewWidth = viewWidth;
@@ -145,13 +122,13 @@ bool SRWeaveOGL_Initialize(SRWeaveOGLContext** outCtx, HWND hWnd,
         return false;
     }
 
-    // SR context. SRContext::create() throws ServerNotAvailableException when
-    // the SR Service isn't running (or DELAYLOAD couldn't bind the DLL).
-    try {
-        ctx->srContext = SR::SRContext::create();
-    }
-    catch (...) {
-        OutputDebugStringA("[SRWeaveOGL] Simulated Reality runtime unavailable. Falling back to plain SBS.\n");
+    // SR-Lib factory: creates SRContext + GLWeaver internally. Returns
+    // E_NOINTERFACE when the SR runtime DLLs are missing (LoadLibrary probe),
+    // so no try/catch needed.
+    HRESULT hr = SimulatedReality::CreateSRInterfaceOGL(hWnd, &ctx->srInterface);
+    if (FAILED(hr)) {
+        OutputDebugStringA("[SRWeaveOGL] CreateSRInterfaceOGL failed. Falling back to plain SBS.\n");
+        ctx->srInterface = nullptr;
         ctx->glDeleteFramebuffers(1, &ctx->sbsFramebuffer);
         glDeleteTextures(1, &ctx->sbsTexture);
         ctx->sbsFramebuffer = 0;
@@ -161,30 +138,9 @@ bool SRWeaveOGL_Initialize(SRWeaveOGLContext** outCtx, HWND hWnd,
         return false;
     }
 
-    WeaverErrorCode rc = SR::CreateGLWeaver(*ctx->srContext, hWnd, &ctx->weaver);
-    if (rc != WeaverSuccess) {
-        OutputDebugStringA("[SRWeaveOGL] CreateGLWeaver failed. Falling back to plain SBS.\n");
-        SR::SRContext::deleteSRContext(ctx->srContext);
-        ctx->srContext = nullptr;
-        ctx->glDeleteFramebuffers(1, &ctx->sbsFramebuffer);
-        glDeleteTextures(1, &ctx->sbsTexture);
-        ctx->sbsFramebuffer = 0;
-        ctx->sbsTexture = 0;
-        ctx->fallback = true;
-        *outCtx = ctx;
-        return false;
-    }
-
-    // setInputViewTexture takes the TOTAL SBS texture dimensions (2*viewWidth,
-    // viewHeight), not per-eye. Same contract as the DX11/DX9 weave paths
-    // (see NvDirectMode/d3d11 SwapChainProxy.cpp passing m_srSBSW = logicalW*2).
-    // Passing per-eye dims here is what produced the black-screen RtCW test:
-    // SR thinks the texture is 1x but the actual layout is 2x, so the weaver
-    // splits and reads garbage.
-    ctx->weaver->setInputViewTexture(ctx->sbsTexture, viewWidth * 2, viewHeight, GL_RGBA8);
-
-    // Per the SR SDK contract, initialize() runs AFTER weaver creation.
-    ctx->srContext->initialize();
+    // SR-Lib SetInputTexture takes just the GL texture name — dimensions and
+    // format are queried internally.
+    ctx->srInterface->SetInputTexture(ctx->sbsTexture);
 
     *outCtx = ctx;
     return true;
@@ -229,27 +185,16 @@ void SRWeaveOGL_Cleanup(SRWeaveOGLContext** ctxPtr)
         // Tell the proxy's crash-dump VEH that any AV from here is expected
         // and has an inner SEH handler — it should skip the dump file write.
         InterlockedExchange(&g_suppressCrashDump, 1);
-        if (ctx->weaver) {
+        if (ctx->srInterface) {
             __try {
-                ctx->weaver->destroy();
+                ctx->srInterface->Delete();
             }
             __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION
                         ? EXCEPTION_EXECUTE_HANDLER
                         : EXCEPTION_CONTINUE_SEARCH) {
-                OutputDebugStringA("[SRWeaveOGL] weaver->destroy() raised AV - swallowing for clean process exit.\n");
+                OutputDebugStringA("[SRWeaveOGL] SRInterfaceOGL::Delete() raised AV - swallowing for clean process exit.\n");
             }
-            ctx->weaver = nullptr;
-        }
-        if (ctx->srContext) {
-            __try {
-                SR::SRContext::deleteSRContext(ctx->srContext);
-            }
-            __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION
-                        ? EXCEPTION_EXECUTE_HANDLER
-                        : EXCEPTION_CONTINUE_SEARCH) {
-                OutputDebugStringA("[SRWeaveOGL] deleteSRContext raised AV - swallowing for clean process exit.\n");
-            }
-            ctx->srContext = nullptr;
+            ctx->srInterface = nullptr;
         }
         InterlockedExchange(&g_suppressCrashDump, 0);
     }
@@ -286,7 +231,7 @@ bool SRWeaveOGL_Render(SRWeaveOGLContext* ctx,
                        float texCoordX, float texCoordY,
                        unsigned int windowWidth, unsigned int windowHeight)
 {
-    if (!ctx || ctx->fallback || !ctx->weaver) return false;
+    if (!ctx || ctx->fallback || !ctx->srInterface) return false;
 
     // Step 1: copy left + right eye textures into the two halves of the
     // SBS framebuffer texture. We unbind the wrapper's GLSL program so
@@ -326,17 +271,11 @@ bool SRWeaveOGL_Render(SRWeaveOGLContext* ctx,
     // Step 2: full-window viewport, hand off to the SR runtime.
     glViewport(0, 0, (GLsizei)windowWidth, (GLsizei)windowHeight);
 
+    // SR-Lib Weave() — reads from the SBS texture set via SetInputTexture
+    // and writes into whatever framebuffer/rendertarget is currently bound
+    // (FBO 0 = default backbuffer here).
+    ctx->srInterface->Weave();
     bool ok = true;
-    try {
-        // weave() is inherited from IWeaverBase1; the chain is brought in by
-        // sr/weaver/glweaver.h's includes.
-        ctx->weaver->weave();
-    }
-    catch (...) {
-        OutputDebugStringA("[SRWeaveOGL] weave() raised an exception - disabling SR for this session.\n");
-        ctx->fallback = true;
-        ok = false;
-    }
 
     // Restore previously-bound shader program (the wrapper's compose shader,
     // unused in mode 9 but other code may depend on it being set).

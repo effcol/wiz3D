@@ -1,30 +1,18 @@
-#ifdef SR_WEAVE_ENABLED
-// d3d10_1.h must be included before d3d10.h (which SwapChainProxy.h pulls
-// in) — the d3d10_1 header has an #error guard against the reverse order.
-#define WIN32_LEAN_AND_MEAN
-#include <windows.h>
-#include <d3d10_1.h>
-#endif
-
 #include "SwapChainProxy.h"
 #include "Device10Proxy.h"
 #include "eye_state.h"
 #include "log.h"
 #include "../anaglyph_matrices.h"
 
-#ifdef SR_WEAVE_ENABLED
-// Leia / Simulated Reality SDK headers (DelayLoad'd via vcxproj — DLLs
-// are only attempted on first weaver create, so non-SR systems pay no
-// cost beyond import-table entries).
-#include "sr/weaver/dx10weaver.h"
-
-// Same OpenCV-free stub as d3d11. The SR header chain references
-// cv::String::deallocate (the destructor helper on SR's Exception class,
-// which has a cv::String message member). Providing an empty body
-// satisfies the linker without forcing us to pull in opencv_world343.lib.
-// See d3d11/SwapChainProxy.cpp for the full rationale.
-void cv::String::deallocate() {}
-#endif
+// SR-Lib — static library wrapping the Simulated Reality SDK.
+// All SR import libs are merged into SR-mt[d].lib; the final DLL must
+// delay-load the SR runtime DLLs (see SR.hpp header comment for the list).
+//
+// NOTE: SR-Lib does not yet have a DX10 interface (SRInterfaceDX10 /
+// CreateSRInterfaceDX10). This file mirrors the DX11 SR-Lib pattern as
+// a prototype — it will not compile until SR-Lib adds DX10 support.
+// The d3d10 project is excluded from the solution build in the meantime.
+#include "SR.hpp"
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -229,8 +217,7 @@ SwapChainProxy::SwapChainProxy(IDXGISwapChain* real, Device10Proxy* parent)
     , m_rightEyeSRV(nullptr)
     , m_realBBRTV(nullptr)
     , m_srBlacklistedOrFailed(false)
-    , m_srContextOpaque(nullptr)
-    , m_srWeaverOpaque(nullptr)
+    , m_srInterfaceDX10(nullptr)
     , m_srSBSTex(nullptr)
     , m_srSBSRTV(nullptr)
     , m_srSBSSRV(nullptr)
@@ -567,26 +554,7 @@ bool SwapChainProxy::EnsureCompositeShaders()
     return full;
 }
 
-#ifdef SR_WEAVE_ENABLED
-
-// SEH-protected wrapper for SR::SRContext::create(). The SR runtime DLLs
-// are delay-loaded; if they're not installed, the call raises
-// VcppException 0xC06D007E (MOD_NOT_FOUND), which C++ try/catch can't
-// intercept. On that failure we set *pDllMissing=true and return nullptr.
-static SR::SRContext* SafeSRContextCreate(bool* pDllMissing)
-{
-    *pDllMissing = false;
-    __try { return SR::SRContext::create(); }
-    __except (GetExceptionCode() == 0xC06D007E ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
-    {
-        *pDllMissing = true;
-        return nullptr;
-    }
-}
-
-// Games whose anti-tamper / overlay-injection crashes when SR runtime
-// threads spawn inside their process. Mirror of the d3d11 list — keep
-// the two lists aligned manually.
+// Mirror of the d3d11 blacklist. Keep aligned manually.
 static bool IsSRIncompatibleExe()
 {
     wchar_t exePath[MAX_PATH] = {};
@@ -601,34 +569,22 @@ static bool IsSRIncompatibleExe()
     return false;
 }
 
-#endif // SR_WEAVE_ENABLED
-
 void SwapChainProxy::ReleaseSRPipeline()
 {
-#ifdef SR_WEAVE_ENABLED
     if (m_srSBSSRV) { m_srSBSSRV->Release(); m_srSBSSRV = nullptr; }
     if (m_srSBSRTV) { m_srSBSRTV->Release(); m_srSBSRTV = nullptr; }
     if (m_srSBSTex) { m_srSBSTex->Release(); m_srSBSTex = nullptr; }
     m_srSBSW = 0; m_srSBSH = 0; m_srSBSFmt = DXGI_FORMAT_UNKNOWN;
 
-    if (m_srWeaverOpaque)
+    if (m_srInterfaceDX10)
     {
-        SR::IDX10Weaver1* w = static_cast<SR::IDX10Weaver1*>(m_srWeaverOpaque);
-        w->destroy();
-        m_srWeaverOpaque = nullptr;
+        m_srInterfaceDX10->Delete();
+        m_srInterfaceDX10 = nullptr;
     }
-    if (m_srContextOpaque)
-    {
-        SR::SRContext* c = static_cast<SR::SRContext*>(m_srContextOpaque);
-        SR::SRContext::deleteSRContext(c);
-        m_srContextOpaque = nullptr;
-    }
-#endif
 }
 
 bool SwapChainProxy::EnsureSRSBSTexture()
 {
-#ifdef SR_WEAVE_ENABLED
     if (!m_parent) return false;
     ID3D10Device* dev = m_parent->GetReal();
     if (!dev) return false;
@@ -667,17 +623,19 @@ bool SwapChainProxy::EnsureSRSBSTexture()
     if (FAILED(dev->CreateShaderResourceView(m_srSBSTex, &srvd, &m_srSBSSRV))) return false;
 
     m_srSBSW = wantW; m_srSBSH = wantH; m_srSBSFmt = wantFmt;
+
+    // Bind SBS SRV to the SR interface once per texture creation (not per frame).
+    // NOTE: SetInputTexture signature TBD — assuming DX11-like SRV input for now.
+    if (m_srInterfaceDX10)
+        m_srInterfaceDX10->SetInputTexture(m_srSBSSRV);
+
     return true;
-#else
-    return false;
-#endif
 }
 
 bool SwapChainProxy::EnsureSRWeaver()
 {
-#ifdef SR_WEAVE_ENABLED
     if (m_srBlacklistedOrFailed) return false;
-    if (m_srWeaverOpaque) return true;
+    if (m_srInterfaceDX10) return true;
     if (!m_parent || !m_real) return false;
 
     static bool s_blacklistChecked = false;
@@ -701,29 +659,10 @@ bool SwapChainProxy::EnsureSRWeaver()
     }
     if (s_isBlacklisted) { m_srBlacklistedOrFailed = true; return false; }
 
-    LOG_VERBOSE("  d3d10 EnsureSRWeaver: entering, tid=%lu\n", GetCurrentThreadId());
-
-    bool dllMissing = false;
-    SR::SRContext* ctx = nullptr;
-    try { ctx = SafeSRContextCreate(&dllMissing); }
-    catch (...)
-    {
-        LOG_VERBOSE("  d3d10 EnsureSRWeaver: SRContext::create threw exception (SR Service down or other failure)\n");
-        m_srBlacklistedOrFailed = true;
-        return false;
-    }
-    if (dllMissing)
-    {
-        LOG_VERBOSE("  d3d10 EnsureSRWeaver: SR runtime DLLs not installed; downgrading SR weave -> SBS\n");
-        m_srBlacklistedOrFailed = true;
-        return false;
-    }
-    if (!ctx) { m_srBlacklistedOrFailed = true; return false; }
-
+    // HWND from the swap chain's output window.
     DXGI_SWAP_CHAIN_DESC scDesc = {};
     if (FAILED(m_real->GetDesc(&scDesc)))
     {
-        SR::SRContext::deleteSRContext(ctx);
         m_srBlacklistedOrFailed = true;
         return false;
     }
@@ -731,40 +670,31 @@ bool SwapChainProxy::EnsureSRWeaver()
 
     ID3D10Device* dev = m_parent->GetReal();
     if (!dev)
+    { 
+        m_srBlacklistedOrFailed = true; 
+        return false; 
+    }
+
+    // SR-Lib: single-call init — creates SRContext + weaver internally.
+    // NOTE: CreateSRInterfaceDX10 does not exist yet in SR-Lib — this is
+    // a prototype mirroring the DX11 pattern. Signature assumed to match
+    // DX11 (device, HWND, out-pointer).
+    HRESULT hr = SimulatedReality::CreateSRInterfaceDX10(dev, hWnd, &m_srInterfaceDX10);
+    if (FAILED(hr) || !m_srInterfaceDX10)
     {
-        SR::SRContext::deleteSRContext(ctx);
+        LOG_VERBOSE("  d3d10 EnsureSRWeaver: CreateSRInterfaceDX10 failed (hr=0x%08lX hWnd=%p dev=%p)\n",
+                    hr, (void*)hWnd, (void*)dev);
         m_srBlacklistedOrFailed = true;
         return false;
     }
 
-    // Two-step weaver init — see d3d11 EnsureSRWeaver for rationale.
-    SR::IDX10Weaver1* weaver = nullptr;
-    WeaverErrorCode res = SR::CreateDX10Weaver(ctx, dev, nullptr, &weaver);
-    if (res != WeaverSuccess || !weaver)
-    {
-        LOG_VERBOSE("  d3d10 EnsureSRWeaver: CreateDX10Weaver failed (err=%d hWnd=%p dev=%p)\n",
-                    (int)res, (void*)hWnd, (void*)dev);
-        SR::SRContext::deleteSRContext(ctx);
-        m_srBlacklistedOrFailed = true;
-        return false;
-    }
-    weaver->setWindowHandle(hWnd);
-
-    ctx->initialize();
-
-    m_srContextOpaque = ctx;
-    m_srWeaverOpaque  = weaver;
-    LOG_VERBOSE("  d3d10 EnsureSRWeaver: ready (hWnd=%p ctx=%p weaver=%p)\n",
-                (void*)hWnd, (void*)ctx, (void*)weaver);
+    LOG_VERBOSE("  d3d10 EnsureSRWeaver: ready (hWnd=%p srInterface=%p)\n",
+                (void*)hWnd, (void*)m_srInterfaceDX10);
     return true;
-#else
-    return false;
-#endif
 }
 
 bool SwapChainProxy::RunSRWeave()
 {
-#ifdef SR_WEAVE_ENABLED
     NVDM_TRACE_FIRST_N(5, "  d3d10 RunSRWeave: entry tid=%lu shaders=%d leftSRV=%p rightSRV=%p\n",
                        GetCurrentThreadId(),
                        (int)EnsureCompositeShaders(),
@@ -816,7 +746,8 @@ bool SwapChainProxy::RunSRWeave()
     ID3D10ShaderResourceView* nullSRV[2] = { nullptr, nullptr };
     dev->PSSetShaderResources(0, 2, nullSRV);
 
-    // Step B: bind real BB as RT, hand the SBS SRV to the weaver, weave().
+    // Step B: bind real BB as RT and call Weave() — the SR-Lib interface
+    // already has the SBS SRV from SetInputTexture (bound once in EnsureSRSBSTexture).
     if (!m_realBBRTV)
     {
         ID3D10Texture2D* realBB = nullptr;
@@ -834,12 +765,10 @@ bool SwapChainProxy::RunSRWeave()
     vpBB.MinDepth = 0; vpBB.MaxDepth = 1;
     dev->RSSetViewports(1, &vpBB);
 
-    SR::IDX10Weaver1* weaver = static_cast<SR::IDX10Weaver1*>(m_srWeaverOpaque);
-    NVDM_TRACE_FIRST_N(5, "  d3d10 RunSRWeave: weave call - weaver=%p SBS=%ux%u fmt=%d srv=%p rtv=%p tid=%lu\n",
-                       (void*)weaver, m_srSBSW, m_srSBSH, (int)m_srSBSFmt,
-                       (void*)m_srSBSSRV, (void*)m_realBBRTV, GetCurrentThreadId());
-    weaver->setInputViewTexture(m_srSBSSRV, (int)m_srSBSW, (int)m_srSBSH, m_srSBSFmt);
-    weaver->weave();
+    NVDM_TRACE_FIRST_N(5, "  d3d10 RunSRWeave: weave call - srInterface=%p SBS=%ux%u rtv=%p tid=%lu\n",
+                       (void*)m_srInterfaceDX10, m_srSBSW, m_srSBSH,
+                       (void*)m_realBBRTV, GetCurrentThreadId());
+    m_srInterfaceDX10->Weave();
     NVDM_TRACE_FIRST_N(5, "  d3d10 RunSRWeave: weave returned OK\n");
 
     static volatile long s_weaveCount = 0;
@@ -848,9 +777,6 @@ bool SwapChainProxy::RunSRWeave()
         NvDM_Log("  d3d10 RunSRWeave: heartbeat #%ld (SR still alive)\n", n);
 
     return true;
-#else
-    return false;
-#endif
 }
 
 void SwapChainProxy::UpdateAnaglyphCB()

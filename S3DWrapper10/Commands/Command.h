@@ -2,7 +2,41 @@
 
 #include <boost\noncopyable.hpp>
 #include <boost\intrusive_ptr.hpp>
+
+// _CRTDBG_MAP_ALLOC (injected via PCH when DEBUG_MEMORY_LEAKS is defined in
+// Shared/SharedInclude.h) macro-replaces free(p) with _free_dbg(...) and
+// malloc(s) with _malloc_dbg(...). Both collide with boost::object_pool's
+// member functions named free() and malloc(). The collision is purely a
+// preprocessor name-substitution problem; no actual CRT debug-heap tracking
+// is at stake here, because these pool member calls don't invoke the CRT
+// free/malloc -- they manipulate the pool's own internal free-list.
+//
+// We solve it once, in two parts:
+//   1. Include the Pool header with the colliding macros temporarily off.
+//   2. Define a small pair of helpers (pool_acquire / pool_release) in the
+//      same shielded scope. The helpers expose non-colliding names, so the
+//      call sites in operator new / operator delete below stay clean and
+//      no scattered per-call-site shielding is needed.
+#ifdef _CRTDBG_MAP_ALLOC
+#pragma push_macro("free")
+#pragma push_macro("malloc")
+#undef free
+#undef malloc
+#endif
 #include <boost\pool\object_pool.hpp>
+namespace detail
+{
+	template <typename Pool>
+	inline void* pool_acquire(Pool* pool) { return pool->malloc(); }
+
+	template <typename Pool, typename T>
+	inline void pool_release(Pool* pool, T* ptr) { pool->free(ptr); }
+}
+#ifdef _CRTDBG_MAP_ALLOC
+#pragma pop_macro("malloc")
+#pragma pop_macro("free")
+#endif
+
 #include "..\Array.h"
 #define SMALL_OBJECT_ALLOCATOR_STATISTICS
 #include "..\SmallObjectAllocator.h"
@@ -486,13 +520,13 @@ namespace Commands
 			CriticalSectionLocker lock(m_csAllocator);
 			//std::string message = std::string("Trying to create/destroy commands concurrently: ") + typeid(T).name();
 			//CriticalSectionDebugLocker locker( m_csAllocator, message.c_str() );
-			
+
 			_ASSERT( nSize_ == sizeof(T) );
 			if (!m_InternalPool) {
 				m_InternalPool = new boost::object_pool<T>;
 			}
 			++m_InternalPoolUseCount;
-			return m_InternalPool->malloc();
+			return detail::pool_acquire(m_InternalPool);
 		}
 
 		void* operator new ( size_t nSize_, int _Block, const char * _Filename, int _Line )
@@ -506,7 +540,7 @@ namespace Commands
 				m_InternalPool = new boost::object_pool<T>;
 			}
 			++m_InternalPoolUseCount;
-			return m_InternalPool->malloc();
+			return detail::pool_acquire(m_InternalPool);
 		}
 
 		void operator delete ( void * pAddr_ )
@@ -516,8 +550,8 @@ namespace Commands
 			//CriticalSectionDebugLocker locker( m_csAllocator, message.c_str() );
 
 			assert(m_InternalPoolUseCount > 0);
-			m_InternalPool->free( (T*)pAddr_ );
-			if (--m_InternalPoolUseCount == 0) 
+			detail::pool_release(m_InternalPool, (T*)pAddr_);
+			if (--m_InternalPoolUseCount == 0)
 			{
 				delete m_InternalPool;
 				m_InternalPool = 0;
@@ -531,8 +565,8 @@ namespace Commands
 			//CriticalSectionDebugLocker locker( m_csAllocator, message.c_str() );
 
 			assert(m_InternalPoolUseCount > 0);
-			m_InternalPool->free( (T*)pAddr_ );
-			if (--m_InternalPoolUseCount == 0) 
+			detail::pool_release(m_InternalPool, (T*)pAddr_);
+			if (--m_InternalPoolUseCount == 0)
 			{
 				delete m_InternalPool;
 				m_InternalPool = 0;

@@ -45,13 +45,10 @@
 
 #include <MinHook.h>
 
-// SR SDK — DX11 weaver for Moving Lightfield / Simulated Reality displays.
-// Win32 build uses SDK 1.34.10; x64 uses SDK 1.36.2. Both share the same API.
-#ifdef SR_WEAVE_ENABLED
-#include "sr/weaver/dx11weaver.h"
-#include "sr/management/srcontext.h"
-#include "sr/utility/exception.h"
-#endif
+// SR-Lib simplified C-style factory API. Static lib with SR runtime 
+// DLLs delay-loaded — see SR.hpp for the rationale and the vcxproj's
+// DelayLoadDLLs entries that pair with it.
+#include "SR.hpp"
 
 // ============================================================
 // Diagnostic log
@@ -123,27 +120,6 @@ enum AnaglyphMethod {
 };
 static AnaglyphMethod g_AnaglyphMethod = AM_DUBOIS;
 
-#ifdef SR_WEAVE_ENABLED
-// SEH-protected wrapper for SR::SRContext::create(). The SR runtime DLLs are
-// delay-loaded; if they're not installed, the call raises VcppException
-// 0xC06D007E (MOD_NOT_FOUND), which C++ try/catch can't intercept.
-// On delay-load failure, sets *pDllMissing=true and returns nullptr so the
-// caller can downgrade g_OutputMode. Other SEH propagates normally.
-static SR::SRContext* SafeSRContextCreate(bool* pDllMissing)
-{
-    *pDllMissing = false;
-    __try
-    {
-        return SR::SRContext::create();
-    }
-    __except (GetExceptionCode() == 0xC06D007E ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH)
-    {
-        *pDllMissing = true;
-        return nullptr;
-    }
-}
-#endif
-
 static void LoadConfig()
 {
     wchar_t path[MAX_PATH] = {};
@@ -175,7 +151,6 @@ static void LoadConfig()
         }
     }
 
-#ifdef SR_WEAVE_ENABLED
     // Some games crash if the SR runtime DLLs are loaded into their process
     // (e.g. Tomb Raider 2013 dies during init when SimulatedRealityCore loads).
     // For those, force the fallback to OM_SBS_HALF here at config time, before
@@ -203,8 +178,8 @@ static void LoadConfig()
     // For SR-eligible games, SR DLLs are loaded lazily on first stereo present
     // via the delay-load mechanism — so non-SR systems (Linux/Proton, no Leia
     // runtime) won't load SR DLLs at all if the game never reaches a stereo
-    // present, and will downgrade gracefully via SEH if they do.
-#endif
+    // present, and will downgrade gracefully via SR-Lib's LoadLibrary probe
+    // (CreateSRInterfaceDX11 returns E_NOINTERFACE) if they do.
 
     // Load SwapEyes setting
     p = strstr(buf, "SwapEyes");
@@ -280,17 +255,15 @@ static ID3D11RasterizerState*    g_pRSState = nullptr;
 // on AMD HD3D and SR-weave setups, plus added several hundred lines
 // of game-specific cursor-hide-detection workarounds. Removed wholesale.
 
-// SR (Simulated Reality / Leia) weave resources
-#ifdef SR_WEAVE_ENABLED
-static SR::IDX11Weaver1*         g_pSRWeaver11  = nullptr;
-static SR::SRContext*            g_pSRContext11  = nullptr;
+// SR (Simulated Reality / Leia) weave resources.  
+// CreateSRInterfaceDX11 manages details internally.
+static SimulatedReality::SRInterfaceDX11* g_pSRInterface = nullptr;
 static ID3D11Texture2D*          g_pSRSBSTex     = nullptr;
 static ID3D11RenderTargetView*   g_pSRSBSRTV     = nullptr;
 static ID3D11ShaderResourceView* g_pSRSBSSRV     = nullptr;
 static UINT                      g_nSRSBSW       = 0;
 static UINT                      g_nSRSBSH       = 0;
 static DXGI_FORMAT               g_SRSBSFmt      = DXGI_FORMAT_UNKNOWN;
-#endif
 
 // Shadow fixup resources — for engines (Hitman/EGO/Tomb Raider 2013) where the
 // game only renders content into the TOP HALF of each eye's shadow slot. Before
@@ -306,14 +279,11 @@ static DXGI_FORMAT               g_FixupFmt        = DXGI_FORMAT_UNKNOWN;
 
 static void CleanupSRWeaver()
 {
-#ifdef SR_WEAVE_ENABLED
-    if (g_pSRWeaver11)  { g_pSRWeaver11->destroy(); g_pSRWeaver11 = nullptr; }
-    if (g_pSRContext11) { SR::SRContext::deleteSRContext(g_pSRContext11); g_pSRContext11 = nullptr; }
-    if (g_pSRSBSSRV)    { g_pSRSBSSRV->Release(); g_pSRSBSSRV = nullptr; }
-    if (g_pSRSBSRTV)    { g_pSRSBSRTV->Release(); g_pSRSBSRTV = nullptr; }
-    if (g_pSRSBSTex)    { g_pSRSBSTex->Release(); g_pSRSBSTex = nullptr; }
-    g_nSRSBSW = 0; g_nSRSBSH = 0; g_SRSBSFmt = DXGI_FORMAT_UNKNOWN;
-#endif
+	if (g_pSRInterface) { g_pSRInterface->Delete(); g_pSRInterface = nullptr; }
+	if (g_pSRSBSSRV)    { g_pSRSBSSRV->Release();   g_pSRSBSSRV    = nullptr; }
+	if (g_pSRSBSRTV)    { g_pSRSBSRTV->Release();   g_pSRSBSRTV    = nullptr; }
+	if (g_pSRSBSTex)    { g_pSRSBSTex->Release();   g_pSRSBSTex    = nullptr; }
+	g_nSRSBSW = 0; g_nSRSBSH = 0; g_SRSBSFmt = DXGI_FORMAT_UNKNOWN;
 }
 
 static void CleanupShadowFixup()
@@ -1198,7 +1168,6 @@ static bool EnsureShadowFixup(UINT W, UINT shadowH, DXGI_FORMAT Fmt)
     return true;
 }
 
-#ifdef SR_WEAVE_ENABLED
 static bool EnsureSRSBSTexture(UINT W, UINT H, DXGI_FORMAT Fmt)
 {
     if (g_pSRSBSTex && g_nSRSBSW == W * 2 && g_nSRSBSH == H && g_SRSBSFmt == Fmt)
@@ -1234,67 +1203,49 @@ static bool EnsureSRSBSTexture(UINT W, UINT H, DXGI_FORMAT Fmt)
     g_nSRSBSW  = W * 2;
     g_nSRSBSH  = H;
     g_SRSBSFmt = Fmt;
+
+    // Bind the (new) SRV once here rather than every Present — the SRV only
+    // changes when this function recreates the SBS texture.
+    if (g_pSRInterface)
+        g_pSRInterface->SetInputTexture(g_pSRSBSSRV);
+
     return true;
 }
 
 static bool EnsureSRWeaver(HWND hWnd)
 {
-    if (g_pSRWeaver11) return true;
+    if (g_pSRInterface) return true;
 
-    if (g_pSRContext11)
-    {
-        SR::SRContext::deleteSRContext(g_pSRContext11);
-        g_pSRContext11 = nullptr;
-    }
-
-    bool srDllMissing = false;
-    try { g_pSRContext11 = SafeSRContextCreate(&srDllMissing); }
-    catch (const SR::ServerNotAvailableException&)
-    {
-        static bool s_bLoggedNoServer = false;
-        if (!s_bLoggedNoServer) { s_bLoggedNoServer = true;
-            WriteLog("[AmdQbProxy] SR: SRContext::create threw ServerNotAvailableException (SR Service not running?)\n"); }
-        return false;
-    }
-    catch (...)
-    {
-        static bool s_bLoggedCtxFail = false;
-        if (!s_bLoggedCtxFail) { s_bLoggedCtxFail = true;
-            WriteLog("[AmdQbProxy] SR: SRContext::create threw unknown exception\n"); }
-        return false;
-    }
-
-    if (srDllMissing)
-    {
-        static bool s_bLoggedDllMissing = false;
-        if (!s_bLoggedDllMissing) { s_bLoggedDllMissing = true;
-            WriteLog("[AmdQbProxy] SR runtime DLLs not installed; downgrading OM_SR_WEAVE -> OM_SBS_HALF\n"); }
-        g_OutputMode = OM_SBS_HALF;
-        return false;
-    }
-    if (!g_pSRContext11) return false;
-
+    // CreateSRInterfaceDX11 manages the SR lifecycle internally and
+    // probes runtime availability via LoadLibrary before touching any of the
+    // delay-loaded SR DLLs — returns E_NOINTERFACE when the runtime is absent
+    // (the soft path that lets us downgrade to Half SBS instead of crashing),
+    // or another failing HRESULT for server-down / no-SR-display / etc.
     ID3D11DeviceContext* pCtx = nullptr;
     g_pDevice11->GetImmediateContext(&pCtx);
-    WeaverErrorCode res = SR::CreateDX11Weaver(g_pSRContext11, pCtx, hWnd, &g_pSRWeaver11);
+    HRESULT hr = SimulatedReality::CreateSRInterfaceDX11(pCtx, hWnd, &g_pSRInterface);
     pCtx->Release();
 
-    if (res != WeaverSuccess)
+    if (FAILED(hr) || !g_pSRInterface)
     {
-        char buf[200];
-        wsprintfA(buf, "[AmdQbProxy] SR: CreateDX11Weaver failed (err=%d hWnd=%p dev=%p)\n", (int)res, hWnd, g_pDevice11);
-        WriteLog(buf);
-        SR::SRContext::deleteSRContext(g_pSRContext11);
-        g_pSRContext11 = nullptr;
+        // Sticky downgrade: once SR is unavailable for this session, fall back
+        // to Half SBS so we don't retry every frame. 
+        static bool s_bLoggedSRFail = false;
+        if (!s_bLoggedSRFail) { s_bLoggedSRFail = true;
+            char buf[220];
+            wsprintfA(buf, "[AmdQbProxy] SR: CreateSRInterfaceDX11 failed (hr=0x%08X hWnd=%p); downgrading OM_SR_WEAVE -> OM_SBS_HALF\n", (unsigned)hr, hWnd);
+            WriteLog(buf);
+        }
+        g_OutputMode = OM_SBS_HALF;
+        if (g_pSRInterface) { g_pSRInterface->Delete(); g_pSRInterface = nullptr; }
         return false;
     }
-    g_pSRContext11->initialize();
+
     char buf[200];
-    wsprintfA(buf, "[AmdQbProxy] SR: DX11 weaver ready (hWnd=%p ctx=%p weaver=%p)\n", hWnd, g_pSRContext11, g_pSRWeaver11);
+    wsprintfA(buf, "[AmdQbProxy] SR: DX11 weaver ready (hWnd=%p sri=%p)\n", hWnd, g_pSRInterface);
     WriteLog(buf);
     return true;
 }
-#endif
 
 static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInterval, UINT Flags)
 {
@@ -1889,11 +1840,7 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
                             g_OutputMode == OM_COL_INTERLEAVED  ||
                             g_OutputMode == OM_CHECKERBOARD);
     bool anaglyphMode    = (g_OutputMode == OM_ANAGLYPH);
-#ifdef SR_WEAVE_ENABLED
     bool srWeaveMode     = (g_OutputMode == OM_SR_WEAVE);
-#else
-    bool srWeaveMode     = false;
-#endif
 
     // Compositor: the shadow texture holds the game's T&B content (left eye=top,
     // right eye=bottom).  The pixel shader samples each eye's half and draws it
@@ -2017,7 +1964,6 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
             }
         }
     }
-#ifdef SR_WEAVE_ENABLED
     else if (srWeaveMode)
     {
         // SR Weave: blit each eye from the T&B shadow into a side-by-side texture,
@@ -2062,24 +2008,19 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
             vp.MaxDepth = 1.0f;
             g_pContext->RSSetViewports(1, &vp);
 
-            // Hand off to SR weaver.
-            g_pSRWeaver11->setContext(g_pContext);
-            g_pSRWeaver11->setInputViewTexture(g_pSRSBSSRV,
-                                               static_cast<int>(W),
-                                               static_cast<int>(H),
-                                               g_SRSBSFmt);
-            g_pSRWeaver11->weave();
+            // Hand off to SR weaver. SetInputTexture was called once in
+            // EnsureSRSBSTexture when the SRV was created.
+            g_pSRInterface->Weave();
 
             // One-time success log on first weave
             static bool s_bWeaveOnceLog = false;
             if (!s_bWeaveOnceLog)
             {
                 s_bWeaveOnceLog = true;
-                WriteLog("[AmdQbProxy] SR weave: first weave() called\n");
+                WriteLog("[AmdQbProxy] SR weave: first Weave() called\n");
             }
         }
     }
-#endif
     else
     {
         // SBS modes: left viewport = one eye, right viewport = other eye
@@ -2719,8 +2660,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     case DLL_PROCESS_DETACH:
         // lpReserved != NULL means the process is exiting — DLL unload order is
         // undefined and the SR runtime DLLs may already be gone. Calling
-        // SR::SRContext / IDX11Weaver1::destroy() on dead vtables crashes
-        // (DiRT Rally exit crash). Let the OS reclaim memory in that case.
+        // SRInterfaceDX11::Delete() on a dead vtable crashes (DiRT Rally exit
+        // crash). Let the OS reclaim memory in that case.
         if (lpReserved != nullptr)
         {
             MH_Uninitialize();

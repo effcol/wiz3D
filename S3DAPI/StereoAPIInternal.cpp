@@ -2,10 +2,9 @@
 //
 
 #include "stdafx.h"
-#include "S3DAPI.h"
 #include "GlobalData.h"
 #include "StereoAPIInternal.h"
-#include "..\BuildSetup\version.h"
+#include "Shared\version.h"
 
 HRESULT StereoAPIInternal::MakeScreenshot(TCHAR *path,MakeScreenshotCallback callback)
 {

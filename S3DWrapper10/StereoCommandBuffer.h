@@ -5,7 +5,13 @@
 #include "ShaderWrapper.h"
 #include <unordered_map>
 #include <unordered_set>
+
+// _CRTDBG_MAP_ALLOC (via SharedInclude.h) redefines 'free' as '_free_dbg',
+// which corrupts boost::object_pool::free(). Shield the Pool header only.
+#pragma push_macro("free")
+#undef free
 #include <boost\pool\pool_alloc.hpp>
+#pragma pop_macro("free")
 
 #include "CommandBuffer.h"
 #include "../DX10SharedLibrary/ExternalConstantBuffer.h"

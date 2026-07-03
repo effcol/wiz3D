@@ -1,4 +1,4 @@
-#include "..\BuildSetup\version.h"
+#include "..\bin\temp_version.h"
 
 #include "..\Shared\ProductNames.h"
 
