@@ -35,7 +35,6 @@ static int   g_outputMode     = 1;   // DX9 default = SBS (mode 8/SR also implem
 static int   g_useLayoutStable = 0;   // 0=off  1=IDirect3D9 vtable patch (task #61)  2=+IDirect3DDevice9 vtable patch (task #68)
 static int   g_anaglyphColour  = 0;   // 0=RC (default), 1=GM, 2=AB
 static int   g_anaglyphMethod  = 0;   // 0=Dubois (default), 1=Compromise, 2=Color, 3=HalfColor, 4=Optimised, 5=Grey, 6=True
-static int   g_forceSRWeave    = 0;   // diagnostic — bypass SR-incompatible exe blacklist
 
 static void LogOpen(void)
 {
@@ -78,7 +77,6 @@ extern "C" int NvDM_OutputIsTopBottom() { return (g_outputMode == 0 || g_outputM
 extern "C" int NvDM_UseLayoutStableLevel() { return g_useLayoutStable; }
 extern "C" int NvDM_AnaglyphColour() { return g_anaglyphColour; }
 extern "C" int NvDM_AnaglyphMethod() { return g_anaglyphMethod; }
-extern "C" int NvDM_ForceSRWeave()   { return g_forceSRWeave; }
 
 static int ReadConfigInt(const char* xml, const char* tag, int defaultValue)
 {
@@ -116,7 +114,6 @@ static void LoadConfig(HMODULE hProxy)
     g_outputMode      = ReadConfigInt(buf, "OutputMode",      g_outputMode);
     g_anaglyphColour  = ReadConfigInt(buf, "AnaglyphColour",  g_anaglyphColour);
     g_anaglyphMethod  = ReadConfigInt(buf, "AnaglyphMethod",  g_anaglyphMethod);
-    g_forceSRWeave    = ReadConfigInt(buf, "ForceSRWeave",    g_forceSRWeave);
     free(buf);
 }
 
@@ -409,9 +406,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             WCHAR proxyPath[MAX_PATH];
             GetModuleFileNameW(hModule, proxyPath, MAX_PATH);
             Log("Proxy DLL: %ls\n", proxyPath);
-            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  UseLayoutStableProxy=%d  LoggingEnabled=%d  VerboseLogging=%d  ForceSRWeave=%d\n",
+            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  UseLayoutStableProxy=%d  LoggingEnabled=%d  VerboseLogging=%d\n",
                 g_outputMode, NvDM_OutputIsTopBottom() ? "Top-and-Bottom" : "Side-by-Side",
-                g_wrapDevices, g_swapEyes, g_useLayoutStable, g_loggingEnabled, g_verboseEnabled, g_forceSRWeave);
+                g_wrapDevices, g_swapEyes, g_useLayoutStable, g_loggingEnabled, g_verboseEnabled);
         }
         break;
 

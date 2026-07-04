@@ -43,7 +43,6 @@ extern "C" int NvDM_SwapEyes();
 extern "C" int NvDM_OutputMode();
 extern "C" int NvDM_AnaglyphColour();
 extern "C" int NvDM_AnaglyphMethod();
-extern "C" int NvDM_ForceSRWeave();
 extern "C" void NvDM_Log(const char* fmt, ...);
 extern "C" int NvDM_VerboseEnabled();
 
@@ -176,8 +175,8 @@ namespace
     // all down on context loss / window resize / DLL detach.
     struct SRState
     {
-        bool                              blacklistedOrFailed = false;
-        SimulatedReality::SRInterfaceOGL* srInterfaceOGL      = nullptr;
+        bool                              failed         = false;
+        SimulatedReality::SRInterfaceOGL* srInterfaceOGL = nullptr;
 
         GLuint sbsTex              = 0;         // 2W × H, RGBA8
         GLuint sbsFbo              = 0;         // FBO whose color attachment is sbsTex
@@ -427,20 +426,6 @@ void EyeFbosDestroy()
 #define GL_COLOR_BUFFER_BIT               0x00004000
 #endif
 
-// Mirror of the d3d11 blacklist. Keep aligned manually.
-static bool IsSRIncompatibleExe()
-{
-    wchar_t exePath[MAX_PATH] = {};
-    if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) return false;
-    for (wchar_t* p = exePath; *p; ++p) *p = (wchar_t)towlower(*p);
-    static const wchar_t* const kBlacklist[] = {
-        L"tombraider.exe",   // TR2013 — see project_tr2013_sr_dead_end memory
-    };
-    for (auto entry : kBlacklist)
-        if (wcsstr(exePath, entry)) return true;
-    return false;
-}
-
 static void ReleaseSRPipeline()
 {
     if (g_sr.sbsFbo && p_glDeleteFramebuffers)
@@ -513,29 +498,8 @@ static bool EnsureSRSBSTexture()
 
 static bool EnsureSRWeaver()
 {
-    if (g_sr.blacklistedOrFailed) return false;
+    if (g_sr.failed) return false;
     if (g_sr.srInterfaceOGL) return true;
-
-    static bool s_blacklistChecked = false;
-    static bool s_isBlacklisted    = false;
-    if (!s_blacklistChecked)
-    {
-        s_blacklistChecked = true;
-        s_isBlacklisted    = IsSRIncompatibleExe();
-        if (s_isBlacklisted)
-        {
-            if (NvDM_ForceSRWeave())
-            {
-                NvDM_Log("  opengl32 EnsureSRWeaver: exe is SR-blacklisted but ForceSRWeave=1 — attempting anyway (diagnostic)\n");
-                s_isBlacklisted = false;
-            }
-            else if (NvDM_VerboseEnabled())
-            {
-                NvDM_Log("  opengl32 EnsureSRWeaver: exe is SR-blacklisted; falling back to SBS (set ForceSRWeave=1 to override)\n");
-            }
-        }
-    }
-    if (s_isBlacklisted) { g_sr.blacklistedOrFailed = true; return false; }
 
     // HWND from the current GL context's HDC. Resolve wglGetCurrentDC via
     // g_hRealOpenGL32 — our own DLL IS opengl32 from the game's POV, so we
@@ -555,7 +519,7 @@ static bool EnsureSRWeaver()
     {
         NvDM_Log("  opengl32 EnsureSRWeaver: CreateSRInterfaceOGL failed (hr=0x%08lX hWnd=%p)\n",
                  hr, (void*)hWnd);
-        g_sr.blacklistedOrFailed = true;
+        g_sr.failed = true;
         return false;
     }
 

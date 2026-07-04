@@ -12,7 +12,6 @@ extern "C" int  NvDM_VerboseEnabled();
 extern "C" int  NvDM_SwapEyes();
 extern "C" int  NvDM_OutputMode();         // raw config value (0..8)
 extern "C" int  NvDM_OutputIsTopBottom();  // collapsed: 1 if T-B, 0 if SBS (the only two implemented backends)
-extern "C" int  NvDM_ForceSRWeave();       // diagnostic — when 1, bypass SR-incompatible exe blacklist
 
 // LOG_VERBOSE: gated on the config flag — emits at most a small amount
 // of info per call site (use NVDM_TRACE_FIRST below for hot paths).

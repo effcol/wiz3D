@@ -203,7 +203,7 @@ private:
     // Sticky flag — set if SR runtime missing OR interface create failed OR
     // the game is on the SR-incompatible blacklist. Once set the rest of the
     // session falls back to SBS without re-trying.
-    bool                               m_srBlacklistedOrFailed;
+    bool                               m_srFailed;
     SimulatedReality::SRInterfaceDX11* m_srInterfaceDX11;  
                                                    
     ID3D11Texture2D*          m_srSBSTex;

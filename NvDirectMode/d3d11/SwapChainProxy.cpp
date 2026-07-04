@@ -253,7 +253,7 @@ SwapChainProxy::SwapChainProxy(IDXGISwapChain* real, Device11Proxy* parent)
     , m_leftEyeSRV(nullptr)
     , m_rightEyeSRV(nullptr)
     , m_realBBRTV(nullptr)
-    , m_srBlacklistedOrFailed(false)
+    , m_srFailed(false)
     , m_srInterfaceDX11(nullptr)
     , m_srSBSTex(nullptr)
     , m_srSBSRTV(nullptr)
@@ -695,43 +695,6 @@ bool SwapChainProxy::EnsureCompositeShaders()
     return full;
 }
 
-// Some games crash if the SR runtime DLLs are loaded into their process.
-// Blacklist them here so SR mode downgrades to SBS without ever touching
-// the runtime. AmdQbProxy maintains an identical list for the same reason
-// — TR2013 is the canonical example: the screen's microlens engages on
-// weave(), then the SR runtime's async camera/eye-tracker subsystem
-// spawns its threads and something inside TR (anti-tamper, EOS Overlay
-// injection, or one of TR's other injected DLLs) doesn't tolerate them.
-// AmdQbProxy hit the same wall first and accepted it; we follow.
-// If a game turns out to crash only when actually entering SR weave,
-// add its exe name here.
-static bool IsSRIncompatibleExe()
-{
-    wchar_t exePath[MAX_PATH] = {};
-    if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) return false;
-    for (wchar_t* p = exePath; *p; ++p) *p = (wchar_t)towlower(*p);
-    static const wchar_t* const kBlacklist[] = {
-        // TR2013: deep-diagnosed; the crash is inside CreateDX11Weaver itself,
-        // BEFORE setWindowHandle or ctx->initialize ever run. EOSOVH (Epic
-        // overlay) is in TR's process from its static EOSSDK import and hooks
-        // something the SR weaver constructor touches. Neither the two-step
-        // HWND-defer pattern nor reordering ctx->initialize() helped — both
-        // landed on the same EOSOVH+0x18060 strlen-loop crash. SBS fallback
-        // was the answer until/unless we neutralise the overlay itself.
-        // RESOLVED 2026-06-26: EOSSDK is a static import and loads the overlay
-        // wiz3D-proxy/EOSStub project (a hard-stub EOSSDK whose exports all
-        // return 0) disables EOS - and thus the overlay - entirely. Confirmed
-        // in-game: with the stub in the game folder, TR runs SR weave on an SR
-        // device, no crash. This entry STAYS as the safe SBS default for users
-        // without the stub; the SR path is opt-in via EOSStub + ForceSRWeave=1.
-        // See project_tr2013_sr_dead_end / project_eosstub memories.
-        L"tombraider.exe",
-    };
-    for (auto entry : kBlacklist)
-        if (wcsstr(exePath, entry)) return true;
-    return false;
-}
-
 bool SwapChainProxy::EnsureSRSBSTexture()
 {
     if (!m_parent) return false;
@@ -782,36 +745,15 @@ bool SwapChainProxy::EnsureSRSBSTexture()
 
 bool SwapChainProxy::EnsureSRWeaver()
 {
-    if (m_srBlacklistedOrFailed) return false;
+    if (m_srFailed) return false;
     if (m_srInterfaceDX11) return true;
     if (!m_parent || !m_real) return false;
-
-    static bool s_blacklistChecked = false;
-    static bool s_isBlacklisted    = false;
-    if (!s_blacklistChecked)
-    {
-        s_blacklistChecked = true;
-        s_isBlacklisted    = IsSRIncompatibleExe();
-        if (s_isBlacklisted)
-        {
-            if (NvDM_ForceSRWeave())
-            {
-                LOG_VERBOSE("  d3d11 EnsureSRWeaver: exe is SR-blacklisted but ForceSRWeave=1 — attempting anyway (diagnostic)\n");
-                s_isBlacklisted = false;
-            }
-            else
-            {
-                LOG_VERBOSE("  d3d11 EnsureSRWeaver: exe is SR-blacklisted; falling back to SBS (set ForceSRWeave=1 to override)\n");
-            }
-        }
-    }
-    if (s_isBlacklisted) { m_srBlacklistedOrFailed = true; return false; }
 
     // HWND from the swap chain's output window.
     DXGI_SWAP_CHAIN_DESC scDesc = {};
     if (FAILED(m_real->GetDesc(&scDesc)))
     {
-        m_srBlacklistedOrFailed = true;
+        m_srFailed = true;
         return false;
     }
     HWND hWnd = scDesc.OutputWindow;
@@ -819,14 +761,14 @@ bool SwapChainProxy::EnsureSRWeaver()
     ID3D11Device* dev = m_parent->GetReal();
     if (!dev) 
     {
-        m_srBlacklistedOrFailed = true; 
+        m_srFailed = true; 
         return false; 
     }
     ID3D11DeviceContext* immCtx = nullptr;
     dev->GetImmediateContext(&immCtx);
     if (!immCtx)
     {
-        m_srBlacklistedOrFailed = true;
+        m_srFailed = true;
         return false; 
     }
 
@@ -840,7 +782,7 @@ bool SwapChainProxy::EnsureSRWeaver()
     {
         LOG_VERBOSE("  d3d11 EnsureSRWeaver: CreateSRInterfaceDX11 failed (hr=0x%08lX hWnd=%p)\n",
                     hr, (void*)hWnd);
-        m_srBlacklistedOrFailed = true;
+        m_srFailed = true;
         return false;
     }
 
@@ -1043,8 +985,8 @@ bool SwapChainProxy::RunCompositePass()
     {
         if (RunSRWeave()) return true;
         // SR unavailable on this system (runtime missing, server down, or
-        // weaver create failed). m_srBlacklistedOrFailed is now sticky;
-        // fall through to SBS for the rest of the session.
+        // weaver create failed). m_srFailed is now sticky; fall through to
+        // SBS for the rest of the session.
         NVDM_TRACE_FIRST_N(1, "  RunCompositePass: SR weave unavailable, falling back to SBS\n");
     }
     ID3D11PixelShader* ps = m_compositePS_SBS;

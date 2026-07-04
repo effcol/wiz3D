@@ -27,7 +27,6 @@ extern "C" int NvDM_SwapEyes();
 extern "C" int NvDM_OutputMode();
 extern "C" int NvDM_AnaglyphColour();
 extern "C" int NvDM_AnaglyphMethod();
-extern "C" int NvDM_ForceSRWeave();
 
 // ---------------------------------------------------------------------------
 // d3dcompiler resolver + composite shader source (same shaders as d3d11;
@@ -216,7 +215,7 @@ SwapChainProxy::SwapChainProxy(IDXGISwapChain* real, Device10Proxy* parent)
     , m_leftEyeSRV(nullptr)
     , m_rightEyeSRV(nullptr)
     , m_realBBRTV(nullptr)
-    , m_srBlacklistedOrFailed(false)
+    , m_srFailed(false)
     , m_srInterfaceDX10(nullptr)
     , m_srSBSTex(nullptr)
     , m_srSBSRTV(nullptr)
@@ -554,21 +553,6 @@ bool SwapChainProxy::EnsureCompositeShaders()
     return full;
 }
 
-// Mirror of the d3d11 blacklist. Keep aligned manually.
-static bool IsSRIncompatibleExe()
-{
-    wchar_t exePath[MAX_PATH] = {};
-    if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) return false;
-    for (wchar_t* p = exePath; *p; ++p) *p = (wchar_t)towlower(*p);
-    // Kept aligned with d3d11's blacklist. See d3d11 SwapChainProxy.cpp.
-    static const wchar_t* const kBlacklist[] = {
-        L"tombraider.exe",
-    };
-    for (auto entry : kBlacklist)
-        if (wcsstr(exePath, entry)) return true;
-    return false;
-}
-
 void SwapChainProxy::ReleaseSRPipeline()
 {
     if (m_srSBSSRV) { m_srSBSSRV->Release(); m_srSBSSRV = nullptr; }
@@ -634,36 +618,15 @@ bool SwapChainProxy::EnsureSRSBSTexture()
 
 bool SwapChainProxy::EnsureSRWeaver()
 {
-    if (m_srBlacklistedOrFailed) return false;
+    if (m_srFailed) return false;
     if (m_srInterfaceDX10) return true;
     if (!m_parent || !m_real) return false;
-
-    static bool s_blacklistChecked = false;
-    static bool s_isBlacklisted    = false;
-    if (!s_blacklistChecked)
-    {
-        s_blacklistChecked = true;
-        s_isBlacklisted    = IsSRIncompatibleExe();
-        if (s_isBlacklisted)
-        {
-            if (NvDM_ForceSRWeave())
-            {
-                LOG_VERBOSE("  d3d10 EnsureSRWeaver: exe is SR-blacklisted but ForceSRWeave=1 — attempting anyway (diagnostic)\n");
-                s_isBlacklisted = false;
-            }
-            else
-            {
-                LOG_VERBOSE("  d3d10 EnsureSRWeaver: exe is SR-blacklisted; falling back to SBS (set ForceSRWeave=1 to override)\n");
-            }
-        }
-    }
-    if (s_isBlacklisted) { m_srBlacklistedOrFailed = true; return false; }
 
     // HWND from the swap chain's output window.
     DXGI_SWAP_CHAIN_DESC scDesc = {};
     if (FAILED(m_real->GetDesc(&scDesc)))
     {
-        m_srBlacklistedOrFailed = true;
+        m_srFailed = true;
         return false;
     }
     HWND hWnd = scDesc.OutputWindow;
@@ -671,7 +634,7 @@ bool SwapChainProxy::EnsureSRWeaver()
     ID3D10Device* dev = m_parent->GetReal();
     if (!dev)
     { 
-        m_srBlacklistedOrFailed = true; 
+        m_srFailed = true; 
         return false; 
     }
 
@@ -684,7 +647,7 @@ bool SwapChainProxy::EnsureSRWeaver()
     {
         LOG_VERBOSE("  d3d10 EnsureSRWeaver: CreateSRInterfaceDX10 failed (hr=0x%08lX hWnd=%p dev=%p)\n",
                     hr, (void*)hWnd, (void*)dev);
-        m_srBlacklistedOrFailed = true;
+        m_srFailed = true;
         return false;
     }
 

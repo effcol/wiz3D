@@ -105,16 +105,6 @@
              Default: 0. -->
         <AnaglyphColour Value="0"/>
 
-        <!-- ForceSRWeave: 0 = honour SR-incompatible exe blacklist (default,
-             safe); 1 = bypass blacklist and attempt SR weave anyway. Diagnostic
-             only — used to gather logs from games (like Tomb Raider 2013) that
-             we've blacklisted because SR runtime cohabitation crashes them.
-             With ForceSRWeave=1 you'll see the actual SR engagement attempt,
-             the deep-trace logs, and the fatal-crash module/thread dump that
-             tells us *which* DLL/thread is killing the game. Expect a crash.
-             Default: 0. -->
-        <ForceSRWeave Value="0"/>
-
         <!-- BlockEOSOverlay: 1 = block Epic Online Services overlay
              (EOSOVH-Win32-Shipping.dll) from loading into the game process;
              0 = allow it to load normally.

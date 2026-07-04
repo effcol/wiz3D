@@ -47,7 +47,6 @@ static int   g_outputMode      = 8;  // overridden by OutputMode — see 3DVisio
                                      //   8   = SR weave (Leia / Samsung Odyssey ML displays)
 static int   g_anaglyphColour   = 0; // 0=RC (default), 1=GM, 2=AB
 static int   g_anaglyphMethod   = 0; // 0=Dubois (default), 1=Compromise, 2=Color, 3=HalfColor, 4=Optimised, 5=Grey, 6=True
-static int   g_forceSRWeave     = 0; // diagnostic — bypass SR-incompatible exe blacklist
 static int   g_blockEOSOverlay  = 0; // refuse to load EOSOVH-Win32-Shipping.dll (Epic Games Launcher overlay). Diagnostic/opt-in — for games that statically import EOSSDK (TR2013) the block runs too late and can't help anyway.
 
 static void LogOpen(void)
@@ -98,7 +97,6 @@ extern "C" int NvDM_OutputMode()     { return g_outputMode; }
 extern "C" int NvDM_OutputIsTopBottom() { return (g_outputMode == 0 || g_outputMode == 3) ? 1 : 0; }
 extern "C" int NvDM_AnaglyphColour() { return g_anaglyphColour; }
 extern "C" int NvDM_AnaglyphMethod() { return g_anaglyphMethod; }
-extern "C" int NvDM_ForceSRWeave()   { return g_forceSRWeave; }
 
 // ---------------------------------------------------------------------------
 // Tiny config reader — pulls <Tag Value="N"/> ints from 3DVision_Config.xml
@@ -144,190 +142,9 @@ static void LoadConfig(HMODULE hProxy)
     g_outputMode      = ReadConfigInt(buf, "OutputMode",      g_outputMode);
     g_anaglyphColour  = ReadConfigInt(buf, "AnaglyphColour",  g_anaglyphColour);
     g_anaglyphMethod  = ReadConfigInt(buf, "AnaglyphMethod",  g_anaglyphMethod);
-    g_forceSRWeave    = ReadConfigInt(buf, "ForceSRWeave",    g_forceSRWeave);
     g_blockEOSOverlay = ReadConfigInt(buf, "BlockEOSOverlay", g_blockEOSOverlay);
 
     free(buf);
-}
-
-// ---------------------------------------------------------------------------
-// Minimal x86 length disassembler. Returns the byte length of the instruction
-// at `p`, or 0 if undecodable. Handles the common AV-causing opcodes (MOV,
-// CMP, CALL/JMP r/m, PUSH r/m, TEST, etc.) accurately; for everything else
-// the caller falls back to a small heuristic skip. Just enough to advance
-// EIP past one faulting instruction inside a known-buggy 3rd-party DLL.
-// ---------------------------------------------------------------------------
-static int LDE_x86(const BYTE* p, int maxLen)
-{
-    if (maxLen < 1) return 0;
-    int off = 0;
-    bool osize16 = false;
-
-    while (off < maxLen)
-    {
-        BYTE b = p[off];
-        if (b == 0x66) { osize16 = true; off++; }
-        else if (b == 0x67 || b == 0xF0 || b == 0xF2 || b == 0xF3 ||
-                 b == 0x26 || b == 0x2E || b == 0x36 || b == 0x3E ||
-                 b == 0x64 || b == 0x65) off++;
-        else break;
-    }
-    if (off >= maxLen) return 0;
-
-    BYTE op = p[off++];
-    bool twobyte = false;
-    if (op == 0x0F)
-    {
-        if (off >= maxLen) return 0;
-        op = p[off++];
-        twobyte = true;
-    }
-
-    int has_modrm = 0;
-    int imm = 0;
-
-    if (!twobyte)
-    {
-        if (op <= 0x05 || (op >= 0x08 && op <= 0x0D) || (op >= 0x10 && op <= 0x15) ||
-            (op >= 0x18 && op <= 0x1D) || (op >= 0x20 && op <= 0x25) ||
-            (op >= 0x28 && op <= 0x2D) || (op >= 0x30 && op <= 0x35) ||
-            (op >= 0x38 && op <= 0x3D))
-        {
-            int sub = op & 0x07;
-            if      (sub <= 3) has_modrm = 1;
-            else if (sub == 4) imm = 1;
-            else if (sub == 5) imm = osize16 ? 2 : 4;
-        }
-        else if (op == 0x68)                          imm = osize16 ? 2 : 4;
-        else if (op == 0x6A)                          imm = 1;
-        else if (op == 0x69)                        { has_modrm = 1; imm = osize16 ? 2 : 4; }
-        else if (op == 0x6B)                        { has_modrm = 1; imm = 1; }
-        else if (op >= 0x70 && op <= 0x7F)            imm = 1;
-        else if (op == 0x80 || op == 0x82 || op == 0x83) { has_modrm = 1; imm = 1; }
-        else if (op == 0x81)                        { has_modrm = 1; imm = osize16 ? 2 : 4; }
-        else if (op >= 0x84 && op <= 0x8F)            has_modrm = 1;
-        else if (op >= 0xB0 && op <= 0xB7)            imm = 1;
-        else if (op >= 0xB8 && op <= 0xBF)            imm = osize16 ? 2 : 4;
-        else if (op == 0xC0 || op == 0xC1)          { has_modrm = 1; imm = 1; }
-        else if (op == 0xC2)                          imm = 2;
-        else if (op == 0xC6)                        { has_modrm = 1; imm = 1; }
-        else if (op == 0xC7)                        { has_modrm = 1; imm = osize16 ? 2 : 4; }
-        else if (op == 0xCD)                          imm = 1;
-        else if (op >= 0xD0 && op <= 0xD3)            has_modrm = 1;
-        else if (op == 0xE8 || op == 0xE9)            imm = osize16 ? 2 : 4;
-        else if (op == 0xEB)                          imm = 1;
-        else if (op == 0xF6 || op == 0xF7)            has_modrm = 1;
-        else if (op == 0xFE || op == 0xFF)            has_modrm = 1;
-    }
-    else
-    {
-        if      (op >= 0x80 && op <= 0x8F) imm = osize16 ? 2 : 4;
-        else if (op == 0x31 || op == 0x32 || op == 0x33 || op == 0xA2 ||
-                 op == 0xAA || op == 0x0B || op == 0x05 || op == 0x06 ||
-                 op == 0x07 || op == 0x08 || op == 0x09 || op == 0xA0 ||
-                 op == 0xA1 || op == 0xA8 || op == 0xA9) { /* no modr/m */ }
-        else                                  has_modrm = 1;
-    }
-
-    if (has_modrm)
-    {
-        if (off >= maxLen) return 0;
-        BYTE modrm = p[off++];
-        int mod = (modrm >> 6) & 0x3;
-        int rm  = modrm & 0x7;
-        int disp = 0;
-
-        if (mod != 3 && rm == 4)
-        {
-            if (off >= maxLen) return 0;
-            BYTE sib = p[off++];
-            int base = sib & 0x7;
-            if (mod == 0 && base == 5) disp = 4;
-        }
-        if      (mod == 0 && rm == 5) disp = 4;
-        else if (mod == 1)            disp = 1;
-        else if (mod == 2)            disp = 4;
-
-        off += disp;
-
-        if (!twobyte)
-        {
-            int reg = (modrm >> 3) & 0x7;
-            if (op == 0xF6 && reg == 0) imm = 1;
-            if (op == 0xF7 && reg == 0) imm = osize16 ? 2 : 4;
-        }
-    }
-
-    off += imm;
-    return (off <= maxLen) ? off : 0;
-}
-
-// ---------------------------------------------------------------------------
-// Test B (TR2013 SR weave): when ForceSRWeave=1, suppress crashes that
-// originate inside known-buggy 3rd-party in-process DLLs by advancing EIP
-// past the faulting instruction. EOSOVH-Win32-Shipping.dll is the canonical
-// example — Epic Games Launcher's overlay injects into TR and crashes at
-// a deterministic offset when SR is active. Skipping its bad instruction
-// lets the rest of the process (and SR weave) keep running. Limited to a
-// modest number of suppressions per session so a true crash loop still
-// falls through to the fatal-dump path.
-// ---------------------------------------------------------------------------
-static bool SuppressKnownBadDLLCrash(EXCEPTION_POINTERS* pExInfo)
-{
-    if (!g_forceSRWeave) return false;
-
-    static const wchar_t* kBadModules[] = {
-        L"EOSOVH-Win32-Shipping.dll",
-    };
-
-    void* crashAddr = pExInfo->ExceptionRecord->ExceptionAddress;
-    HMODULE hMod = NULL;
-    if (!GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                            (LPCSTR)crashAddr, &hMod))
-        return false;
-
-    WCHAR modName[MAX_PATH];
-    if (!GetModuleFileNameW(hMod, modName, MAX_PATH)) return false;
-    const WCHAR* leaf = wcsrchr(modName, L'\\');
-    if (leaf) leaf++; else leaf = modName;
-
-    bool match = false;
-    for (auto bad : kBadModules)
-        if (_wcsicmp(leaf, bad) == 0) { match = true; break; }
-    if (!match) return false;
-
-    static volatile long s_suppressCount = 0;
-    long n = InterlockedIncrement(&s_suppressCount);
-    if (n > 64)
-    {
-        if (n == 65) Log("VEH: %ls suppressions exceeded 64; letting next crash through\n", leaf);
-        return false;
-    }
-
-    BYTE buf[16] = {};
-    SIZE_T bytesRead = 0;
-    ReadProcessMemory(GetCurrentProcess(), crashAddr, buf, sizeof(buf), &bytesRead);
-    int len = (bytesRead > 0) ? LDE_x86(buf, (int)bytesRead) : 0;
-    if (len < 1 || len > 15) len = 3;
-
-    if (n <= 5 || (n % 30) == 0)  // throttle: first 5, then every 30th
-    {
-        Log("VEH: suppressing %ls + 0x%IX (crash #%ld) — skipping %d bytes "
-            "[%02X %02X %02X %02X %02X %02X %02X]\n",
-            leaf, (DWORD_PTR)crashAddr - (DWORD_PTR)hMod, n, len,
-            buf[0], bytesRead > 1 ? buf[1] : 0, bytesRead > 2 ? buf[2] : 0,
-            bytesRead > 3 ? buf[3] : 0, bytesRead > 4 ? buf[4] : 0,
-            bytesRead > 5 ? buf[5] : 0, bytesRead > 6 ? buf[6] : 0);
-        if (g_logFile) fflush(g_logFile);
-    }
-
-#ifdef _M_IX86
-    pExInfo->ContextRecord->Eip += len;
-#else
-    pExInfo->ContextRecord->Rip += len;
-#endif
-    return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -355,12 +172,6 @@ static LONG CALLBACK VectoredCrashHandler(EXCEPTION_POINTERS* pExInfo)
     default:
         return EXCEPTION_CONTINUE_SEARCH;
     }
-
-    // Test B: try to suppress crashes in known-buggy 3rd-party DLLs by
-    // advancing past the faulting instruction. Gated on ForceSRWeave so
-    // games not using the SR diagnostic path see no behaviour change.
-    if (SuppressKnownBadDLLCrash(pExInfo))
-        return EXCEPTION_CONTINUE_EXECUTION;
 
     if (InterlockedCompareExchange(&g_crashLogged, 1, 0) != 0)
         return EXCEPTION_CONTINUE_SEARCH;
@@ -978,9 +789,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             WCHAR proxyPath[MAX_PATH];
             GetModuleFileNameW(hModule, proxyPath, MAX_PATH);
             Log("Proxy DLL: %ls\n", proxyPath);
-            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  LoggingEnabled=%d  VerboseLogging=%d  ForceSRWeave=%d  BlockEOSOverlay=%d\n",
+            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  LoggingEnabled=%d  VerboseLogging=%d  BlockEOSOverlay=%d\n",
                 g_outputMode, NvDM_OutputIsTopBottom() ? "Top-and-Bottom" : "Side-by-Side",
-                g_wrapDevices, g_swapEyes, g_loggingEnabled, g_verboseEnabled, g_forceSRWeave, g_blockEOSOverlay);
+                g_wrapDevices, g_swapEyes, g_loggingEnabled, g_verboseEnabled, g_blockEOSOverlay);
         }
         break;
 

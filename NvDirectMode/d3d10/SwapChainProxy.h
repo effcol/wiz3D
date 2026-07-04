@@ -159,7 +159,7 @@ private:
     bool EnsureSRSBSTexture();
     void ReleaseSRPipeline();
     bool RunSRWeave();
-    bool                               m_srBlacklistedOrFailed;
+    bool                               m_srFailed;
     SimulatedReality::SRInterfaceDX10* m_srInterfaceDX10;
 
     ID3D10Texture2D*          m_srSBSTex;

@@ -29,7 +29,6 @@ extern "C" int NvDM_SwapEyes();
 extern "C" int NvDM_OutputIsTopBottom();
 extern "C" int NvDM_AnaglyphColour();
 extern "C" int NvDM_AnaglyphMethod();
-extern "C" int NvDM_ForceSRWeave();
 
 namespace NvDirectMode
 {
@@ -86,7 +85,7 @@ Device9Proxy::Device9Proxy(IDirect3DDevice9* real, bool isEx)
     , m_compositeVB(nullptr)
     , m_compositeDecl(nullptr)
     , m_shadersFailed(false)
-    , m_srBlacklistedOrFailed(false)
+    , m_srFailed(false)
     , m_srInterfaceDX9(nullptr)
     , m_srSBSTex(nullptr)
     , m_srSBSSurf(nullptr)
@@ -500,21 +499,6 @@ bool Device9Proxy::RunShaderComposite(int mode)
     return true;
 }
 
-// Mirror of the d3d11 blacklist. Keep the lists aligned manually.
-static bool IsSRIncompatibleExe()
-{
-    wchar_t exePath[MAX_PATH] = {};
-    if (!GetModuleFileNameW(nullptr, exePath, MAX_PATH)) return false;
-    for (wchar_t* p = exePath; *p; ++p) *p = (wchar_t)towlower(*p);
-    // Kept aligned with d3d11's blacklist. See d3d11 SwapChainProxy.cpp.
-    static const wchar_t* const kBlacklist[] = {
-        L"tombraider.exe",
-    };
-    for (auto entry : kBlacklist)
-        if (wcsstr(exePath, entry)) return true;
-    return false;
-}
-
 void Device9Proxy::ReleaseSRPipeline()
 {
     if (m_srSBSSurf) { m_srSBSSurf->Release(); m_srSBSSurf = nullptr; }
@@ -579,30 +563,9 @@ bool Device9Proxy::EnsureSRSBSTexture()
 
 bool Device9Proxy::EnsureSRWeaver()
 {
-    if (m_srBlacklistedOrFailed) return false;
+    if (m_srFailed) return false;
     if (m_srInterfaceDX9) return true;
     if (!m_real) return false;
-
-    static bool s_blacklistChecked = false;
-    static bool s_isBlacklisted    = false;
-    if (!s_blacklistChecked)
-    {
-        s_blacklistChecked = true;
-        s_isBlacklisted    = IsSRIncompatibleExe();
-        if (s_isBlacklisted)
-        {
-            if (NvDM_ForceSRWeave())
-            {
-                LOG_VERBOSE("  d3d9 EnsureSRWeaver: exe is SR-blacklisted but ForceSRWeave=1 — attempting anyway (diagnostic)\n");
-                s_isBlacklisted = false;
-            }
-            else
-            {
-                LOG_VERBOSE("  d3d9 EnsureSRWeaver: exe is SR-blacklisted; falling back to SBS (set ForceSRWeave=1 to override)\n");
-            }
-        }
-    }
-    if (s_isBlacklisted) { m_srBlacklistedOrFailed = true; return false; }
 
     // Output-window HWND comes from the swap-chain's presentation parameters.
     // GetCreationParameters gives us the device focus window, which matches
@@ -629,7 +592,7 @@ bool Device9Proxy::EnsureSRWeaver()
     {
         LOG_VERBOSE("  d3d9 EnsureSRWeaver: CreateSRInterfaceDX9 failed (hr=0x%08lX hWnd=%p dev=%p)\n",
                     hr, (void*)hWnd, (void*)m_real);
-        m_srBlacklistedOrFailed = true;
+        m_srFailed = true;
         return false;
     }
 
