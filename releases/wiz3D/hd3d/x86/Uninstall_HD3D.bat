@@ -24,6 +24,8 @@ echo Removing HD3D runtime files...
 if exist "HD3D_atidxx.log" del /f /q "HD3D_atidxx.log"
 if exist "HD3D_dxgi.log"   del /f /q "HD3D_dxgi.log"
 if exist "HD3D_adl.log"    del /f /q "HD3D_adl.log"
+REM Legacy log name from wiz3D 0.2.x (renamed to HD3D_dxgi.log in 0.3.0):
+if exist "3DV_dxgi.log"    del /f /q "3DV_dxgi.log"
 
 echo.
 echo Wiz3D HD3D files removed successfully.

@@ -396,5 +396,10 @@ Testing/Logs/
 Testing/Tutorial07-DX9-DM/
 
 # ----- Vendor-dropped libraries are always OK. -----
-!lib/**
+# lib/ is the LEGACY vendor location — new drops go to ThirdPartyLibs/.
+# Everything already tracked under lib/ stays tracked (git tracks by index,
+# not pathspec). New/loose files under lib/ are ignored so `git add .` never
+# accidentally captures local-only dirs (UDK docs, VRScreenCap, SR runtime,
+# 3D Vision Direct reference source, OGL wrapper mirrors, etc.).
+lib/**
 !ThirdPartyLibs/**
