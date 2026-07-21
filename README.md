@@ -21,7 +21,7 @@ This project modernizes that source code, replaces kernel-level hooks with a pro
 
 * **AMD HD3D:** ✅ **Mostly Working!** HD3D games render stereo interally, so all that's needed is proxy to enable that rendering, capture the quad buffer output, and display it using modern stereo3D standards. The Proxy chain is successfully triggering stereo3D and capturing the quad buffer output. All that remains is getting that quad buffer output to display corrently in modern formats like Top-and-Bottom and Side-by-Side. Currently Half TAB and Half SBS is supported with about half the games, the other games still need work displaying the output correctly.
 * **OpenGL Quad-Buffer Stereo:** ✅ **Partially Worikng.** Similar to HD3D and 3D Vision 'Direct Mode', OpenGL Quad-BufferStereo acts as a ssurface for games that supported OpenGL Quad -buffer to display their stereo 3D onto, and then convert it to display onto any screen. This tends to be legacy older titles such as _Quake_ and _American McGee's Alice_. This does not inject stereo into OpenGL games.
-* **Nvidia 3D Vision 'Direct Mode':** ✅ **Partially Working.** DirectX11 games currently working, DX9 and 10 games to com. Tomb Raider not wearing to SR currently.
+* **Nvidia 3D Vision 'Direct Mode':** ✅ **Partially Working.** DirectX11 games currently working, DX9 and 10 games to com.
 * **Nvidia 3D Vision 'Automatic Mode':** ✅ **Partially Working.** These are games that rlied on Nvidia's driver stereo injection. The ones listes speciffically have 3D Vision ingame settings, shader fixes and config settings. current aim for these is to inject stereo via iZ3D instead, and make the ingame settings and shaderfixes apply to iZ3D. Currently, enable/disable settings do work. But convergance and seperations liders aren't hooked up to iZ3D, and shader fixes arnt triggering yet.
 * **DirectX 9:** ✅ **Mostly Working!** `d3d9.dll` proxy loader works! Left 4 Dead 2 and many others run in full stereo3D, outputs in all originally supported formats, and the profile system loads shader fixes and stereo settings for all originally supported games.
 * **DirectX 8:** ✅ **Partially Worikng.** Wrapper to convert DX8 to use DX9's stereoization. One tested game working, needs further testing.
@@ -54,7 +54,7 @@ Games that render Stereoscipic 3D themselves and display that via 3D Vision's 'D
 | Hard Reset | DX9 | x86 | Untested | Only DX11 build released as of now. |
 | Hitman: Absolution | DX11 | x86 | ✅ Working | Game supports 3D Vision Direct Mode and HD3D. |
 | Oil Rush | OpenGL/DX9/DX11 | x86 | ✅ Working | DX11 output only. |
-| Tomb Raider (2013) | DX11 | x86 | ✅ Mostly Working | SR weave output not working, other 3D outputs working. Game supports 3D Vision Direct Mode and HD3D. |
+| Tomb Raider (2013) | DX11 | x86 | ✅ Mostly Working | Game supports 3D Vision Direct Mode and HD3D. |
 
 - **Excluded (Depth Map not loading, better support on HD3D):** *Battlefield 3*, *DiRT 2*, *DiRT 3*, *DiRT 3 Complete Edition*, *DiRT Showdown*, *DiRT Rally*, *F1 2010*, *F1 2011*, *F1 2012*, *F1 2013*, *GRID 2*, *GRID Autosport*.
 - **Excluded (Works on HD3D and 3D Vision Direct Mode, HD3D reccomended):** *World of Warcraft*. <sub>(Stereo3D removed in 2018 DX12 update)</sub>
