@@ -90,8 +90,7 @@
 
              Default: 8 (SR weave) — auto-falls back to Half SBS when no SR
              runtime is installed or when running a game that crashes with
-             SR loaded (TombRaider.exe and similar are auto-blacklisted to
-             SBS internally). On non-SR displays this still produces Half
+             SR loaded. On non-SR displays this still produces Half
              SBS output, so the default is safe across hardware. Change to
              1 to force Half SBS unconditionally, or to 0/3 for T-B, or
              4-7 for interleaved/checker/anaglyph. -->
