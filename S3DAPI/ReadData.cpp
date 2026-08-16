@@ -250,6 +250,8 @@ bool ReadConfigRouterType()
 			DECLARE_IVALUE(VerboseFrameTrace),
 			DECLARE_IVALUE(FrameTraceStartFrame),
 			DECLARE_FVALUE(COMWrapEyeShift),
+			DECLARE_BVALUE(DisableBlindCBScan),
+			DECLARE_BVALUE(ReplayDynamicBuffers),
 			DECLARE_BVALUE(CollectDebugInformation),
 			DECLARE_IVALUE(ScreenshotType),
 			DECLARE_BVALUE(FixVistaSP1ResetBug),

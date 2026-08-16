@@ -139,6 +139,54 @@ void Context11Proxy::ClearFrameCommands()
     m_frameCommands.clear();
 }
 
+// Diagnostic (Aug 2026) — see the header comment on LogAndResetFrameDrawStats.
+// Called once per Present from SwapChain11Proxy::OnPresentBoundaryPost, BEFORE
+// ClearFrameCommands() wipes the recording, so `recorded` reflects the frame
+// that just completed.
+//
+// Deliberately NOT routed through FrameTrace: that budget is capped at
+// VerboseFrameTrace frames and auto-disables, whereas the whole point here is
+// to watch the ratio hold (or not) across a long session. DDILog + a modest
+// interval keeps the log small.
+void Context11Proxy::LogAndResetFrameDrawStats()
+{
+    static unsigned s_frame = 0;
+    ++s_frame;
+
+    // Every 60th frame (~1s at 60fps), plus the first few so a short capture
+    // still shows something.
+    const bool report = (s_frame <= 3) || (s_frame % 60 == 0);
+    if (report)
+    {
+        DDILog("  [frame %u] immediate-ctx: draws=%u dispatches=%u cmdLists=%u"
+               " recorded=%zu | CB patches: targeted=%u blind=%u skipped=%u"
+               " | matrices: shifted=%u guardRejected=%u"
+               " | dynBuf: replayed=%u skipped=%u"
+               " (DisableBlindCBScan=%d ortho=%d shadow=%d)%s\n",
+               s_frame, m_drawsThisFrame, m_dispatchesThisFrame,
+               m_cmdListsThisFrame, m_frameCommands.size(),
+               m_cbTargetedThisFrame, m_cbBlindThisFrame, m_cbSkippedThisFrame,
+               m_cbMatShiftedThisFrame, m_cbMatRejectedThisFrame,
+               m_dynBufReplaysThisFrame, m_dynBufSkippedThisFrame,
+               (int)gInfo.DisableBlindCBScan,
+               (int)!gInfo.SkipCheckOrthoMatrix, (int)gInfo.CheckShadowMatrix,
+               (m_cmdListsThisFrame > 0)
+                   ? "  <-- DEFERRED CONTEXT WORK: right eye cannot be correct via replay"
+                   : "");
+    }
+
+    m_drawsThisFrame          = 0;
+    m_dispatchesThisFrame     = 0;
+    m_cmdListsThisFrame       = 0;
+    m_cbTargetedThisFrame     = 0;
+    m_cbBlindThisFrame        = 0;
+    m_cbSkippedThisFrame      = 0;
+    m_cbMatShiftedThisFrame   = 0;
+    m_cbMatRejectedThisFrame  = 0;
+    m_dynBufReplaysThisFrame  = 0;
+    m_dynBufSkippedThisFrame  = 0;
+}
+
 void Context11Proxy::ReplayFrameCommands(Eye eye)
 {
     // Snapshot + flip the active eye for the replay pass. Each recorded
@@ -398,6 +446,7 @@ void STDMETHODCALLTYPE Context11Proxy::VSSetShader(
 
 void STDMETHODCALLTYPE Context11Proxy::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
+    ++m_drawsThisFrame;
     if (FrameTraceActive())
         FrameTrace("    Draw eye=%c vcount=%u start=%u\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
@@ -418,6 +467,7 @@ void STDMETHODCALLTYPE Context11Proxy::Draw(UINT VertexCount, UINT StartVertexLo
 void STDMETHODCALLTYPE Context11Proxy::DrawIndexed(
     UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation)
 {
+    ++m_drawsThisFrame;
     if (FrameTraceActive())
         FrameTrace("    DrawIndexed eye=%c icount=%u start=%u base=%d\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
@@ -439,6 +489,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstanced(
     UINT VertexCountPerInstance, UINT InstanceCount,
     UINT StartVertexLocation, UINT StartInstanceLocation)
 {
+    ++m_drawsThisFrame;
     m_real->DrawInstanced(VertexCountPerInstance, InstanceCount,
                           StartVertexLocation, StartInstanceLocation);
     if (!m_presentHookActive) return;
@@ -455,6 +506,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
     UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation,
     INT BaseVertexLocation, UINT StartInstanceLocation)
 {
+    ++m_drawsThisFrame;
     m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount,
                                   StartIndexLocation, BaseVertexLocation,
                                   StartInstanceLocation);
@@ -471,6 +523,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
 
 void STDMETHODCALLTYPE Context11Proxy::DrawAuto()
 {
+    ++m_drawsThisFrame;
     m_real->DrawAuto();
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
@@ -480,6 +533,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawAuto()
 void STDMETHODCALLTYPE Context11Proxy::DrawInstancedIndirect(
     ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
+    ++m_drawsThisFrame;
     m_real->DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
     if (!m_presentHookActive) return;
     ComRefHolder bufRef(pBufferForArgs);
@@ -494,6 +548,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstancedIndirect(
 void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstancedIndirect(
     ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
+    ++m_drawsThisFrame;
     m_real->DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
     if (!m_presentHookActive) return;
     ComRefHolder bufRef(pBufferForArgs);
@@ -508,6 +563,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstancedIndirect(
 void STDMETHODCALLTYPE Context11Proxy::Dispatch(
     UINT ThreadGroupCountX, UINT ThreadGroupCountY, UINT ThreadGroupCountZ)
 {
+    ++m_dispatchesThisFrame;
     m_real->Dispatch(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ);
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
@@ -520,6 +576,7 @@ void STDMETHODCALLTYPE Context11Proxy::Dispatch(
 void STDMETHODCALLTYPE Context11Proxy::DispatchIndirect(
     ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
+    ++m_dispatchesThisFrame;
     m_real->DispatchIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
     if (!m_presentHookActive) return;
     ComRefHolder bufRef(pBufferForArgs);
@@ -904,9 +961,65 @@ struct EyeShiftMatrix
     BOOL  matrixIsTransposed;
 };
 
+// ---------------------------------------------------------------------------
+// Guard: the analyzer tells us "there is a 4x4 projection-shaped matrix at this
+// register", but not whether it is the CAMERA projection. Shifting anything
+// else produces right-eye-only artefacts:
+//   * orthographic matrices drive HUD / UI passes — shifting them moves or
+//     destroys the overlay in one eye
+//   * light- and shadow-space projections drive shadow maps and light volumes
+//     — shifting them lights the right eye from the wrong place
+//
+// The legacy DDI path already rejected both (ProjectionMatrixModifier::
+// CheckMatricesTransposed / ...NonTransposed in ConstantBufferWrapper.cpp) but
+// that logic never made it into the COM-wrap path, so Context11Proxy shifted
+// every flagged matrix unconditionally. This is a direct port, reusing the
+// same gInfo flags with the same polarity:
+//
+//   SkipCheckOrthoMatrix        0 (default) = perform the ortho check
+//   CheckShadowMatrix           1           = reject perspective shadow maps
+//   CheckExistenceInverseMatrix 1           = reject non-invertible matrices
+//
+// `f` is the matrix in register order, so f[0]=_11, f[3]=_14, f[12]=_41,
+// f[15]=_44 — matching the legacy _RC element names used below.
+// ---------------------------------------------------------------------------
+static bool ShouldSkipProjectionMatrix(const float* f, bool transposed)
+{
+    // Orthographic: no perspective divide, i.e. the row/column that produces w
+    // is (0,0,0,non-zero). A camera projection puts +/-1 in one of those slots.
+    if (!gInfo.SkipCheckOrthoMatrix)
+    {
+        const bool ortho = transposed
+            ? (f[12] == 0.f && f[13] == 0.f && f[14] == 0.f && f[15] != 0.f)  // _41.._44
+            : (f[3]  == 0.f && f[7]  == 0.f && f[11] == 0.f && f[15] != 0.f); // _14.._44
+        if (ortho) return true;
+    }
+
+    if (gInfo.CheckShadowMatrix || gInfo.CheckExistenceInverseMatrix)
+    {
+        D3DXMATRIX m(f);
+        D3DXMATRIX inv;
+        if (!D3DXMatrixInverse(&inv, nullptr, &m))
+        {
+            // Singular — legacy treats "no inverse" as not-a-camera-projection.
+            if (gInfo.CheckExistenceInverseMatrix) return true;
+        }
+        else if (gInfo.CheckShadowMatrix)
+        {
+            const float probe = transposed ? inv._43 : inv._34;
+            if (fabsf(probe) < 0.01f) return true;   // perspective shadow map
+        }
+    }
+    return false;
+}
+
+// outShifted / outRejected are diagnostic tallies (may be null); they feed the
+// per-frame summary so we can see the guards actually firing.
 static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
                                       float eyeShift,
-                                      const std::vector<EyeShiftMatrix>& matrices)
+                                      const std::vector<EyeShiftMatrix>& matrices,
+                                      unsigned* outShifted = nullptr,
+                                      unsigned* outRejected = nullptr)
 {
     if (eyeShift == 0.f || matrices.empty()) return;
     constexpr size_t kRegBytes  = 16;
@@ -918,7 +1031,13 @@ static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
         float* f = reinterpret_cast<float*>(data + base);
         float xScale = f[0];
         if (xScale == 0.f) continue;
-        if (m.matrixIsTransposed)
+        const bool transposed = (m.matrixIsTransposed != 0);
+        if (ShouldSkipProjectionMatrix(f, transposed))
+        {
+            if (outRejected) ++*outRejected;
+            continue;
+        }
+        if (transposed)
         {
             // m[2][0] = register 0, component 2
             f[2] += eyeShift * xScale;
@@ -928,6 +1047,7 @@ static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
             // m[2][0] = register 2, component 0
             f[8] += eyeShift * xScale;
         }
+        if (outShifted) ++*outShifted;
     }
 }
 
@@ -954,6 +1074,11 @@ static void ApplyEyeShiftToCB(unsigned char* data, size_t byteCount, float eyeSh
     }
 }
 
+// Upper bound on a single dynamic vertex/index buffer snapshot. Chosen to
+// comfortably cover UI/text/particle batch buffers (tens of KB) while refusing
+// to shadow-copy multi-megabyte streaming buffers many times per frame.
+static constexpr UINT kMaxDynamicBufferReplayBytes = 4u * 1024u * 1024u;
+
 HRESULT STDMETHODCALLTYPE Context11Proxy::Map(
     ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags,
     D3D11_MAPPED_SUBRESOURCE* pMappedResource)
@@ -969,28 +1094,83 @@ HRESULT STDMETHODCALLTYPE Context11Proxy::Map(
     if (!m_presentHookActive) return hr;
     if (!gInfo.UseCOMWrapReplay) return hr;
 
-    // Stage 4c: only record write maps on CONSTANT BUFFERS. Stage 4c.1
-    // additionally requires the buffer to have been ever bound through a
-    // vertex-pipeline stage — the IsVSBound tag is set on Buffer11Proxy by
-    // *SetConstantBuffers when its stage is VS/GS/HS/DS.
+    // Stage 4c: record write maps on CONSTANT BUFFERS. Stage 4c.1 additionally
+    // requires the buffer to have been ever bound through a vertex-pipeline
+    // stage — the IsVSBound tag is set on Buffer11Proxy by *SetConstantBuffers
+    // when its stage is VS/GS/HS/DS.
+    //
+    // Stage 4f: also record VERTEX and INDEX buffer writes. The replay re-issues
+    // the frame's draws at Present time, long after the game has finished
+    // writing. A buffer the game refills between draws — the classic
+    // map(WRITE_DISCARD) / fill / unmap / draw loop that HUD, text and particle
+    // batches use — therefore holds only its FINAL contents by then, so every
+    // replayed draw that reads it gets the last batch's geometry instead of its
+    // own. Symptom in Max Payne 3: ~50 tail-of-frame HUD draws replay correctly
+    // (right sibling bound, correct vertex counts, all at start=0) and render
+    // nothing, because the vertex data underneath them is stale. Static buffers
+    // are unaffected — nothing rewrites them mid-frame — which is why world
+    // geometry survived the replay and the HUD did not.
     if (MapType != D3D11_MAP_WRITE_DISCARD &&
         MapType != D3D11_MAP_WRITE &&
         MapType != D3D11_MAP_WRITE_NO_OVERWRITE &&
         MapType != D3D11_MAP_READ_WRITE)
         return hr;
-    if (!buf || !buf->IsVSBound()) return hr;
+    if (!buf) return hr;
 
     D3D11_BUFFER_DESC desc;
     buf->GetReal()->GetDesc(&desc);
-    if ((desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) == 0) return hr;
     if (desc.ByteWidth == 0) return hr;
 
+    const bool isCB = (desc.BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0;
+    const bool isGeom = (desc.BindFlags & (D3D11_BIND_VERTEX_BUFFER |
+                                           D3D11_BIND_INDEX_BUFFER)) != 0;
+    if (isCB)
+    {
+        if (!buf->IsVSBound()) return hr;
+    }
+    else if (isGeom)
+    {
+        if (!gInfo.ReplayDynamicBuffers) return hr;
+        // WRITE_DISCARD only, and the restriction is a correctness requirement
+        // rather than a heuristic. Our replay rewrites the whole buffer, which
+        // is safe under DISCARD because the driver renames the allocation: the
+        // left eye's already-queued draws keep reading the memory they were
+        // issued against. WRITE_NO_OVERWRITE carries the opposite contract —
+        // the app guarantees it only touches ranges no pending draw is using,
+        // so the driver returns the same memory. Replaying a whole-buffer copy
+        // under that map type overwrites the ranges the left eye's queued draws
+        // are about to read, corrupting the left image while the right stays
+        // correct. We cannot tell which sub-range the game actually wrote, so
+        // the only sound option is to leave these alone.
+        if (MapType != D3D11_MAP_WRITE_DISCARD)
+        {
+            ++m_dynBufSkippedThisFrame;
+            return hr;
+        }
+        // Snapshotting costs a full ByteWidth copy per Unmap: WRITE_DISCARD
+        // leaves the whole buffer undefined, so we cannot know which prefix the
+        // game actually wrote and must take all of it. Streaming buffers can be
+        // many MB and get refilled dozens of times a frame, so cap it. Over the
+        // cap we skip the snapshot and tally it — those draws still replay,
+        // just from stale geometry, i.e. the old behaviour.
+        if (desc.ByteWidth > kMaxDynamicBufferReplayBytes)
+        {
+            ++m_dynBufSkippedThisFrame;
+            return hr;
+        }
+    }
+    else
+    {
+        return hr;
+    }
+
     ActiveMap am;
-    am.resource    = pResource;
-    am.subresource = Subresource;
-    am.mapType     = MapType;
-    am.mappedData  = pMappedResource->pData;
-    am.byteWidth   = desc.ByteWidth;
+    am.resource         = pResource;
+    am.subresource      = Subresource;
+    am.mapType          = MapType;
+    am.mappedData       = pMappedResource->pData;
+    am.byteWidth        = desc.ByteWidth;
+    am.isConstantBuffer = isCB;
     m_activeMaps.push_back(am);
     return hr;
 }
@@ -1020,17 +1200,45 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
             D3D11_MAP mapType = it->mapType;
             ComRefHolder resRef(pResource);
 
+            // Stage 4f: geometry buffers replay the write byte-for-byte. No
+            // analyzer lookup and no eye shift — the stereo offset belongs in
+            // the projection matrix only; displacing vertices as well would
+            // apply it twice.
+            if (!it->isConstantBuffer)
+            {
+                ++m_dynBufReplaysThisFrame;
+                m_frameCommands.emplace_back(
+                    [this, resRef, subres, bytes, mapType]()
+                    {
+                        if (m_activeEye != Eye::Right) return;
+                        auto* gameRes = static_cast<ID3D11Resource*>(resRef.p);
+                        ID3D11Resource* real = UnwrapResourceForEye(gameRes, false);
+                        D3D11_MAPPED_SUBRESOURCE mapped = {};
+                        if (FAILED(m_real->Map(real, subres, mapType, 0, &mapped))
+                            || !mapped.pData) return;
+                        memcpy(mapped.pData, bytes.data(), bytes.size());
+                        m_real->Unmap(real, subres);
+                    });
+                m_activeMaps.erase(it);
+                break;
+            }
+
             // Stage 4e.2: consult the analyzer for the currently bound VS.
             // If the bound shader has known projection matrices at any VS-CB
             // slot where this buffer is bound, build a targeted matrix list.
             // Empty list ⇒ fall back to the m[2][3]==1 / m[3][3]==0 heuristic.
             std::vector<EyeShiftMatrix> targets;
+            // analyzerKnows: the analyzer successfully parsed the bound VS, so
+            // an empty `targets` is a positive "this buffer holds no projection
+            // matrix" rather than "we have no idea".
+            bool analyzerKnows = false;
             if (m_boundVS && m_parent)
             {
                 const ShaderAnalysis11Result* info =
                     m_parent->LookupShaderProjection(m_boundVS);
                 if (info && info->parsed)
                 {
+                    analyzerKnows = true;
                     for (UINT slot = 0; slot < kMaxVSCBSlots; ++slot)
                     {
                         if (m_boundVSCBs[slot] != pResource) continue;
@@ -1048,8 +1256,19 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                 }
             }
 
+            // Patch policy. With DisableBlindCBScan set we never guess: a
+            // buffer the analyzer has cleared, or one written under a shader we
+            // could not parse, is copied through to the right eye untouched.
+            // Legacy behaviour (flag clear) always falls back to the heuristic
+            // whole-buffer scan whenever `targets` is empty.
+            const bool useBlind = targets.empty() &&
+                                  !(gInfo.DisableBlindCBScan && analyzerKnows);
+            if      (!targets.empty()) ++m_cbTargetedThisFrame;
+            else if (useBlind)         ++m_cbBlindThisFrame;
+            else                       ++m_cbSkippedThisFrame;
+
             m_frameCommands.emplace_back(
-                [this, resRef, subres, bytes, mapType, targets]()
+                [this, resRef, subres, bytes, mapType, targets, useBlind]()
                 {
                     if (m_activeEye != Eye::Right) return;
                     auto* gameRes = static_cast<ID3D11Resource*>(resRef.p);
@@ -1057,19 +1276,23 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                     D3D11_MAPPED_SUBRESOURCE mapped = {};
                     if (FAILED(m_real->Map(real, subres, mapType, 0, &mapped))
                         || !mapped.pData) return;
+                    // The right eye always gets the game's bytes; only the
+                    // stereo shift on top of them is policy-dependent.
                     memcpy(mapped.pData, bytes.data(), bytes.size());
                     float eyeShift = wiz3D_GetEffectiveEyeShift();
                     if (!targets.empty())
                     {
                         ApplyTargetedEyeShiftToCB(
                             static_cast<unsigned char*>(mapped.pData),
-                            bytes.size(), eyeShift, targets);
+                            bytes.size(), eyeShift, targets,
+                            &m_cbMatShiftedThisFrame, &m_cbMatRejectedThisFrame);
                     }
-                    else
+                    else if (useBlind)
                     {
                         ApplyEyeShiftToCB(static_cast<unsigned char*>(mapped.pData),
                                           bytes.size(), eyeShift);
                     }
+                    // else: analyzer cleared this buffer — copy through unshifted.
                     m_real->Unmap(real, subres);
                 });
         }
@@ -1217,6 +1440,12 @@ void STDMETHODCALLTYPE Context11Proxy::ClearState()
 void STDMETHODCALLTYPE Context11Proxy::ExecuteCommandList(
     ID3D11CommandList* pCommandList, BOOL RestoreContextState)
 {
+    // NOTE (Aug 2026): replaying this call re-submits a command list whose
+    // resource bindings were baked at RECORD time on a deferred context we
+    // never wrapped — i.e. bound to LEFT-eye reals. So the replay redraws the
+    // left eye rather than filling the right. Counted here so the per-frame
+    // summary can tell us whether MP3 actually takes this path.
+    ++m_cmdListsThisFrame;
     m_real->ExecuteCommandList(pCommandList, RestoreContextState);
     if (!m_presentHookActive) return;
     ComRefHolder cmdRef(pCommandList);

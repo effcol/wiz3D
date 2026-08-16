@@ -111,6 +111,25 @@
 		     interesting state is further in (e.g. set to 600 to start ~10s into
 		     gameplay at 60fps). -->
 		<FrameTraceStartFrame Value="0"/>
+		<!-- DX10/11 per-eye constant-buffer patch policy.
+		     0 (default) = when the shader analyzer has no projection-matrix
+		       entry for a constant buffer, fall back to a heuristic scan of the
+		       whole buffer and shift anything shaped like a perspective matrix.
+		     1 = trust the analyzer. If it parsed the bound vertex shader and
+		       found no projection matrix in that buffer, leave the buffer alone.
+		     The heuristic is easy to satisfy by accident, so in draw-heavy
+		     games it can shift unrelated constants and corrupt the right eye.
+		     Set to 1 if the right eye looks wrong (tinted, dark, or washed out)
+		     while the left eye is correct. -->
+		<DisableBlindCBScan Value="0"/>
+		<!-- DX10/11 right-eye replay: also replay writes to dynamic vertex and
+		     index buffers, not just constant buffers. 1 (default) = on.
+		     Geometry the game refills between draws (HUD, text, particle
+		     batches) is stale by the time the replay re-issues those draws, so
+		     without this they render nothing in the right eye. Set to 0 if a
+		     game streams large dynamic buffers and the per-frame copy cost
+		     outweighs stereo correctness on those passes. -->
+		<ReplayDynamicBuffers Value="1"/>
 		<!-- Write debug info to log files: 0=off 1=on -->
 		<CollectDebugInformation Value="0"/>
 		<!-- Screenshot format: 0=PNG (default), 1=PNS (stereo PNG), 2=JPEG, 3=JPS (stereo JPEG), 4=BMP, 5=DDS. PNS/JPS are the same bytes as PNG/JPG but with a stereo-aware extension some 3D viewers (e.g. Stereo Photo Maker) recognise as a side-by-side pair. -->

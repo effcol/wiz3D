@@ -78,7 +78,12 @@ public:
     HRESULT STDMETHODCALLTYPE CreateQuery(const D3D11_QUERY_DESC* pQueryDesc, ID3D11Query** ppQuery) override                                                                                { return m_real->CreateQuery(pQueryDesc, ppQuery); }
     HRESULT STDMETHODCALLTYPE CreatePredicate(const D3D11_QUERY_DESC* pPredicateDesc, ID3D11Predicate** ppPredicate) override                                                                { return m_real->CreatePredicate(pPredicateDesc, ppPredicate); }
     HRESULT STDMETHODCALLTYPE CreateCounter(const D3D11_COUNTER_DESC* pCounterDesc, ID3D11Counter** ppCounter) override                                                                      { return m_real->CreateCounter(pCounterDesc, ppCounter); }
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext(UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext) override                                                                     { return m_real->CreateDeferredContext(ContextFlags, ppDeferredContext); }
+    // Diagnostic: out-of-line in the .cpp so it can DDILog. A game that
+    // renders on deferred contexts bypasses Context11Proxy's record-for-
+    // replay entirely (we hand back the REAL context), so the right eye
+    // never receives those draws. Logging here tells us whether that's
+    // happening rather than us inferring it from an empty command stream.
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext(UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext) override;
     HRESULT STDMETHODCALLTYPE OpenSharedResource(HANDLE hResource, REFIID ReturnedInterface, void** ppResource) override                                                                     { return m_real->OpenSharedResource(hResource, ReturnedInterface, ppResource); }
     HRESULT STDMETHODCALLTYPE CheckFormatSupport(DXGI_FORMAT Format, UINT* pFormatSupport) override                                                                                          { return m_real->CheckFormatSupport(Format, pFormatSupport); }
     HRESULT STDMETHODCALLTYPE CheckMultisampleQualityLevels(DXGI_FORMAT Format, UINT SampleCount, UINT* pNumQualityLevels) override                                                          { return m_real->CheckMultisampleQualityLevels(Format, SampleCount, pNumQualityLevels); }
@@ -104,7 +109,7 @@ public:
     // games use the base CreateTexture2D / CreateRenderTargetView which are
     // already wrapped via the Device-base vtable slots.
     void    STDMETHODCALLTYPE GetImmediateContext1(ID3D11DeviceContext1** ppImmediateContext) override;
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext1(UINT ContextFlags, ID3D11DeviceContext1** ppDeferredContext) override                                                                  { return m_real1 ? m_real1->CreateDeferredContext1(ContextFlags, ppDeferredContext) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext1(UINT ContextFlags, ID3D11DeviceContext1** ppDeferredContext) override;
     HRESULT STDMETHODCALLTYPE CreateBlendState1(const D3D11_BLEND_DESC1* pBlendStateDesc, ID3D11BlendState1** ppBlendState) override                                                        { return m_real1 ? m_real1->CreateBlendState1(pBlendStateDesc, ppBlendState) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE CreateRasterizerState1(const D3D11_RASTERIZER_DESC1* pRasterizerDesc, ID3D11RasterizerState1** ppRasterizerState) override                                    { return m_real1 ? m_real1->CreateRasterizerState1(pRasterizerDesc, ppRasterizerState) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE CreateDeviceContextState(UINT Flags, const D3D_FEATURE_LEVEL* pFeatureLevels, UINT FeatureLevels, UINT SDKVersion, REFIID EmulatedInterface, D3D_FEATURE_LEVEL* pChosenFeatureLevel, ID3DDeviceContextState** ppContextState) override { return m_real1 ? m_real1->CreateDeviceContextState(Flags, pFeatureLevels, FeatureLevels, SDKVersion, EmulatedInterface, pChosenFeatureLevel, ppContextState) : E_NOINTERFACE; }
@@ -113,7 +118,7 @@ public:
 
     // ----- ID3D11Device2 (D3D11.2)
     void    STDMETHODCALLTYPE GetImmediateContext2(ID3D11DeviceContext2** ppImmediateContext) override;
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext2(UINT ContextFlags, ID3D11DeviceContext2** ppDeferredContext) override                                                                  { return m_real2 ? m_real2->CreateDeferredContext2(ContextFlags, ppDeferredContext) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext2(UINT ContextFlags, ID3D11DeviceContext2** ppDeferredContext) override;
     void    STDMETHODCALLTYPE GetResourceTiling(ID3D11Resource* pTiledResource, UINT* pNumTilesForEntireResource, D3D11_PACKED_MIP_DESC* pPackedMipDesc, D3D11_TILE_SHAPE* pStandardTileShapeForNonPackedMips, UINT* pNumSubresourceTilings, UINT FirstSubresourceTilingToGet, D3D11_SUBRESOURCE_TILING* pSubresourceTilingsForNonPackedMips) override { if (m_real2) m_real2->GetResourceTiling(pTiledResource, pNumTilesForEntireResource, pPackedMipDesc, pStandardTileShapeForNonPackedMips, pNumSubresourceTilings, FirstSubresourceTilingToGet, pSubresourceTilingsForNonPackedMips); }
     HRESULT STDMETHODCALLTYPE CheckMultisampleQualityLevels1(DXGI_FORMAT Format, UINT SampleCount, UINT Flags, UINT* pNumQualityLevels) override                                            { return m_real2 ? m_real2->CheckMultisampleQualityLevels1(Format, SampleCount, Flags, pNumQualityLevels) : E_NOINTERFACE; }
 
@@ -126,7 +131,7 @@ public:
     HRESULT STDMETHODCALLTYPE CreateRenderTargetView1(ID3D11Resource* pResource, const D3D11_RENDER_TARGET_VIEW_DESC1* pDesc1, ID3D11RenderTargetView1** ppRTView1) override                { return m_real3 ? m_real3->CreateRenderTargetView1(pResource, pDesc1, ppRTView1) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE CreateQuery1(const D3D11_QUERY_DESC1* pQueryDesc1, ID3D11Query1** ppQuery1) override                                                                          { return m_real3 ? m_real3->CreateQuery1(pQueryDesc1, ppQuery1) : E_NOINTERFACE; }
     void    STDMETHODCALLTYPE GetImmediateContext3(ID3D11DeviceContext3** ppImmediateContext) override;
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext3(UINT ContextFlags, ID3D11DeviceContext3** ppDeferredContext) override                                                                  { return m_real3 ? m_real3->CreateDeferredContext3(ContextFlags, ppDeferredContext) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext3(UINT ContextFlags, ID3D11DeviceContext3** ppDeferredContext) override;
     void    STDMETHODCALLTYPE WriteToSubresource(ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch) override { if (m_real3) m_real3->WriteToSubresource(pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch); }
     void    STDMETHODCALLTYPE ReadFromSubresource(void* pDstData, UINT DstRowPitch, UINT DstDepthPitch, ID3D11Resource* pSrcResource, UINT SrcSubresource, const D3D11_BOX* pSrcBox) override { if (m_real3) m_real3->ReadFromSubresource(pDstData, DstRowPitch, DstDepthPitch, pSrcResource, SrcSubresource, pSrcBox); }
 

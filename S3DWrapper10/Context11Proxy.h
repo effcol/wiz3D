@@ -277,6 +277,15 @@ public:
     void SetPresentHookActive(bool active) { m_presentHookActive = active; }
     bool IsPresentHookActive() const { return m_presentHookActive; }
 
+    // Diagnostic (Aug 2026): per-frame tally of work the game issued on THIS
+    // (immediate) context, logged periodically and reset each Present. Answers
+    // "is the recording empty because the game drew nothing, or because the
+    // draws went somewhere we don't see?" — cmdLists > 0 means deferred
+    // contexts are in play and the right eye can never be correct via replay.
+    // Counts game-issued calls only: replay closures invoke m_real directly
+    // rather than re-entering these overrides, so they don't inflate the tally.
+    void LogAndResetFrameDrawStats();
+
 private:
     // Stage 4b.4: private "Do" versions of state-setting methods that the
     // public ID3D11DeviceContext overrides delegate to. The recorded
@@ -326,6 +335,30 @@ private:
     Eye                  m_activeEye;            // Stage 4a: which eye OMSet binds
     bool                 m_presentHookActive;    // Stage 4b.4 safety gate
 
+    // Diagnostic counters backing LogAndResetFrameDrawStats(). Not part of
+    // any rendering decision — purely for the wiz3D_proxy.log summary.
+    unsigned             m_drawsThisFrame     = 0;
+    unsigned             m_dispatchesThisFrame = 0;
+    unsigned             m_cmdListsThisFrame  = 0;
+    // Per-eye CB patch policy tally (see gInfo.DisableBlindCBScan):
+    //   targeted — analyzer named the exact matrix register(s) to shift
+    //   blind    — fell back to the whole-buffer heuristic scan
+    //   skipped  — analyzer positively cleared the buffer, left untouched
+    unsigned             m_cbTargetedThisFrame = 0;
+    unsigned             m_cbBlindThisFrame    = 0;
+    unsigned             m_cbSkippedThisFrame  = 0;
+    // Within the targeted patches: individual matrices actually shifted, vs
+    // rejected by the ortho / shadow-map guards in ShouldSkipProjectionMatrix.
+    unsigned             m_cbMatShiftedThisFrame  = 0;
+    unsigned             m_cbMatRejectedThisFrame = 0;
+    // Stage 4f: dynamic vertex/index buffer write replays. `skipped` counts
+    // writes we declined to snapshot — either over the size cap, or mapped
+    // WRITE_NO_OVERWRITE, where a whole-buffer rewrite would corrupt the left
+    // eye's pending draws (see the map-type check in Map). Those draws still
+    // replay, but from stale geometry.
+    unsigned             m_dynBufReplaysThisFrame = 0;
+    unsigned             m_dynBufSkippedThisFrame = 0;
+
     // Stage 4e.2: VS binding snapshot for targeted CB stereo math. m_boundVS
     // is the game's vertex shader pointer most recently set via VSSetShader.
     // m_boundVSCBs[i] is the wrapped buffer pointer set at VS CB slot i via
@@ -356,6 +389,10 @@ private:
         D3D11_MAP       mapType;
         void*           mappedData;
         UINT            byteWidth;
+        // false ⇒ dynamic vertex/index buffer: replay the write verbatim, with
+        // no projection-matrix patching (shifting geometry would double-apply
+        // the stereo offset on top of the CB shift).
+        bool            isConstantBuffer;
     };
     std::vector<ActiveMap> m_activeMaps;
 };

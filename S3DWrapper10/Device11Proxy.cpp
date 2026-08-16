@@ -133,13 +133,13 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
     if (FAILED(hr) || !ppShader || !*ppShader) return hr;
 
     ShaderAnalysis11Result info;
-    if (AnalyzeShader11(pBytecode, byteLength, info) && !info.projection.matrixData.cb.empty())
+    const bool analyzed = AnalyzeShader11(pBytecode, byteLength, info);
+    if (analyzed && !info.projection.matrixData.cb.empty())
     {
         NVDM_TRACE_FIRST_N(32,
             "  Device11Proxy::Create%sShader: CRC=0x%08lX shader=%p matrices in %u CB(s)\n",
             tag, info.crc32, *ppShader,
             (unsigned)info.projection.matrixData.cb.size());
-        self->StoreShaderProjection(*ppShader, info);
     }
     else
     {
@@ -147,6 +147,17 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
             "  Device11Proxy::Create%sShader: CRC=0x%08lX shader=%p (no projection found, parsed=%d)\n",
             tag, info.crc32, *ppShader, (int)info.parsed);
     }
+
+    // Store EVERY successfully-parsed result, including ones with no
+    // projection matrices (Aug 2026). Previously we only stored shaders that
+    // had matrices, which meant LookupShaderProjection returned null for two
+    // very different situations: "analyzed, definitively has no projection"
+    // and "never analyzed at all". Context11Proxy::Unmap could not tell them
+    // apart, so a shader we had positively cleared still fell through to the
+    // heuristic CB scan. Storing the negative result makes that distinction
+    // available at the call site.
+    if (analyzed)
+        self->StoreShaderProjection(*ppShader, info);
     return hr;
 }
 
@@ -462,6 +473,75 @@ void STDMETHODCALLTYPE Device11Proxy::GetImmediateContext3(ID3D11DeviceContext3*
     }
     if (m_real3) m_real3->GetImmediateContext3(ppImmediateContext);
     else *ppImmediateContext = nullptr;
+}
+
+// ---------------------------------------------------------------------------
+// Deferred-context creation — diagnostic passthrough (Aug 2026).
+//
+// Behaviour is UNCHANGED: we still hand the game the real deferred context.
+// The logging exists to answer a specific open question on Max Payne 3, where
+// the per-frame recording that feeds the right-eye replay comes back nearly
+// empty (19 commands / 2 draws for a full gameplay frame, when the real frame
+// is hundreds of draws). If the game builds its scene on deferred contexts,
+// those draws never pass through Context11Proxy at all, so the right-eye
+// sibling textures are never written — which would explain a right eye that
+// is black (MSAA on) or depth-garbage green (MSAA off) rather than merely
+// mis-shifted.
+//
+// Note this is a REPORTING hook only. Wrapping deferred contexts is not a
+// drop-in fix: a command list bakes its resource bindings at record time, so
+// replaying one for the right eye would just redraw the left. If these lines
+// fire, the replay design needs rework, not a patch here.
+// ---------------------------------------------------------------------------
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext(
+    UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext)
+{
+    HRESULT hr = m_real->CreateDeferredContext(ContextFlags, ppDeferredContext);
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext1(
+    UINT ContextFlags, ID3D11DeviceContext1** ppDeferredContext)
+{
+    HRESULT hr = m_real1 ? m_real1->CreateDeferredContext1(ContextFlags, ppDeferredContext)
+                         : E_NOINTERFACE;
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext1(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext2(
+    UINT ContextFlags, ID3D11DeviceContext2** ppDeferredContext)
+{
+    HRESULT hr = m_real2 ? m_real2->CreateDeferredContext2(ContextFlags, ppDeferredContext)
+                         : E_NOINTERFACE;
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext2(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext3(
+    UINT ContextFlags, ID3D11DeviceContext3** ppDeferredContext)
+{
+    HRESULT hr = m_real3 ? m_real3->CreateDeferredContext3(ContextFlags, ppDeferredContext)
+                         : E_NOINTERFACE;
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext3(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
 }
 
 HRESULT STDMETHODCALLTYPE Device11Proxy::CreateBuffer(

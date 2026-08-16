@@ -486,6 +486,9 @@ void SwapChain11Proxy::OnPresentBoundaryPost()
     if (!m_parent) return;
     Context11Proxy* ctx = m_parent->GetContextProxy();
     if (!ctx) return;
+    // Diagnostic: must run BEFORE ClearFrameCommands() so the summary sees the
+    // recording for the frame that just presented, not an empty vector.
+    ctx->LogAndResetFrameDrawStats();
     ctx->ClearFrameCommands();
     ctx->SetPresentHookActive(true);
 }
