@@ -11,6 +11,7 @@
 #include "Texture1D11Proxy.h"
 #include "Texture3D11Proxy.h"
 #include "StereoHeuristic.h"
+#include "DxbcRebuild.h"                   // DxbcSelfTest
 #include "..\S3DAPI\ReadData.h"            // ReadCurrentProfile
 #include "..\S3DAPI\ShaderProfileData.h"   // g_ProfileData
 #include "proxy_factory.h"     // for IID_wiz3D_Device11Proxy
@@ -175,6 +176,15 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
 {
     HRESULT hr = createReal(pBytecode, byteLength, pClassLinkage, ppShader);
     if (FAILED(hr) || !ppShader || !*ppShader) return hr;
+
+    // One-time proof, against real game bytecode, that our checksum matches the
+    // compiler's and that a rebuilt container is byte-identical to the original.
+    static bool s_selfTested = false;
+    if (!s_selfTested && pBytecode && byteLength > 32)
+    {
+        s_selfTested = true;
+        DxbcSelfTest(pBytecode, byteLength);
+    }
 
     ShaderAnalysis11Result info;
     const bool analyzed = AnalyzeShader11(pBytecode, byteLength, info);
