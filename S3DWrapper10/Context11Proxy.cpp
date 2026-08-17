@@ -227,6 +227,19 @@ void Context11Proxy::ReleaseStereoShiftCBs()
     if (m_stereoCBRight) { m_stereoCBRight->Release(); m_stereoCBRight = nullptr; }
 }
 
+// Sampling budget for matrix dumps, refilled at each frame report so the sample
+// tracks the current scene instead of only the first frames after launch.
+static int s_matDumpRejected = 0;
+static int s_matDumpShifted  = 0;
+
+// Camera projection _11, cached from the last clean view-projection seen.
+static float s_projXScale = 0.f;
+
+// Spread of |w basis| across shifted matrices: 1.0 everywhere means every
+// targeted matrix is a clean VP, anything else means scaled WVPs are in play.
+static float s_wnMin = 1e30f;
+static float s_wnMax = 0.f;
+
 std::string Context11Proxy::DescribeAllContexts()
 {
     std::lock_guard<std::mutex> g(CtxLock());
@@ -293,6 +306,15 @@ void Context11Proxy::LogAndResetFrameDrawStats()
         // samples read zero while real frames were pushing 4700 draws.
         return;
     }
+
+    DDILog("  [frame %u] basis |w|: min=%.4f max=%.4f projXScale=%.4f\n",
+           s_frame, s_wnMin, s_wnMax, s_projXScale);
+    s_wnMin = 1e30f;
+    s_wnMax = 0.f;
+
+    // Refill the matrix dump budget so each report is followed by a fresh sample.
+    s_matDumpRejected = 6;
+    s_matDumpShifted  = 3;
 
     m_drawsThisFrame          = 0;
     m_dispatchesThisFrame     = 0;
@@ -1613,6 +1635,20 @@ struct EyeShiftMatrix
 static float s_lastForwardMatrix[16];
 static bool  s_haveForwardMatrix = false;
 
+static void DumpMatrix(const char* tag, const float* f, DWORD reg, bool transposed)
+{
+    DDILog("  [mat %s] reg=%u transposed=%d\n"
+           "      %9.4f %9.4f %9.4f %9.4f\n"
+           "      %9.4f %9.4f %9.4f %9.4f\n"
+           "      %9.4f %9.4f %9.4f %9.4f\n"
+           "      %9.4f %9.4f %9.4f %9.4f\n",
+           tag, reg, (int)transposed,
+           f[0],  f[1],  f[2],  f[3],
+           f[4],  f[5],  f[6],  f[7],
+           f[8],  f[9],  f[10], f[11],
+           f[12], f[13], f[14], f[15]);
+}
+
 // Ring of distinct mono matrices we shifted this frame. The camera view-
 // projection is among them, so a candidate inverse can be identified by
 // multiplying against each and looking for identity.
@@ -1637,14 +1673,46 @@ static void RememberForwardMatrix(const float* f)
     if (s_fwdRingCount < kFwdRing) ++s_fwdRingCount;
 }
 
-// Camera projection _11, cached from the last bare projection matrix seen.
-static float s_projXScale = 0.f;
-
 // Right-eye clip-space x shift per unit w. The forward and inverse paths
 // describe the same transform T, so both must use this same value.
 static float EyeShiftB(float eyeShift)
 {
     return eyeShift * (s_projXScale != 0.f ? s_projXScale : 1.f);
+}
+
+// 3x3 norms of the x and w bases. |w basis| is 1 for a clean view-projection
+// (the camera forward axis is unit) and carries the object scale for a WVP.
+static void MatrixBasisNorms(const float* f, bool transposed, float& xn, float& wn)
+{
+    float x0, x1, x2, w0, w1, w2;
+    if (transposed) { x0 = f[0]; x1 = f[1]; x2 = f[2];  w0 = f[12]; w1 = f[13]; w2 = f[14]; }
+    else            { x0 = f[0]; x1 = f[4]; x2 = f[8];  w0 = f[3];  w1 = f[7];  w2 = f[11]; }
+    xn = sqrtf(x0 * x0 + x1 * x1 + x2 * x2);
+    wn = sqrtf(w0 * w0 + w1 * w1 + w2 * w2);
+}
+
+// Camera _11. Both stereo terms are world-matrix independent, so _11 is the only
+// per-matrix unknown -- and xn/wn only recovers it when the object scale is
+// uniform. Trust the ratio when |w basis| is unit, else reuse the last matrix
+// that was, so a non-uniformly scaled mesh cannot displace itself.
+static float ProjXScaleFromMatrix(const float* f, bool transposed)
+{
+    float xn, wn;
+    MatrixBasisNorms(f, transposed, xn, wn);
+    if (wn <= 1e-6f) return s_projXScale;
+    const float ratio = xn / wn;
+    if (fabsf(wn - 1.f) < 0.05f) return ratio;
+    return (s_projXScale != 0.f) ? s_projXScale : ratio;
+}
+
+// DX9 shears view space by x' = x + m31*z + m41 (BaseStereoRenderer-inl.h:141).
+// eyeShift is m31, which only re-centres; m41 is the eye offset whose 1/z
+// falloff is the entire depth cue. A = -B * One_div_ZPS relates the two.
+static float EyeOffsetM41(float eyeShift)
+{
+    const CameraPreset* p = gInfo.Input.GetActivePreset();
+    const float invZPS = p ? p->One_div_ZPS : 0.f;
+    return (invZPS != 0.f) ? (-eyeShift / invZPS) : 0.f;
 }
 
 static bool ShouldSkipProjectionMatrix(const float* f, bool transposed)
@@ -1723,35 +1791,51 @@ static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
         if (ShouldSkipProjectionMatrix(f, transposed))
         {
             if (outRejected) ++*outRejected;
+            if (s_matDumpRejected > 0)
+            {
+                --s_matDumpRejected;
+                DumpMatrix("REJECTED", f, m.matrixRegister, transposed);
+            }
             continue;
+        }
+        if (s_matDumpShifted > 0)
+        {
+            --s_matDumpShifted;
+            DumpMatrix("shifted", f, m.matrixRegister, transposed);
+            const float xs = ProjXScaleFromMatrix(f, transposed);
+            DDILog("      eyeShift=%.6f xScale=%.6f b=%.6f m41=%.6f\n",
+                   eyeShift, xs, eyeShift * xs, EyeOffsetM41(eyeShift) * xs);
         }
         // Snapshot the mono matrix before shifting, for the inverse detector.
         memcpy(s_lastForwardMatrix, f, sizeof(s_lastForwardMatrix));
         s_haveForwardMatrix = true;
         RememberForwardMatrix(f);
 
-        // A bare projection has no w translation; cache its real xScale. Done
-        // unconditionally — the inverse path needs it even with the flag off.
-        const bool pureProj = transposed
-            ? (fabsf(f[12]) < 1e-6f && fabsf(f[13]) < 1e-6f && fabsf(f[15]) < 1e-6f)
-            : (fabsf(f[3])  < 1e-6f && fabsf(f[7])  < 1e-6f && fabsf(f[15]) < 1e-6f);
-        if (pureProj) s_projXScale = xScale;
+        // Cache only from clean view-projections, so neither a scaled WVP nor a
+        // light projection can poison the value the rest of the frame reuses.
+        float basisXn, basisWn;
+        MatrixBasisNorms(f, transposed, basisXn, basisWn);
+        if (basisWn > 1e-6f && fabsf(basisWn - 1.f) < 0.05f)
+            s_projXScale = basisXn / basisWn;
+        if (basisWn < s_wnMin) s_wnMin = basisWn;
+        if (basisWn > s_wnMax) s_wnMax = basisWn;
+        const float camXScale = ProjXScaleFromMatrix(f, transposed);
 
         if (gInfo.FullColumnEyeShift)
         {
-            // Never fall back to this matrix's own _11: a WVP bakes world
-            // scale into it, which is the per-object variation that makes
-            // attached meshes drift apart.
-            const float b = EyeShiftB(eyeShift);
+            const float b  = eyeShift * camXScale;
+            const float m41 = EyeOffsetM41(eyeShift) * camXScale;
             if (transposed)
             {
                 f[0] += b * f[12];  f[1] += b * f[13];
                 f[2] += b * f[14];  f[3] += b * f[15];
+                f[3] += m41;        // constant on x: the 1/z parallax term
             }
             else
             {
                 f[0] += b * f[3];   f[4]  += b * f[7];
                 f[8] += b * f[11];  f[12] += b * f[15];
+                f[12] += m41;       // constant on x: the 1/z parallax term
             }
         }
         else if (transposed)
