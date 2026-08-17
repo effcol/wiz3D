@@ -92,7 +92,12 @@ Device11Proxy::Device11Proxy(ID3D11Device* real)
         // camera state we already had; we only want the shader/matrix data.
         DataInput savedInput = gInfo.Input;
         ReadCurrentProfile(GetVendorIdFromDevice(m_real));
-        gInfo.Input = savedInput;
+        // Restoring unconditionally also discarded presets a profile really did
+        // supply, pinning every game to the built-in 0.16 / 0.5. Keep what the
+        // profile gave us; fall back only when it gave nothing usable.
+        const CameraPreset* loaded = gInfo.Input.GetActivePreset();
+        if (!loaded || loaded->StereoBase == 0.f)
+            gInfo.Input = savedInput;
         // Method 0 shifts via dp4 with the stereo projection's _31/_41 skew, which
         // only the DX9 renderer computes. Method 2 is x += sep*(w - conv), which
         // needs just separation and convergence — the values we actually have.
@@ -102,6 +107,10 @@ Device11Proxy::Device11Proxy(ID3D11Device* real)
                    (int)gInfo.VertexShaderModificationMethod);
             gInfo.VertexShaderModificationMethod = 2;
         }
+        const CameraPreset* act = gInfo.Input.GetActivePreset();
+        DDILog("  Device11Proxy: preset StereoBase=%.6f One_div_ZPS=%.6f (converge=%.2f units)\n",
+               act ? act->StereoBase : 0.f, act ? act->One_div_ZPS : 0.f,
+               (act && act->One_div_ZPS != 0.f) ? 1.f / act->One_div_ZPS : 0.f);
         DDILog("  Device11Proxy: ReadCurrentProfile done, VS=%u PS=%u GS=%u entries,"
                " eyeShift=%.6f\n",
                (unsigned)g_ProfileData.VSCRCData.size(),

@@ -70,6 +70,12 @@ public:
     // binding its consumer, and those writes then reached the right eye
     // unshifted. A register holding a view-projection holds one whoever is
     // bound, so the buffer is the stable key.
+    // Set once a matrix in this buffer has actually been eye-shifted, so the
+    // draw path can tell geometry that reached the right eye corrected from
+    // geometry that is still sitting at the left eye's position.
+    bool EverShifted() const { return m_everShifted; }
+    void MarkShifted()       { m_everShifted = true; }
+
     struct MatrixTarget { DWORD reg; BOOL transposed; BOOL inverse; };
     const std::vector<MatrixTarget>& LearnedMatrices() const { return m_learned; }
     void LearnMatrix(const MatrixTarget& t)
@@ -85,6 +91,7 @@ private:
     Device11Proxy* m_parent;    // not owned
     LONG           m_refs;
     bool           m_vsBound;
+    bool           m_everShifted = false;
     std::vector<MatrixTarget> m_learned;
 };
 

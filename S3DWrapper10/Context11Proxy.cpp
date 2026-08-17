@@ -177,11 +177,11 @@ static float EyeShiftB(float eyeShift);   // defined with the CB-patch helpers b
 // just a VSSetConstantBuffers on the slot ModifyShader reserved.
 bool Context11Proxy::EnsureStereoShiftCBs()
 {
-    // NDC shift at distance is sep itself; projection scale is already in w.
-    const float sep  = wiz3D_GetEffectiveEyeShift();
-    // conv=0 makes this a constant NDC shift, matching the CB-patch path. Real
-    // convergence needs the CB path to learn it too or the two eyes disagree.
-    const float conv = 0.f;
+    // Must match the CB-patch path exactly or geometry corrected by the two
+    // mechanisms lands at different depths: sep*w - sep*conv == b*w + m41.
+    const float sep  = EyeShiftB(wiz3D_GetEffectiveEyeShift());
+    const CameraPreset* p = gInfo.Input.GetActivePreset();
+    const float conv = (p && p->One_div_ZPS != 0.f) ? 1.f / p->One_div_ZPS : 0.f;
 
     if (m_stereoCBLeft && m_stereoCBRight && sep == m_stereoCBSep && conv == m_stereoCBConv)
         return true;
@@ -239,6 +239,41 @@ static float s_projXScale = 0.f;
 // targeted matrix is a clean VP, anything else means scaled WVPs are in play.
 static float s_wnMin = 1e30f;
 static float s_wnMax = 0.f;
+
+// Classifies each logical draw by whether its geometry could have reached the
+// right eye corrected: no parsed VS, a VS the analyzer found no matrix in, or a
+// VS with a matrix whose constant buffers have never once been shifted. Any of
+// the three renders at the left eye's position, which at a 2-unit convergence
+// reads as the object sitting at the screen while its surroundings recede.
+// Common draw entry. A fullscreen pass arrives as a 3, 4 or 6 vertex quad, and
+// a modified shader would slide that quad sideways -- the black edge columns and
+// halos seen when shader modification was first enabled. Those draws get the
+// zero-shift constants, which makes the modified shader arithmetically identical
+// to the original, so no shader swap is needed.
+void Context11Proxy::BeginDraw(UINT vertexCount)
+{
+    ++m_drawsThisFrame;
+    TallyDrawCoverage();
+    if (!m_modVSShader) return;
+    const bool screenSpace = (vertexCount <= 6);
+    BindStereoShiftCB(m_activeEye == Eye::Right && !screenSpace);
+}
+
+void Context11Proxy::TallyDrawCoverage()
+{
+    if (m_activeEye == Eye::Right) return;
+    if (!m_boundVS || !m_parent) return;
+    const ShaderAnalysis11Result* info = m_parent->LookupShaderProjection(m_boundVS);
+    if (!info || !info->parsed)                  { ++m_drawsVSUnparsedThisFrame; return; }
+    if (info->projection.matrixData.cb.empty())  { ++m_drawsVSNoMatrixThisFrame; return; }
+    for (UINT s = 0; s < kMaxVSCBSlots; ++s)
+    {
+        if (!m_boundVSCBs[s]) continue;
+        Buffer11Proxy* b = TryUnwrapBuffer(m_boundVSCBs[s]);
+        if (b && b->EverShifted()) return;
+    }
+    ++m_drawsVSNeverShiftedThisFrame;
+}
 
 std::string Context11Proxy::DescribeAllContexts()
 {
@@ -307,8 +342,14 @@ void Context11Proxy::LogAndResetFrameDrawStats()
         return;
     }
 
-    DDILog("  [frame %u] basis |w|: min=%.4f max=%.4f projXScale=%.4f\n",
-           s_frame, s_wnMin, s_wnMax, s_projXScale);
+    DDILog("  [frame %u] basis |w|: min=%.4f max=%.4f projXScale=%.4f"
+           " | uncorrected draws: vsUnparsed=%u vsNoMatrix=%u cbNeverShifted=%u\n",
+           s_frame, s_wnMin, s_wnMax, s_projXScale,
+           m_drawsVSUnparsedThisFrame, m_drawsVSNoMatrixThisFrame,
+           m_drawsVSNeverShiftedThisFrame);
+    m_drawsVSUnparsedThisFrame     = 0;
+    m_drawsVSNoMatrixThisFrame     = 0;
+    m_drawsVSNeverShiftedThisFrame = 0;
     s_wnMin = 1e30f;
     s_wnMax = 0.f;
 
@@ -1011,8 +1052,7 @@ static DWORD BoundShaderCRC(Device11Proxy* parent, void* shader)
 
 void STDMETHODCALLTYPE Context11Proxy::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
-    ++m_drawsThisFrame;
-    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
+    BeginDraw(VertexCount);
     if (FrameTraceActive())
         FrameTrace("    Draw eye=%c vcount=%u start=%u vs=0x%08lX ps=0x%08lX\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
@@ -1036,8 +1076,7 @@ void STDMETHODCALLTYPE Context11Proxy::Draw(UINT VertexCount, UINT StartVertexLo
 void STDMETHODCALLTYPE Context11Proxy::DrawIndexed(
     UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation)
 {
-    ++m_drawsThisFrame;
-    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
+    BeginDraw(IndexCount);
     if (FrameTraceActive())
         FrameTrace("    DrawIndexed eye=%c icount=%u start=%u base=%d vs=0x%08lX ps=0x%08lX\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
@@ -1062,8 +1101,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstanced(
     UINT VertexCountPerInstance, UINT InstanceCount,
     UINT StartVertexLocation, UINT StartInstanceLocation)
 {
-    ++m_drawsThisFrame;
-    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
+    BeginDraw(VertexCountPerInstance);
     m_real->DrawInstanced(VertexCountPerInstance, InstanceCount,
                           StartVertexLocation, StartInstanceLocation);
     DUPLICATE_DRAW(DrawInstanced(VertexCountPerInstance, InstanceCount,
@@ -1082,8 +1120,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
     UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation,
     INT BaseVertexLocation, UINT StartInstanceLocation)
 {
-    ++m_drawsThisFrame;
-    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
+    BeginDraw(IndexCountPerInstance);
     m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount,
                                   StartIndexLocation, BaseVertexLocation,
                                   StartInstanceLocation);
@@ -1103,8 +1140,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
 
 void STDMETHODCALLTYPE Context11Proxy::DrawAuto()
 {
-    ++m_drawsThisFrame;
-    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
+    BeginDraw(UINT_MAX);   // count unknown; assume geometry
     m_real->DrawAuto();
     DUPLICATE_DRAW(DrawAuto());
     if (!m_presentHookActive) return;
@@ -1115,8 +1151,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawAuto()
 void STDMETHODCALLTYPE Context11Proxy::DrawInstancedIndirect(
     ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
-    ++m_drawsThisFrame;
-    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
+    BeginDraw(UINT_MAX);   // count unknown; assume geometry
     m_real->DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
     DUPLICATE_DRAW(DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs));
     if (!m_presentHookActive) return;
@@ -1132,8 +1167,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstancedIndirect(
 void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstancedIndirect(
     ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
-    ++m_drawsThisFrame;
-    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
+    BeginDraw(UINT_MAX);   // count unknown; assume geometry
     m_real->DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
     DUPLICATE_DRAW(DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs));
     if (!m_presentHookActive) return;
@@ -2393,10 +2427,14 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                         memcpy(mapped.pData, bytes.data(), bytes.size());
                         float eyeShift = wiz3D_GetEffectiveEyeShift();
                         if (!targets.empty())
+                        {
+                            const unsigned before = m_cbMatShiftedThisFrame;
                             ApplyTargetedEyeShiftToCB(
                                 static_cast<unsigned char*>(mapped.pData),
                                 bytes.size(), eyeShift, targets,
                                 &m_cbMatShiftedThisFrame, &m_cbMatRejectedThisFrame);
+                            if (m_cbMatShiftedThisFrame != before) bp->MarkShifted();
+                        }
                         else if (useBlindNow)
                             ApplyEyeShiftToCB(static_cast<unsigned char*>(mapped.pData),
                                               bytes.size(), eyeShift);

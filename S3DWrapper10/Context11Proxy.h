@@ -462,6 +462,12 @@ private:
     // rejected by the ortho / shadow-map guards in ShouldSkipProjectionMatrix.
     unsigned             m_cbMatShiftedThisFrame  = 0;
     unsigned             m_cbMatRejectedThisFrame = 0;
+    // Draw-level stereo coverage: why a draw's geometry could not be corrected.
+    unsigned             m_drawsVSUnparsedThisFrame     = 0;
+    unsigned             m_drawsVSNoMatrixThisFrame     = 0;
+    unsigned             m_drawsVSNeverShiftedThisFrame = 0;
+    void TallyDrawCoverage();
+    void BeginDraw(UINT vertexCount);
     // Stage 4f: dynamic vertex/index buffer write replays. `skipped` counts
     // writes we declined to snapshot — either over the size cap, or mapped
     // WRITE_NO_OVERWRITE, where a whole-buffer rewrite would corrupt the left
