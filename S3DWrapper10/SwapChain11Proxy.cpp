@@ -18,6 +18,9 @@ namespace wiz3d
 SwapChain11Proxy::SwapChain11Proxy(IDXGISwapChain* real, IDXGISwapChain1* real1, Device11Proxy* parent)
     : m_real(real)
     , m_real1(real1)
+    , m_real2(nullptr)
+    , m_real3(nullptr)
+    , m_real4(nullptr)
     , m_parent(parent)
     , m_refs(1)
     , m_leftBB(nullptr)
@@ -42,13 +45,24 @@ SwapChain11Proxy::SwapChain11Proxy(IDXGISwapChain* real, IDXGISwapChain1* real1,
     // crashed at OnPresentBoundaryPre line 92 with ECX=1 — Device11Proxy
     // memory had been freed and m_ctxProxy was reading reused heap data).
     if (m_parent) m_parent->AddRef();
-    DDILog("SwapChain11Proxy ctor: real=%p real1=%p parent=%p\n", real, real1, parent);
+    // Cache the higher-version chains so QI can return `this` for them.
+    if (m_real)
+    {
+        if (FAILED(m_real->QueryInterface(__uuidof(IDXGISwapChain2), reinterpret_cast<void**>(&m_real2)))) m_real2 = nullptr;
+        if (FAILED(m_real->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&m_real3)))) m_real3 = nullptr;
+        if (FAILED(m_real->QueryInterface(__uuidof(IDXGISwapChain4), reinterpret_cast<void**>(&m_real4)))) m_real4 = nullptr;
+    }
+    DDILog("SwapChain11Proxy ctor: real=%p real1=%p real2=%p real3=%p real4=%p parent=%p\n",
+           real, real1, m_real2, m_real3, m_real4, parent);
 }
 
 SwapChain11Proxy::~SwapChain11Proxy()
 {
     ReleaseStereoBackBuffer();
     ReleaseComposite();
+    if (m_real4)  { m_real4->Release();  m_real4  = nullptr; }
+    if (m_real3)  { m_real3->Release();  m_real3  = nullptr; }
+    if (m_real2)  { m_real2->Release();  m_real2  = nullptr; }
     if (m_real1)  { m_real1->Release();  m_real1  = nullptr; }
     if (m_real)   { m_real->Release();   m_real   = nullptr; }
     if (m_parent) { m_parent->Release(); m_parent = nullptr; }
@@ -79,6 +93,26 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::QueryInterface(REFIID riid, void** p
         AddRef();
         return S_OK;
     }
+    // Only claim a version the real chain actually supports, so a game can
+    // still feature-detect correctly on older runtimes.
+    if (riid == __uuidof(IDXGISwapChain2) && m_real2)
+    {
+        *ppvObj = static_cast<IDXGISwapChain2*>(this);
+        AddRef();
+        return S_OK;
+    }
+    if (riid == __uuidof(IDXGISwapChain3) && m_real3)
+    {
+        *ppvObj = static_cast<IDXGISwapChain3*>(this);
+        AddRef();
+        return S_OK;
+    }
+    if (riid == __uuidof(IDXGISwapChain4) && m_real4)
+    {
+        *ppvObj = static_cast<IDXGISwapChain4*>(this);
+        AddRef();
+        return S_OK;
+    }
     // Stage 4b.2: private identity IID — used by the dxgi.dll-side factory
     // hook (4b.3) to detect "is this swap chain one of ours?" cross-DLL.
     if (riid == IID_wiz3D_SwapChain11Proxy)
@@ -87,10 +121,8 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::QueryInterface(REFIID riid, void** p
         AddRef();
         return S_OK;
     }
-    // IDXGISwapChain2/3/4: pass through unwrapped for now. Future iteration
-    // can extend if needed by Win11-era games. Log so we can spot games that
-    // depend on the higher-version SC interfaces (same diagnostic pattern as
-    // Device11Proxy::QI bypass-risk lines).
+    // Anything still unhandled goes to the real chain unwrapped, which lets
+    // the game drive it behind our back. Logged so those cases stay visible.
     HRESULT hr = m_real->QueryInterface(riid, ppvObj);
     static int s_logged = 0;
     if (s_logged < 8)
@@ -524,6 +556,27 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::ResizeBuffers(
     ReleaseStereoBackBuffer();
     HRESULT hr = m_real->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
     DDILog("SwapChain11Proxy::ResizeBuffers -> hr=0x%08lX\n", hr);
+    return hr;
+}
+
+// Same invalidation as ResizeBuffers: it reallocates the same buffers, so our
+// stereo siblings and the recorded command stream must go first.
+HRESULT STDMETHODCALLTYPE SwapChain11Proxy::ResizeBuffers1(
+    UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT Format, UINT SwapChainFlags,
+    const UINT* pCreationNodeMask, IUnknown* const* ppPresentQueue)
+{
+    if (!m_real3) return E_NOINTERFACE;
+    if (m_parent)
+    {
+        if (Context11Proxy* ctx = m_parent->GetContextProxy())
+            ctx->ClearFrameCommands();
+    }
+    DDILog("SwapChain11Proxy::ResizeBuffers1: count=%u %ux%u fmt=%d flags=0x%X\n",
+           BufferCount, Width, Height, (int)Format, SwapChainFlags);
+    ReleaseStereoBackBuffer();
+    HRESULT hr = m_real3->ResizeBuffers1(BufferCount, Width, Height, Format,
+                                         SwapChainFlags, pCreationNodeMask, ppPresentQueue);
+    DDILog("SwapChain11Proxy::ResizeBuffers1 -> hr=0x%08lX\n", hr);
     return hr;
 }
 

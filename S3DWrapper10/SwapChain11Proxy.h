@@ -28,6 +28,7 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // see DXGIDeviceProxy.h — bundled
 #endif
 #include <dxgi.h>
 #include <dxgi1_2.h>
+#include <dxgi1_5.h>   // IDXGISwapChain2/3/4
 
 namespace wiz3d
 {
@@ -35,7 +36,10 @@ namespace wiz3d
 class Device11Proxy;
 class Texture2D11Proxy;
 
-class SwapChain11Proxy : public IDXGISwapChain1
+// Derives from IDXGISwapChain4 so QI for SwapChain2/3/4 can return `this`.
+// Handing back the real chain let Win11-era games (GTA V) Present and
+// GetBuffer behind our back, mixing real and wrapped back buffers.
+class SwapChain11Proxy : public IDXGISwapChain4
 {
 public:
     // real    : the underlying IDXGISwapChain from the real DXGI factory.
@@ -87,6 +91,24 @@ public:
     HRESULT STDMETHODCALLTYPE SetRotation(DXGI_MODE_ROTATION Rotation) override                                { return m_real1 ? m_real1->SetRotation(Rotation) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE GetRotation(DXGI_MODE_ROTATION* pRotation) override                              { return m_real1 ? m_real1->GetRotation(pRotation) : E_NOINTERFACE; }
 
+    // IDXGISwapChain2 — nullable real2, same convention as m_real1 above.
+    HRESULT STDMETHODCALLTYPE SetSourceSize(UINT Width, UINT Height) override                                 { return m_real2 ? m_real2->SetSourceSize(Width, Height) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE GetSourceSize(UINT* pWidth, UINT* pHeight) override                             { return m_real2 ? m_real2->GetSourceSize(pWidth, pHeight) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE SetMaximumFrameLatency(UINT MaxLatency) override                                { return m_real2 ? m_real2->SetMaximumFrameLatency(MaxLatency) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE GetMaximumFrameLatency(UINT* pMaxLatency) override                              { return m_real2 ? m_real2->GetMaximumFrameLatency(pMaxLatency) : E_NOINTERFACE; }
+    HANDLE  STDMETHODCALLTYPE GetFrameLatencyWaitableObject() override                                        { return m_real2 ? m_real2->GetFrameLatencyWaitableObject() : nullptr; }
+    HRESULT STDMETHODCALLTYPE SetMatrixTransform(const DXGI_MATRIX_3X2_F* pMatrix) override                   { return m_real2 ? m_real2->SetMatrixTransform(pMatrix) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE GetMatrixTransform(DXGI_MATRIX_3X2_F* pMatrix) override                         { return m_real2 ? m_real2->GetMatrixTransform(pMatrix) : E_NOINTERFACE; }
+
+    // IDXGISwapChain3
+    UINT    STDMETHODCALLTYPE GetCurrentBackBufferIndex() override                                            { return m_real3 ? m_real3->GetCurrentBackBufferIndex() : 0; }
+    HRESULT STDMETHODCALLTYPE CheckColorSpaceSupport(DXGI_COLOR_SPACE_TYPE ColorSpace, UINT* pColorSpaceSupport) override { return m_real3 ? m_real3->CheckColorSpaceSupport(ColorSpace, pColorSpaceSupport) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE SetColorSpace1(DXGI_COLOR_SPACE_TYPE ColorSpace) override                       { return m_real3 ? m_real3->SetColorSpace1(ColorSpace) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE ResizeBuffers1(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT Format, UINT SwapChainFlags, const UINT* pCreationNodeMask, IUnknown* const* ppPresentQueue) override;
+
+    // IDXGISwapChain4
+    HRESULT STDMETHODCALLTYPE SetHDRMetaData(DXGI_HDR_METADATA_TYPE Type, UINT Size, void* pMetaData) override { return m_real4 ? m_real4->SetHDRMetaData(Type, Size, pMetaData) : E_NOINTERFACE; }
+
     // wiz3D accessors
     IDXGISwapChain* GetReal()    const { return m_real;   }
     Device11Proxy*  GetParent()  const { return m_parent; }
@@ -114,6 +136,11 @@ private:
 
     IDXGISwapChain*  m_real;     // owned (released in dtor)
     IDXGISwapChain1* m_real1;    // optional, owned, nullable
+    // QI'd in ctor from m_real; null on older runtimes, in which case the
+    // matching interface methods return E_NOINTERFACE.
+    IDXGISwapChain2* m_real2;
+    IDXGISwapChain3* m_real3;
+    IDXGISwapChain4* m_real4;
     Device11Proxy*   m_parent;   // AddRef'd in ctor, released in dtor
     LONG             m_refs;
 
