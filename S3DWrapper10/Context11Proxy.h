@@ -18,6 +18,7 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // bundled lib/d3d10 dxgitype.h still
 #include <d3d11_3.h>  // ID3D11DeviceContext3 (inherits Context2/Context1/Context)
 #include <functional>
 #include <vector>
+#include <string>
 
 namespace wiz3d
 {
@@ -459,6 +460,11 @@ private:
     // scan. Used inside Unmap to ask Device11Proxy::LookupShaderProjection
     // whether the bound VS has a known projection-matrix register in the CB
     // being mapped, so per-eye writes target only that register.
+public:
+    // Every live context, so the frame summary can show work happening on a
+    // device that never presents through a swap chain we wrapped.
+    static std::string DescribeAllContexts();
+private:
     static constexpr UINT kMaxVSCBSlots = 15;
     ID3D11VertexShader*  m_boundVS;
     ID3D11Buffer*        m_boundVSCBs[kMaxVSCBSlots];

@@ -363,6 +363,9 @@ public:
 	// element form scales the shift by each mesh's own object space and makes
 	// attached objects drift apart. Flagged so it can be A/B'd.
 	bool		FullColumnEyeShift;
+	// DX10\11 COM-wrap: modify vertex shaders so they shift their own output
+	// position, instead of patching a projection matrix in a constant buffer.
+	bool		ModifyShadersDX11;
 	// DX10/11 COM-wrap replay: also snapshot and replay writes to dynamic
 	// VERTEX and INDEX buffers, not just constant buffers.
 	//
@@ -503,6 +506,7 @@ public:
 		COMWrapEyeShift  = 0.0f;      // 0 = use per-game profile StereoBase; non-zero = override.
 		DisableBlindCBScan = false;   // false = legacy heuristic CB scan; true = analyzer-only.
 		FullColumnEyeShift = false;   // false = legacy single-element shift.
+		ModifyShadersDX11  = false;   // false = constant-buffer patching only.
 		ReplayDynamicBuffers = true;  // Replay dynamic VB/IB writes so re-issued draws see their own geometry.
 		DuplicateDraws   = false;     // false = record+replay at Present; true = issue each draw twice live.
 		DrawType = 2;

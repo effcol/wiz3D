@@ -12,6 +12,7 @@
 #include "Texture3D11Proxy.h"
 #include "StereoHeuristic.h"
 #include "DxbcRebuild.h"                   // DxbcSelfTest
+#include "ShaderModify11.h"                // TryModifyShaderForStereo
 #include "..\S3DAPI\ReadData.h"            // ReadCurrentProfile
 #include "..\S3DAPI\ShaderProfileData.h"   // g_ProfileData
 #include "proxy_factory.h"     // for IID_wiz3D_Device11Proxy
@@ -167,6 +168,17 @@ const ShaderAnalysis11Result* Device11Proxy::LookupShaderProjection(void* shader
     return p;
 }
 
+const Device11Proxy::ModifiedVS* Device11Proxy::LookupModifiedVS(ID3D11VertexShader* original) const
+{
+    if (!original) return nullptr;
+    auto* self = const_cast<Device11Proxy*>(this);
+    EnterCriticalSection(&self->m_shaderProjLock);
+    auto it = m_modifiedVS.find(original);
+    const ModifiedVS* p = (it == m_modifiedVS.end()) ? nullptr : &it->second;
+    LeaveCriticalSection(&self->m_shaderProjLock);
+    return p;
+}
+
 namespace {
 
 template<typename TShader, typename CreateFn>
@@ -224,11 +236,65 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateVertexShader(
     const void* pShaderBytecode, SIZE_T BytecodeLength,
     ID3D11ClassLinkage* pClassLinkage, ID3D11VertexShader** ppVertexShader)
 {
-    return AnalyzeAndCreate<ID3D11VertexShader>("Vertex", this,
+    HRESULT hr = AnalyzeAndCreate<ID3D11VertexShader>("Vertex", this,
         [this](const void* b, SIZE_T n, ID3D11ClassLinkage* cl, ID3D11VertexShader** pp) {
             return m_real->CreateVertexShader(b, n, cl, pp);
         },
         pShaderBytecode, BytecodeLength, pClassLinkage, ppVertexShader);
+
+    if (gInfo.ModifyShadersDX11 && SUCCEEDED(hr) && ppVertexShader && *ppVertexShader)
+        TryBuildModifiedVS(pShaderBytecode, BytecodeLength, pClassLinkage, *ppVertexShader);
+    return hr;
+}
+
+// Builds the self-shifting variant of a vertex shader and keeps it beside the
+// original. Only shaders the analyzer found no projection matrix in are worth
+// modifying — the rest are already handled by targeted CB patching.
+void Device11Proxy::TryBuildModifiedVS(const void* bytecode, SIZE_T byteLength,
+                                       ID3D11ClassLinkage* linkage, ID3D11VertexShader* original)
+{
+    const ShaderAnalysis11Result* info = LookupShaderProjection(original);
+    if (!info || !info->parsed) { ++m_vsModSkippedUnparsed; return; }
+    if (!info->projection.matrixData.cb.empty()) { ++m_vsModSkippedHasMatrix; return; }
+
+    std::vector<BYTE> blob;
+    ModifiedShaderData mdata;
+    if (!TryModifyShaderForStereo(bytecode, byteLength, info->posRegister, false, blob, mdata))
+    {
+        ++m_vsModFailed;
+        NVDM_TRACE_FIRST_N(8, "  TryBuildModifiedVS: CRC=0x%08lX modify FAILED\n", info->crc32);
+        return;
+    }
+
+    ID3D11VertexShader* modified = nullptr;
+    HRESULT hr = m_real->CreateVertexShader(blob.data(), blob.size(), linkage, &modified);
+    if (FAILED(hr) || !modified)
+    {
+        ++m_vsModRejected;
+        NVDM_TRACE_FIRST_N(8,
+            "  TryBuildModifiedVS: CRC=0x%08lX runtime REJECTED modified shader hr=0x%08lX\n",
+            info->crc32, hr);
+        return;
+    }
+
+    ++m_vsModOk;
+    NVDM_TRACE_FIRST_N(8,
+        "  TryBuildModifiedVS: CRC=0x%08lX OK cb=%u dp4Reg=%u (orig=%zu mod=%zu bytes)\n",
+        info->crc32, mdata.CBIndex, mdata.dp4VectorRegister, byteLength, blob.size());
+
+    EnterCriticalSection(&m_shaderProjLock);
+    ModifiedVS& slot = m_modifiedVS[original];
+    if (slot.shader) slot.shader->Release();   // shader pointer reuse after a Release
+    slot.shader = modified;
+    slot.data   = mdata;
+    LeaveCriticalSection(&m_shaderProjLock);
+}
+
+void Device11Proxy::LogShaderModStats() const
+{
+    DDILog("  VS modification: ok=%u failed=%u rejected=%u skipped(hasMatrix)=%u skipped(unparsed)=%u\n",
+           m_vsModOk, m_vsModFailed, m_vsModRejected,
+           m_vsModSkippedHasMatrix, m_vsModSkippedUnparsed);
 }
 
 HRESULT STDMETHODCALLTYPE Device11Proxy::CreatePixelShader(

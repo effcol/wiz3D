@@ -21,6 +21,15 @@
 #include "proxy_factory.h"     // TryUnwrap* helpers
 #include "AdapterFunctions.h"  // DDILog
 #include "..\S3DAPI\ShaderProfileData.h"  // g_ProfileData matrix declarations
+#include <mutex>
+
+namespace {
+// Live-context registry. A context whose device has no wrapped swap chain
+// never runs LogAndResetFrameDrawStats, so its counters just accumulate —
+// which is exactly what makes it visible here.
+std::mutex& CtxLock() { static std::mutex m; return m; }
+std::vector<wiz3d::Context11Proxy*>& CtxList() { static std::vector<wiz3d::Context11Proxy*> v; return v; }
+} // namespace
 
 // Slot-count maxima now live on Context11Proxy (see the header) so the
 // eye-tracking arrays and the unwrap temporaries stay the same size.
@@ -120,6 +129,12 @@ Context11Proxy::Context11Proxy(ID3D11DeviceContext* real, Device11Proxy* parent)
         if (FAILED(m_real->QueryInterface(__uuidof(ID3D11DeviceContext2), reinterpret_cast<void**>(&m_real2)))) m_real2 = nullptr;
         if (FAILED(m_real->QueryInterface(__uuidof(ID3D11DeviceContext3), reinterpret_cast<void**>(&m_real3)))) m_real3 = nullptr;
     }
+    {
+        std::lock_guard<std::mutex> g(CtxLock());
+        CtxList().push_back(this);
+    }
+    DDILog("Context11Proxy ctor: this=%p real=%p parent=%p (live contexts=%u)\n",
+           this, real, parent, (unsigned)CtxList().size());
 }
 
 Context11Proxy::~Context11Proxy()
@@ -129,6 +144,12 @@ Context11Proxy::~Context11Proxy()
     // setting calls with captured COM pointers will release them in
     // ClearFrameCommands; the dtor will route there.
     ClearFrameCommands();
+    {
+        std::lock_guard<std::mutex> g(CtxLock());
+        auto& v = CtxList();
+        for (size_t i = 0; i < v.size(); ++i)
+            if (v[i] == this) { v.erase(v.begin() + i); break; }
+    }
     if (m_real3) { m_real3->Release(); m_real3 = nullptr; }
     if (m_real2) { m_real2->Release(); m_real2 = nullptr; }
     if (m_real1) { m_real1->Release(); m_real1 = nullptr; }
@@ -148,6 +169,21 @@ void Context11Proxy::ClearFrameCommands()
 // VerboseFrameTrace frames and auto-disables, whereas the whole point here is
 // to watch the ratio hold (or not) across a long session. DDILog + a modest
 // interval keeps the log small.
+std::string Context11Proxy::DescribeAllContexts()
+{
+    std::lock_guard<std::mutex> g(CtxLock());
+    std::string s;
+    char buf[128];
+    for (size_t i = 0; i < CtxList().size(); ++i)
+    {
+        Context11Proxy* c = CtxList()[i];
+        sprintf_s(buf, "[ctx=%p dev=%p draws=%u disp=%u]",
+                  c, c->m_parent, c->m_drawsThisFrame, c->m_dispatchesThisFrame);
+        s += buf;
+    }
+    return s;
+}
+
 void Context11Proxy::LogAndResetFrameDrawStats()
 {
     static unsigned s_frame = 0;
@@ -158,14 +194,19 @@ void Context11Proxy::LogAndResetFrameDrawStats()
     const bool report = (s_frame <= 3) || (s_frame % 60 == 0);
     if (report)
     {
-        DDILog("  [frame %u] immediate-ctx: draws=%u dispatches=%u cmdLists=%u"
+        // Only contexts belonging to a device with a wrapped swap chain reach
+        // this function. Report every live context so work on a device that
+        // never presents through us is still visible.
+        DDILog("  [frame %u] contexts: %s\n", s_frame, DescribeAllContexts().c_str());
+        if (gInfo.ModifyShadersDX11 && m_parent) m_parent->LogShaderModStats();
+        DDILog("  [frame %u] immediate-ctx=%p: draws=%u dispatches=%u cmdLists=%u"
                " recorded=%zu | CB patches: targeted=%u blind=%u skipped=%u"
                " | matrices: shifted=%u guardRejected=%u"
                " | dynBuf: replayed=%u skipped=%u"
                " | dup: duplicated=%u mono=%u uavSkip=%u monoDSV=%u noRightRTV=%u"
                " depthOnly=%u noRightTarget=%u"
                " (DuplicateDraws=%d DisableBlindCBScan=%d ortho=%d shadow=%d)%s\n",
-               s_frame, m_drawsThisFrame, m_dispatchesThisFrame,
+               s_frame, this, m_drawsThisFrame, m_dispatchesThisFrame,
                m_cmdListsThisFrame, m_frameCommands.size(),
                m_cbTargetedThisFrame, m_cbBlindThisFrame, m_cbSkippedThisFrame,
                m_cbMatShiftedThisFrame, m_cbMatRejectedThisFrame,
@@ -180,6 +221,15 @@ void Context11Proxy::LogAndResetFrameDrawStats()
                (m_cmdListsThisFrame > 0)
                    ? "  <-- DEFERRED CONTEXT WORK: right eye cannot be correct via replay"
                    : "");
+    }
+    else
+    {
+        // Reset only when we report. A device with more than one swap chain
+        // (GTA V has a 2x2 dummy alongside the real one) calls this several
+        // times per game frame, and resetting every call meant the sampled
+        // report almost always landed just after a wipe: 33725 of 33844
+        // samples read zero while real frames were pushing 4700 draws.
+        return;
     }
 
     m_drawsThisFrame          = 0;

@@ -24,6 +24,7 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // bundled lib/d3d10 dxgitype.h still
 #include <unordered_set>
 #include <unordered_map>
 #include "ShaderAnalyzer11.h"  // ShaderAnalysis11Result
+#include "..\ShaderAnalysis\modify.h"  // ModifiedShaderData
 
 namespace wiz3d
 {
@@ -230,6 +231,28 @@ private:
     // that draw, which falls back to mono).
     std::unordered_map<void*, ShaderAnalysis11Result> m_shaderProjections;
     CRITICAL_SECTION                                  m_shaderProjLock;
+
+public:
+    // Self-shifting variant of a vertex shader, plus the CB slot and registers
+    // ModifyShader reserved. Guarded by m_shaderProjLock.
+    struct ModifiedVS
+    {
+        ID3D11VertexShader* shader = nullptr;   // owned
+        ModifiedShaderData  data;
+    };
+    const ModifiedVS* LookupModifiedVS(ID3D11VertexShader* original) const;
+    void LogShaderModStats() const;
+
+private:
+    void TryBuildModifiedVS(const void* bytecode, SIZE_T byteLength,
+                            ID3D11ClassLinkage* linkage, ID3D11VertexShader* original);
+    std::unordered_map<ID3D11VertexShader*, ModifiedVS> m_modifiedVS;
+
+    unsigned m_vsModOk               = 0;
+    unsigned m_vsModFailed           = 0;
+    unsigned m_vsModRejected         = 0;
+    unsigned m_vsModSkippedHasMatrix = 0;
+    unsigned m_vsModSkippedUnparsed  = 0;
 
     // Real-pointer → Texture2D11Proxy fallback. See accessor doc above. Game
     // owns the real-pointer lifetime via the proxy; entry is unregistered in
