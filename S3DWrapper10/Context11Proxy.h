@@ -218,7 +218,9 @@ public:
     void STDMETHODCALLTYPE UpdateSubresource1(ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch, UINT CopyFlags) override { if (m_real1) m_real1->UpdateSubresource1(pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch, CopyFlags); }
     void STDMETHODCALLTYPE DiscardResource(ID3D11Resource* pResource) override                                                                                                                    { if (m_real1) m_real1->DiscardResource(pResource); }
     void STDMETHODCALLTYPE DiscardView(ID3D11View* pResourceView) override                                                                                                                        { if (m_real1) m_real1->DiscardView(pResourceView); }
-    void STDMETHODCALLTYPE VSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->VSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
+    // Same clobber risk as VSSetConstantBuffers — a Device1+ game reaching the
+    // modified shader's slot through this entry point must not unbind us.
+    void STDMETHODCALLTYPE VSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->VSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); if (m_modVSShader && m_modVSCBIndex >= StartSlot && m_modVSCBIndex < StartSlot + NumBuffers) BindStereoShiftCB(m_activeEye == Eye::Right); }
     void STDMETHODCALLTYPE HSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->HSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
     void STDMETHODCALLTYPE DSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->DSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
     void STDMETHODCALLTYPE GSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->GSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
@@ -344,6 +346,21 @@ private:
     // here, so switching eyes mid-draw is an array hand-off with no unwrapping.
     enum StageIdx { ST_VS = 0, ST_PS, ST_GS, ST_HS, ST_DS, ST_CS, ST_COUNT };
 
+    // CS UAVs resolve their eye at set time, so a duplicated dispatch needs the
+    // game's wrapped pointers kept to rebind against the right eye.
+    struct UAVEyeSlots
+    {
+        ID3D11UnorderedAccessView* left[kMaxUAVs];
+        ID3D11UnorderedAccessView* right[kMaxUAVs];
+        UINT high;
+        bool anyStereo;
+    };
+    UAVEyeSlots m_csUAVSlots = {};
+    void TrackCSUAVs(UINT StartSlot, UINT NumUAVs, ID3D11UnorderedAccessView* const* pp);
+    void BindCSUAVs(bool right);
+    bool BeginRightEyeDispatch();
+    void EndRightEyeDispatch();
+
     struct SRVEyeSlots
     {
         ID3D11ShaderResourceView* left[kMaxSRVs];
@@ -413,6 +430,7 @@ private:
     unsigned m_drawsNoRightRTVThisFrame = 0;
     // Depth-only draws (no RTV bound), and draws with no right-eye target of
     // any kind — the latter is the one that means content is actually lost.
+    unsigned m_dispatchesDuplicatedThisFrame = 0;
     unsigned m_drawsDepthOnlyThisFrame     = 0;
     unsigned m_drawsNoRightTargetThisFrame = 0;
 
@@ -475,6 +493,20 @@ private:
     static constexpr UINT kMaxPSCBSlots = 15;
     ID3D11PixelShader*   m_boundPS;
     ID3D11Buffer*        m_boundPSCBs[kMaxPSCBSlots];
+
+    // Self-shifting VS support. m_modVSShader is the modified variant of the
+    // currently bound shader (null when there isn't one, which is the signal that
+    // no per-eye CB is needed); the two CBs hold its shift constants and are
+    // rebuilt only when separation changes. Not AddRef'd — Device11Proxy owns it.
+    ID3D11VertexShader* m_modVSShader  = nullptr;
+    UINT                m_modVSCBIndex = 0;
+    ID3D11Buffer* m_stereoCBLeft  = nullptr;
+    ID3D11Buffer* m_stereoCBRight = nullptr;
+    float         m_stereoCBSep   = 0.f;
+    float         m_stereoCBConv  = 0.f;
+    bool EnsureStereoShiftCBs();
+    void BindStereoShiftCB(bool right);
+    void ReleaseStereoShiftCBs();
 
     // Stage 4b.1: per-frame command record. Stage 4b.8 + 4d flush + replay
     // before each Present. Only populated when m_presentHookActive is true.

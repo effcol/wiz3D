@@ -366,6 +366,11 @@ public:
 	// DX10\11 COM-wrap: modify vertex shaders so they shift their own output
 	// position, instead of patching a projection matrix in a constant buffer.
 	bool		ModifyShadersDX11;
+	// Bisection aid: modify only the first N eligible vertex shaders. 0 = no
+	// limit. Halve it to find which shader breaks the driver.
+	DWORD		ModifyShadersMaxCount;
+	// Start the frame trace at the first frame with at least this many draws.
+	DWORD		FrameTraceMinDraws;
 	// DX10/11 COM-wrap replay: also snapshot and replay writes to dynamic
 	// VERTEX and INDEX buffers, not just constant buffers.
 	//
@@ -507,6 +512,8 @@ public:
 		DisableBlindCBScan = false;   // false = legacy heuristic CB scan; true = analyzer-only.
 		FullColumnEyeShift = false;   // false = legacy single-element shift.
 		ModifyShadersDX11  = false;   // false = constant-buffer patching only.
+		ModifyShadersMaxCount = 0;    // 0 = modify every eligible shader.
+		FrameTraceMinDraws    = 0;    // 0 = frame-number gate only.
 		ReplayDynamicBuffers = true;  // Replay dynamic VB/IB writes so re-issued draws see their own geometry.
 		DuplicateDraws   = false;     // false = record+replay at Present; true = issue each draw twice live.
 		DrawType = 2;

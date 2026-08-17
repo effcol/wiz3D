@@ -93,6 +93,15 @@ Device11Proxy::Device11Proxy(ID3D11Device* real)
         DataInput savedInput = gInfo.Input;
         ReadCurrentProfile(GetVendorIdFromDevice(m_real));
         gInfo.Input = savedInput;
+        // Method 0 shifts via dp4 with the stereo projection's _31/_41 skew, which
+        // only the DX9 renderer computes. Method 2 is x += sep*(w - conv), which
+        // needs just separation and convergence — the values we actually have.
+        if (gInfo.ModifyShadersDX11 && gInfo.VertexShaderModificationMethod != 2)
+        {
+            DDILog("  Device11Proxy: ModifyShadersDX11 forces VertexShaderModificationMethod 2 (was %d)\n",
+                   (int)gInfo.VertexShaderModificationMethod);
+            gInfo.VertexShaderModificationMethod = 2;
+        }
         DDILog("  Device11Proxy: ReadCurrentProfile done, VS=%u PS=%u GS=%u entries,"
                " eyeShift=%.6f\n",
                (unsigned)g_ProfileData.VSCRCData.size(),
@@ -256,6 +265,7 @@ void Device11Proxy::TryBuildModifiedVS(const void* bytecode, SIZE_T byteLength,
     const ShaderAnalysis11Result* info = LookupShaderProjection(original);
     if (!info || !info->parsed) { ++m_vsModSkippedUnparsed; return; }
     if (!info->projection.matrixData.cb.empty()) { ++m_vsModSkippedHasMatrix; return; }
+    if (gInfo.ModifyShadersMaxCount && m_vsModOk >= gInfo.ModifyShadersMaxCount) return;
 
     std::vector<BYTE> blob;
     ModifiedShaderData mdata;
@@ -278,9 +288,11 @@ void Device11Proxy::TryBuildModifiedVS(const void* bytecode, SIZE_T byteLength,
     }
 
     ++m_vsModOk;
-    NVDM_TRACE_FIRST_N(8,
-        "  TryBuildModifiedVS: CRC=0x%08lX OK cb=%u dp4Reg=%u (orig=%zu mod=%zu bytes)\n",
-        info->crc32, mdata.CBIndex, mdata.dp4VectorRegister, byteLength, blob.size());
+    // Index is the bisection handle: with ModifyShadersMaxCount set, only
+    // shaders below that index are modified, so the last one logged before a
+    // crash narrows the culprit.
+    DDILog("  TryBuildModifiedVS[%u]: CRC=0x%08lX OK cb=%u dp4Reg=%u (orig=%zu mod=%zu bytes)\n",
+           m_vsModOk, info->crc32, mdata.CBIndex, mdata.dp4VectorRegister, byteLength, blob.size());
 
     EnterCriticalSection(&m_shaderProjLock);
     ModifiedVS& slot = m_modifiedVS[original];

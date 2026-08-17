@@ -144,6 +144,7 @@ Context11Proxy::~Context11Proxy()
     // setting calls with captured COM pointers will release them in
     // ClearFrameCommands; the dtor will route there.
     ClearFrameCommands();
+    ReleaseStereoShiftCBs();
     {
         std::lock_guard<std::mutex> g(CtxLock());
         auto& v = CtxList();
@@ -169,6 +170,63 @@ void Context11Proxy::ClearFrameCommands()
 // VerboseFrameTrace frames and auto-disables, whereas the whole point here is
 // to watch the ratio hold (or not) across a long session. DDILog + a modest
 // interval keeps the log small.
+static float EyeShiftB(float eyeShift);   // defined with the CB-patch helpers below
+
+// The modified shader computes x += sep * (w - conv), so we only need those two
+// values. Rebuilt when separation changes, which is rare — binding is otherwise
+// just a VSSetConstantBuffers on the slot ModifyShader reserved.
+bool Context11Proxy::EnsureStereoShiftCBs()
+{
+    // NDC shift at distance is sep itself; projection scale is already in w.
+    const float sep  = wiz3D_GetEffectiveEyeShift();
+    // conv=0 makes this a constant NDC shift, matching the CB-patch path. Real
+    // convergence needs the CB path to learn it too or the two eyes disagree.
+    const float conv = 0.f;
+
+    if (m_stereoCBLeft && m_stereoCBRight && sep == m_stereoCBSep && conv == m_stereoCBConv)
+        return true;
+
+    ID3D11Device* dev = m_parent ? m_parent->GetReal() : nullptr;
+    if (!dev) return false;
+
+    // Two registers: ModifyShader declares cb[2] and may reference the second for
+    // the ZNear variant, so allocate both even though we only fill the first.
+    // Left is unshifted to match the CB-patch path; mixing models desyncs eyes.
+    const float dataL[8] = { 0.f, conv, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f };
+    const float dataR[8] = { sep, conv, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f };
+
+    ReleaseStereoShiftCBs();
+    D3D11_BUFFER_DESC bd = {};
+    bd.ByteWidth = sizeof(dataL);
+    bd.Usage     = D3D11_USAGE_IMMUTABLE;
+    bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+    D3D11_SUBRESOURCE_DATA srdL = { dataL, 0, 0 };
+    D3D11_SUBRESOURCE_DATA srdR = { dataR, 0, 0 };
+    if (FAILED(dev->CreateBuffer(&bd, &srdL, &m_stereoCBLeft)) ||
+        FAILED(dev->CreateBuffer(&bd, &srdR, &m_stereoCBRight)))
+    {
+        ReleaseStereoShiftCBs();
+        return false;
+    }
+    m_stereoCBSep  = sep;
+    m_stereoCBConv = conv;
+    DDILog("  StereoShiftCB: sep=%.6f conv=%.4f\n", sep, conv);
+    return true;
+}
+
+void Context11Proxy::BindStereoShiftCB(bool right)
+{
+    if (!m_modVSShader || !EnsureStereoShiftCBs()) return;
+    ID3D11Buffer* cb = right ? m_stereoCBRight : m_stereoCBLeft;
+    m_real->VSSetConstantBuffers(m_modVSCBIndex, 1, &cb);
+}
+
+void Context11Proxy::ReleaseStereoShiftCBs()
+{
+    if (m_stereoCBLeft)  { m_stereoCBLeft->Release();  m_stereoCBLeft  = nullptr; }
+    if (m_stereoCBRight) { m_stereoCBRight->Release(); m_stereoCBRight = nullptr; }
+}
+
 std::string Context11Proxy::DescribeAllContexts()
 {
     std::lock_guard<std::mutex> g(CtxLock());
@@ -188,6 +246,9 @@ void Context11Proxy::LogAndResetFrameDrawStats()
 {
     static unsigned s_frame = 0;
     ++s_frame;
+    // Publish before any reset so the trace gate sees this frame's real count.
+    if ((int)m_drawsThisFrame > g_FrameTraceLastFrameDraws)
+        g_FrameTraceLastFrameDraws = (int)m_drawsThisFrame;
 
     // Every 60th frame (~1s at 60fps), plus the first few so a short capture
     // still shows something.
@@ -204,7 +265,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
                " | matrices: shifted=%u guardRejected=%u"
                " | dynBuf: replayed=%u skipped=%u"
                " | dup: duplicated=%u mono=%u uavSkip=%u monoDSV=%u noRightRTV=%u"
-               " depthOnly=%u noRightTarget=%u"
+               " depthOnly=%u noRightTarget=%u dispDup=%u"
                " (DuplicateDraws=%d DisableBlindCBScan=%d ortho=%d shadow=%d)%s\n",
                s_frame, this, m_drawsThisFrame, m_dispatchesThisFrame,
                m_cmdListsThisFrame, m_frameCommands.size(),
@@ -215,6 +276,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
                m_drawsUavSkippedThisFrame, m_drawsMonoDsvThisFrame,
                m_drawsNoRightRTVThisFrame,
                m_drawsDepthOnlyThisFrame, m_drawsNoRightTargetThisFrame,
+               m_dispatchesDuplicatedThisFrame,
                (int)gInfo.DuplicateDraws,
                (int)gInfo.DisableBlindCBScan,
                (int)!gInfo.SkipCheckOrthoMatrix, (int)gInfo.CheckShadowMatrix,
@@ -249,6 +311,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
     m_drawsNoRightRTVThisFrame = 0;
     m_drawsDepthOnlyThisFrame     = 0;
     m_drawsNoRightTargetThisFrame = 0;
+    m_dispatchesDuplicatedThisFrame = 0;
 }
 
 void Context11Proxy::ReplayFrameCommands(Eye eye)
@@ -436,6 +499,57 @@ void Context11Proxy::BindStageSRVs(StageIdx stage, bool right)
     }
 }
 
+void Context11Proxy::TrackCSUAVs(UINT StartSlot, UINT NumUAVs,
+                                 ID3D11UnorderedAccessView* const* pp)
+{
+    UAVEyeSlots& s = m_csUAVSlots;
+    for (UINT i = 0; i < NumUAVs; ++i)
+    {
+        const UINT slot = StartSlot + i;
+        if (slot >= kMaxUAVs) break;
+        ID3D11UnorderedAccessView* v = pp ? pp[i] : nullptr;
+        s.left[slot]  = UnwrapUAVForEye(v, false);
+        s.right[slot] = UnwrapUAVForEye(v, true);
+        if (s.left[slot] != s.right[slot]) s.anyStereo = true;
+        if (slot + 1 > s.high) s.high = slot + 1;
+    }
+}
+
+void Context11Proxy::BindCSUAVs(bool right)
+{
+    UAVEyeSlots& s = m_csUAVSlots;
+    if (!s.high) return;
+    m_real->CSSetUnorderedAccessViews(0, s.high, right ? s.right : s.left, nullptr);
+}
+
+// Compute output has no right-eye copy unless the dispatch runs again with the
+// right-eye UAVs bound; GTA V drives lighting and post through 1080 of these.
+bool Context11Proxy::BeginRightEyeDispatch()
+{
+    if (!gInfo.DuplicateDraws) return false;
+    if (m_activeEye != Eye::Left) return false;
+    if (!m_csUAVSlots.anyStereo) return false;
+    m_activeEye = Eye::Right;
+    BindCSUAVs(true);
+    for (UINT st = 0; st < ST_COUNT; ++st)
+    {
+        if (m_srvSlots[st].anyStereo) BindStageSRVs((StageIdx)st, true);
+        if (m_cbSlots[st].anyStereo)  BindStageCBs((StageIdx)st, true);
+    }
+    return true;
+}
+
+void Context11Proxy::EndRightEyeDispatch()
+{
+    m_activeEye = Eye::Left;
+    BindCSUAVs(false);
+    for (UINT st = 0; st < ST_COUNT; ++st)
+    {
+        if (m_srvSlots[st].anyStereo) BindStageSRVs((StageIdx)st, false);
+        if (m_cbSlots[st].anyStereo)  BindStageCBs((StageIdx)st, false);
+    }
+}
+
 void Context11Proxy::BindStageCBs(StageIdx stage, bool right)
 {
     CBEyeSlots& s = m_cbSlots[stage];
@@ -477,6 +591,10 @@ void Context11Proxy::BindEye(bool right)
         if (m_srvSlots[st].anyStereo) BindStageSRVs((StageIdx)st, right);
         if (m_cbSlots[st].anyStereo)  BindStageCBs((StageIdx)st, right);
     }
+    // Must come last: BindStageCBs rebinds the VS constant buffers from tracked
+    // state and would otherwise put the game's (usually null) buffer back in the
+    // slot the modified shader reads from.
+    if (m_modVSShader) BindStereoShiftCB(right);
 }
 
 bool Context11Proxy::BeginRightEyeDraw()
@@ -680,6 +798,14 @@ void STDMETHODCALLTYPE Context11Proxy::VSSetConstantBuffers(
         }
     }
     m_real->VSSetConstantBuffers(StartSlot, NumBuffers, ppConstantBuffers ? rawCBs : nullptr);
+
+    // A modified shader reads its shift constants from a slot ModifyShader picked
+    // as unused, but the game still binds arrays that span it — usually right
+    // after VSSetShader. Re-bind ours whenever that range covers it, or the
+    // shader reads an unbound CB and the driver faults.
+    if (m_modVSShader && m_modVSCBIndex >= StartSlot && m_modVSCBIndex < StartSlot + NumBuffers)
+        BindStereoShiftCB(m_activeEye == Eye::Right);
+
     if (!m_presentHookActive) return;
     std::vector<ComRefHolder> refs;
     refs.reserve(NumBuffers);
@@ -776,7 +902,28 @@ void STDMETHODCALLTYPE Context11Proxy::VSSetShader(
     UINT NumClassInstances)
 {
     m_boundVS = pShader;
-    m_real->VSSetShader(pShader, ppClassInstances, NumClassInstances);
+
+    // A modified shader shifts its own output from a constant we supply, so it
+    // runs for BOTH eyes and only the constant differs — the left eye gets the
+    // negated separation. Bind the left CB now; BindEye swaps it per eye.
+    m_modVSShader = nullptr;
+    if (gInfo.ModifyShadersDX11 && m_parent)
+    {
+        if (const Device11Proxy::ModifiedVS* mv = m_parent->LookupModifiedVS(pShader))
+        {
+            m_modVSShader  = mv->shader;
+            m_modVSCBIndex = mv->data.CBIndex;
+        }
+    }
+    if (m_modVSShader)
+    {
+        m_real->VSSetShader(m_modVSShader, ppClassInstances, NumClassInstances);
+        BindStereoShiftCB(false);
+    }
+    else
+    {
+        m_real->VSSetShader(pShader, ppClassInstances, NumClassInstances);
+    }
     if (!m_presentHookActive) return;
     ComRefHolder shaderRef(pShader);
     std::vector<ComRefHolder> ciRefs;
@@ -843,6 +990,7 @@ static DWORD BoundShaderCRC(Device11Proxy* parent, void* shader)
 void STDMETHODCALLTYPE Context11Proxy::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
     ++m_drawsThisFrame;
+    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
     if (FrameTraceActive())
         FrameTrace("    Draw eye=%c vcount=%u start=%u vs=0x%08lX ps=0x%08lX\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
@@ -867,6 +1015,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexed(
     UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation)
 {
     ++m_drawsThisFrame;
+    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
     if (FrameTraceActive())
         FrameTrace("    DrawIndexed eye=%c icount=%u start=%u base=%d vs=0x%08lX ps=0x%08lX\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
@@ -892,6 +1041,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstanced(
     UINT StartVertexLocation, UINT StartInstanceLocation)
 {
     ++m_drawsThisFrame;
+    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
     m_real->DrawInstanced(VertexCountPerInstance, InstanceCount,
                           StartVertexLocation, StartInstanceLocation);
     DUPLICATE_DRAW(DrawInstanced(VertexCountPerInstance, InstanceCount,
@@ -911,6 +1061,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
     INT BaseVertexLocation, UINT StartInstanceLocation)
 {
     ++m_drawsThisFrame;
+    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
     m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount,
                                   StartIndexLocation, BaseVertexLocation,
                                   StartInstanceLocation);
@@ -931,6 +1082,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
 void STDMETHODCALLTYPE Context11Proxy::DrawAuto()
 {
     ++m_drawsThisFrame;
+    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
     m_real->DrawAuto();
     DUPLICATE_DRAW(DrawAuto());
     if (!m_presentHookActive) return;
@@ -942,6 +1094,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstancedIndirect(
     ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
     ++m_drawsThisFrame;
+    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
     m_real->DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
     DUPLICATE_DRAW(DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs));
     if (!m_presentHookActive) return;
@@ -958,6 +1111,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstancedIndirect(
     ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
     ++m_drawsThisFrame;
+    if (m_modVSShader) BindStereoShiftCB(m_activeEye == Eye::Right);
     m_real->DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
     DUPLICATE_DRAW(DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs));
     if (!m_presentHookActive) return;
@@ -975,6 +1129,12 @@ void STDMETHODCALLTYPE Context11Proxy::Dispatch(
 {
     ++m_dispatchesThisFrame;
     m_real->Dispatch(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ);
+    if (BeginRightEyeDispatch())
+    {
+        ++m_dispatchesDuplicatedThisFrame;
+        m_real->Dispatch(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ);
+        EndRightEyeDispatch();
+    }
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this, ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ]()
@@ -988,6 +1148,12 @@ void STDMETHODCALLTYPE Context11Proxy::DispatchIndirect(
 {
     ++m_dispatchesThisFrame;
     m_real->DispatchIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
+    if (BeginRightEyeDispatch())
+    {
+        ++m_dispatchesDuplicatedThisFrame;
+        m_real->DispatchIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
+        EndRightEyeDispatch();
+    }
     if (!m_presentHookActive) return;
     ComRefHolder bufRef(pBufferForArgs);
     m_frameCommands.emplace_back(
@@ -2300,6 +2466,9 @@ void STDMETHODCALLTYPE Context11Proxy::ClearState()
 {
     m_real->ClearState();
     ResetEyeTracking();
+    // ClearState unbinds the shader too, so the modified-VS state is stale until
+    // the game sets a shader again.
+    m_modVSShader = nullptr;
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this]() { m_real->ClearState(); });
@@ -2628,6 +2797,7 @@ void STDMETHODCALLTYPE Context11Proxy::CSSetUnorderedAccessViews(
     ID3D11UnorderedAccessView* const* ppUnorderedAccessViews,
     const UINT* pUAVInitialCounts)
 {
+    TrackCSUAVs(StartSlot, NumUAVs, ppUnorderedAccessViews);
     // Stage 3c.2: unwrap UAVs eye-aware before forwarding.
     ID3D11UnorderedAccessView* rawSet[kMaxUAVs] = { 0 };
     UINT setCap = NumUAVs <= kMaxUAVs ? NumUAVs : kMaxUAVs;
