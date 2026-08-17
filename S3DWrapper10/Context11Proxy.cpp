@@ -195,6 +195,9 @@ bool Context11Proxy::EnsureStereoShiftCBs()
     const float dataL[8] = { 0.f, conv, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f };
     const float dataR[8] = { sep, conv, 0.f, 0.f,  0.f, 0.f, 0.f, 0.f };
 
+    DDILog("  StereoShiftCB: sep=%.6f conv=%.4f (eyeShift=%.6f)\n",
+           sep, conv, wiz3D_GetEffectiveEyeShift());
+
     ReleaseStereoShiftCBs();
     D3D11_BUFFER_DESC bd = {};
     bd.ByteWidth = sizeof(dataL);
@@ -245,11 +248,8 @@ static float s_wnMax = 0.f;
 // VS with a matrix whose constant buffers have never once been shifted. Any of
 // the three renders at the left eye's position, which at a 2-unit convergence
 // reads as the object sitting at the screen while its surroundings recede.
-// Common draw entry. A fullscreen pass arrives as a 3, 4 or 6 vertex quad, and
-// a modified shader would slide that quad sideways -- the black edge columns and
-// halos seen when shader modification was first enabled. Those draws get the
-// zero-shift constants, which makes the modified shader arithmetically identical
-// to the original, so no shader swap is needed.
+// Fullscreen passes (<=6 verts) get zero-shift constants, so a modified shader
+// behaves exactly like the original and the quad is not slid sideways.
 void Context11Proxy::BeginDraw(UINT vertexCount)
 {
     ++m_drawsThisFrame;
@@ -265,7 +265,13 @@ void Context11Proxy::TallyDrawCoverage()
     if (!m_boundVS || !m_parent) return;
     const ShaderAnalysis11Result* info = m_parent->LookupShaderProjection(m_boundVS);
     if (!info || !info->parsed)                  { ++m_drawsVSUnparsedThisFrame; return; }
-    if (info->projection.matrixData.cb.empty())  { ++m_drawsVSNoMatrixThisFrame; return; }
+    // A shader with a modified variant corrects itself, so it counts as covered.
+    if (info->projection.matrixData.cb.empty())
+    {
+        if (m_modVSShader) return;
+        ++m_drawsVSNoMatrixThisFrame;
+        return;
+    }
     for (UINT s = 0; s < kMaxVSCBSlots; ++s)
     {
         if (!m_boundVSCBs[s]) continue;

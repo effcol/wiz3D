@@ -85,6 +85,31 @@ bool TryModifyShaderForStereo(const void* bytecode, SIZE_T byteLength,
         }
     }
 
+    // A position write after the full one is redirected but never written back.
+    {
+        int merged = 0;
+        bool completed = false;
+        for (size_t i = 0; i < shList.size(); ++i)
+        {
+            const shader_analyzer::ShaderInstruction& si = shList[i];
+            if (si.getOperation()->isDeclaration() || si.getOperation()->isCustomData()) continue;
+            for (unsigned j = 0; j < si.getOperandsCount(); ++j)
+            {
+                const shader_analyzer::ShaderOperand* so = si.getOperand(j);
+                if (so->getOperandType() != D3D10_SB_OPERAND_TYPE_OUTPUT ||
+                    so->getIndex(0) != posRegister) continue;
+                if (completed) return false;   // writes again after the full write
+                merged |= so->getComponentState();
+                if (merged == shader_analyzer::ShaderOperand::ALL_COMPONENTS)
+                {
+                    completed = true;
+                    merged = 0;
+                }
+            }
+        }
+        if (!completed) return false;   // never fully written; nothing to inject after
+    }
+
     shader_analyzer::TShaderList modified;
     if (!ModifyShader(shList, posRegister, addZNearCheck, modified, outData))
         return false;
