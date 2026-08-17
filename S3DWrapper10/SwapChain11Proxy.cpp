@@ -54,6 +54,13 @@ SwapChain11Proxy::SwapChain11Proxy(IDXGISwapChain* real, IDXGISwapChain1* real1,
     }
     DDILog("SwapChain11Proxy ctor: real=%p real1=%p real2=%p real3=%p real4=%p parent=%p\n",
            real, real1, m_real2, m_real3, m_real4, parent);
+    // SwapEffect >= 3 is flip-model, where the game rotates through buffers
+    // by index instead of always drawing to buffer 0.
+    DXGI_SWAP_CHAIN_DESC scd = {};
+    if (m_real && SUCCEEDED(m_real->GetDesc(&scd)))
+        DDILog("  SwapChain desc: BufferCount=%u %ux%u fmt=%d SwapEffect=%d Flags=0x%X\n",
+               scd.BufferCount, scd.BufferDesc.Width, scd.BufferDesc.Height,
+               (int)scd.BufferDesc.Format, (int)scd.SwapEffect, scd.Flags);
 }
 
 SwapChain11Proxy::~SwapChain11Proxy()
@@ -446,7 +453,14 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::GetBuffer(UINT Buffer, REFIID riid, 
     // through to the real swap chain (multi-buffer / shared-surface use is
     // rare for the games we wrap; first-pass leaves them unwrapped).
     if (Buffer != 0 || !ppSurface)
+    {
+        // Logged separately: a flip-model game asking for a non-zero index
+        // gets a real buffer while index 0 is wrapped, mixing the two.
+        static unsigned s_nonZero = 0;
+        if (s_nonZero++ < 16)
+            DDILog("SwapChain11Proxy::GetBuffer(%u): UNWRAPPED real buffer returned\n", Buffer);
         return m_real->GetBuffer(Buffer, riid, ppSurface);
+    }
 
     if (FAILED(EnsureStereoBackBuffer()))
         return m_real->GetBuffer(Buffer, riid, ppSurface);

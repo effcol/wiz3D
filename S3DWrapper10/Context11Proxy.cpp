@@ -1801,11 +1801,11 @@ HRESULT STDMETHODCALLTYPE Context11Proxy::Map(
     D3D11_MAPPED_SUBRESOURCE* pMappedResource)
 {
     // Stage 3c.1: unwrap either texture or buffer proxies before forwarding.
-    Texture2D11Proxy* tex = TryUnwrapTexture2D(pResource);
     Buffer11Proxy*    buf = TryUnwrapBuffer(pResource);
-    ID3D11Resource*   realRes = tex ? static_cast<ID3D11Resource*>(tex->GetReal())
-                              : buf ? static_cast<ID3D11Resource*>(buf->GetReal())
-                                    : pResource;
+    // Must cover Texture1D/3D too: hand-rolling Tex2D+Buffer only passed our
+    // own proxy pointer through as if it were a real resource, and d3d11
+    // dereferenced it (GTA V mapping a volume texture / LUT).
+    ID3D11Resource*   realRes = UnwrapResourceForEye(pResource, false);
     HRESULT hr = m_real->Map(realRes, Subresource, MapType, MapFlags, pMappedResource);
     if (FAILED(hr) || !pMappedResource) return hr;
     // Duplication needs CB capture too, and never arms m_presentHookActive.
@@ -1900,11 +1900,9 @@ HRESULT STDMETHODCALLTYPE Context11Proxy::Map(
 
 void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Subresource)
 {
-    Texture2D11Proxy* tex = TryUnwrapTexture2D(pResource);
     Buffer11Proxy*    buf = TryUnwrapBuffer(pResource);
-    ID3D11Resource*   realRes = tex ? static_cast<ID3D11Resource*>(tex->GetReal())
-                              : buf ? static_cast<ID3D11Resource*>(buf->GetReal())
-                                    : pResource;
+    // Same Texture1D/3D gap as Map above.
+    ID3D11Resource*   realRes = UnwrapResourceForEye(pResource, false);
 
     // Stage 4c: if Map captured this CB write, snapshot the bytes BEFORE
     // forwarding Unmap (which invalidates the mapped pointer), then push a
