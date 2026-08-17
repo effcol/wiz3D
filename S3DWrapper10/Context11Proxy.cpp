@@ -1606,6 +1606,9 @@ struct EyeShiftMatrix
     // Set for matrices declared <Inverse Value="1"/> in BaseProfile.xml: the CB
     // holds P^-1 (deferred passes reconstructing position), not P.
     BOOL  matrixIsInverse;
+    // Recalled from the buffer instead of confirmed by the bound shader, so the
+    // contents get a shape check before we trust them.
+    BOOL  matrixFromLearned;
 };
 
 // ---------------------------------------------------------------------------
@@ -1788,6 +1791,19 @@ static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
 
         float xScale = f[0];
         if (xScale == 0.f) continue;
+        // A recalled target is only a guess about a buffer that may be pooled
+        // and now hold something else, so require the unit w basis that every
+        // real view-projection has before touching it.
+        if (m.matrixFromLearned)
+        {
+            float lxn, lwn;
+            MatrixBasisNorms(f, transposed, lxn, lwn);
+            if (fabsf(lwn - 1.f) >= 0.05f)
+            {
+                if (outRejected) ++*outRejected;
+                continue;
+            }
+        }
         if (ShouldSkipProjectionMatrix(f, transposed))
         {
             if (outRejected) ++*outRejected;
@@ -2300,6 +2316,34 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                                     BoundShaderCRC(m_parent, m_boundPS),
                                     m_boundPSCBs, kMaxPSCBSlots, pResource, targets);
             if (targets.size() != beforeProfile) analyzerKnows = true;
+
+            // Targets above come from the shader bound right now, but a CB is
+            // routinely written before its consumer is bound and those writes
+            // reached the right eye unshifted -- objects pinned at screen depth
+            // while their surroundings had parallax. Remember per buffer.
+            if (Buffer11Proxy* lb = TryUnwrapBuffer(pResource))
+            {
+                if (!targets.empty())
+                {
+                    for (size_t ti = 0; ti < targets.size(); ++ti)
+                    {
+                        Buffer11Proxy::MatrixTarget mt = { targets[ti].matrixRegister,
+                                                           targets[ti].matrixIsTransposed,
+                                                           targets[ti].matrixIsInverse };
+                        lb->LearnMatrix(mt);
+                    }
+                }
+                else
+                {
+                    const std::vector<Buffer11Proxy::MatrixTarget>& mem = lb->LearnedMatrices();
+                    for (size_t ti = 0; ti < mem.size(); ++ti)
+                    {
+                        EyeShiftMatrix e = { mem[ti].reg, mem[ti].transposed, mem[ti].inverse, TRUE };
+                        targets.push_back(e);
+                    }
+                    if (!targets.empty()) analyzerKnows = true;
+                }
+            }
 
             if (FrameTraceActive())
             {

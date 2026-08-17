@@ -15,6 +15,7 @@
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <d3d11.h>
+#include <vector>
 
 namespace wiz3d
 {
@@ -64,12 +65,27 @@ public:
     bool IsVSBound() const { return m_vsBound; }
     void TagVSBound()      { m_vsBound = true; }
 
+    // Matrix locations learned for this buffer. Targets are otherwise looked up
+    // from the shader bound at Unmap, but games routinely write a CB before
+    // binding its consumer, and those writes then reached the right eye
+    // unshifted. A register holding a view-projection holds one whoever is
+    // bound, so the buffer is the stable key.
+    struct MatrixTarget { DWORD reg; BOOL transposed; BOOL inverse; };
+    const std::vector<MatrixTarget>& LearnedMatrices() const { return m_learned; }
+    void LearnMatrix(const MatrixTarget& t)
+    {
+        for (size_t i = 0; i < m_learned.size(); ++i)
+            if (m_learned[i].reg == t.reg) return;
+        if (m_learned.size() < 8) m_learned.push_back(t);
+    }
+
 private:
     ID3D11Buffer*  m_real;      // owned (released in dtor)
     ID3D11Buffer*  m_realRight; // owned, null unless a stereo CB sibling
     Device11Proxy* m_parent;    // not owned
     LONG           m_refs;
     bool           m_vsBound;
+    std::vector<MatrixTarget> m_learned;
 };
 
 } // namespace wiz3d
