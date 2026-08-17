@@ -297,6 +297,7 @@ void Device11Proxy::TryBuildModifiedVS(const void* bytecode, SIZE_T byteLength,
     }
 
     ++m_vsModOk;
+    DumpShaderPair(bytecode, byteLength, blob.data(), blob.size(), m_vsModOk, info->crc32);
     // Index is the bisection handle: with ModifyShadersMaxCount set, only
     // shaders below that index are modified, so the last one logged before a
     // crash narrows the culprit.

@@ -31,4 +31,8 @@ bool TryModifyShaderForStereo(const void* bytecode, SIZE_T byteLength,
                               DWORD posRegister, bool addZNearCheck,
                               std::vector<BYTE>& outBlob, ModifiedShaderData& outData);
 
+// Writes before/after disassembly to wiz3D_vs_<idx>_<crc>.txt beside the exe.
+void DumpShaderPair(const void* orig, SIZE_T origLen, const void* mod, SIZE_T modLen,
+                    unsigned idx, DWORD crc);
+
 } // namespace wiz3d

@@ -19,6 +19,8 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // bundled lib/d3d10 dxgitype.h still
 #include <functional>
 #include <vector>
 #include <string>
+#include <map>
+#include <algorithm>
 
 namespace wiz3d
 {
@@ -468,6 +470,8 @@ private:
     unsigned             m_drawsVSNeverShiftedThisFrame = 0;
     void TallyDrawCoverage();
     void BeginDraw(UINT vertexCount);
+    // Draws per modified-shader CRC, so the ones the scene really uses are known.
+    std::map<DWORD, unsigned> m_modVSDraws;
     // Stage 4f: dynamic vertex/index buffer write replays. `skipped` counts
     // writes we declined to snapshot — either over the size cap, or mapped
     // WRITE_NO_OVERWRITE, where a whole-buffer rewrite would corrupt the left

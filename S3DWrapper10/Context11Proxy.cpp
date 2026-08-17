@@ -248,6 +248,8 @@ static float s_wnMax = 0.f;
 // VS with a matrix whose constant buffers have never once been shifted. Any of
 // the three renders at the left eye's position, which at a 2-unit convergence
 // reads as the object sitting at the screen while its surroundings recede.
+static DWORD BoundShaderCRC(Device11Proxy* parent, void* shader);
+
 // Fullscreen passes (<=6 verts) get zero-shift constants, so a modified shader
 // behaves exactly like the original and the quad is not slid sideways.
 void Context11Proxy::BeginDraw(UINT vertexCount)
@@ -255,6 +257,7 @@ void Context11Proxy::BeginDraw(UINT vertexCount)
     ++m_drawsThisFrame;
     TallyDrawCoverage();
     if (!m_modVSShader) return;
+    if (m_activeEye != Eye::Right) ++m_modVSDraws[BoundShaderCRC(m_parent, m_boundVS)];
     const bool screenSpace = (vertexCount <= 6);
     BindStereoShiftCB(m_activeEye == Eye::Right && !screenSpace);
 }
@@ -356,6 +359,27 @@ void Context11Proxy::LogAndResetFrameDrawStats()
     m_drawsVSUnparsedThisFrame     = 0;
     m_drawsVSNoMatrixThisFrame     = 0;
     m_drawsVSNeverShiftedThisFrame = 0;
+
+    // Which modified shaders the scene actually draws with; creation order says
+    // nothing about this, so the cap cannot be aimed without it.
+    if (!m_modVSDraws.empty())
+    {
+        std::vector<std::pair<unsigned, DWORD>> byUse;
+        for (std::map<DWORD, unsigned>::const_iterator it = m_modVSDraws.begin();
+             it != m_modVSDraws.end(); ++it)
+            byUse.push_back(std::make_pair(it->second, it->first));
+        std::sort(byUse.begin(), byUse.end());
+        std::string line;
+        char buf[64];
+        for (size_t k = byUse.size(); k-- > 0 && byUse.size() - k <= 12; )
+        {
+            sprintf_s(buf, " %08lX=%u", byUse[k].second, byUse[k].first);
+            line += buf;
+        }
+        DDILog("  [frame %u] modified VS draws (%zu distinct):%s\n",
+               s_frame, m_modVSDraws.size(), line.c_str());
+        m_modVSDraws.clear();
+    }
     s_wnMin = 1e30f;
     s_wnMax = 0.f;
 

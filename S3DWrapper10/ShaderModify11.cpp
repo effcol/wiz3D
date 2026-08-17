@@ -12,8 +12,6 @@
 namespace wiz3d
 {
 
-void DumpShaderPair(const void* orig, SIZE_T origLen, const void* mod, SIZE_T modLen);
-
 bool TryModifyShaderForStereo(const void* bytecode, SIZE_T byteLength,
                               DWORD posRegister, bool addZNearCheck,
                               std::vector<BYTE>& outBlob, ModifiedShaderData& outData)
@@ -85,29 +83,24 @@ bool TryModifyShaderForStereo(const void* bytecode, SIZE_T byteLength,
         }
     }
 
-    // A position write after the full one is redirected but never written back.
+    // A literal position w means no perspective divide: a pre-transformed 2D
+    // quad, which shifting only slides sideways. DX9 calls this AnalysisSharedIsMono.
+    for (size_t i = 0; i < shList.size(); ++i)
     {
-        int merged = 0;
-        bool completed = false;
-        for (size_t i = 0; i < shList.size(); ++i)
+        const shader_analyzer::ShaderInstruction& si = shList[i];
+        if (si.getOperation()->getType() != D3D10_SB_OPCODE_MOV) continue;
+        bool writesPosW = false, fromLiteral = false;
+        for (unsigned j = 0; j < si.getOperandsCount(); ++j)
         {
-            const shader_analyzer::ShaderInstruction& si = shList[i];
-            if (si.getOperation()->isDeclaration() || si.getOperation()->isCustomData()) continue;
-            for (unsigned j = 0; j < si.getOperandsCount(); ++j)
-            {
-                const shader_analyzer::ShaderOperand* so = si.getOperand(j);
-                if (so->getOperandType() != D3D10_SB_OPERAND_TYPE_OUTPUT ||
-                    so->getIndex(0) != posRegister) continue;
-                if (completed) return false;   // writes again after the full write
-                merged |= so->getComponentState();
-                if (merged == shader_analyzer::ShaderOperand::ALL_COMPONENTS)
-                {
-                    completed = true;
-                    merged = 0;
-                }
-            }
+            const shader_analyzer::ShaderOperand* so = si.getOperand(j);
+            if (so->getOperandType() == D3D10_SB_OPERAND_TYPE_OUTPUT &&
+                so->getIndex(0) == posRegister &&
+                (so->getComponentState() & shader_analyzer::ShaderOperand::W_STATE))
+                writesPosW = true;
+            else if (so->getOperandType() == D3D10_SB_OPERAND_TYPE_IMMEDIATE32)
+                fromLiteral = true;
         }
-        if (!completed) return false;   // never fully written; nothing to inject after
+        if (writesPosW && fromLiteral) return false;
     }
 
     shader_analyzer::TShaderList modified;
@@ -126,23 +119,23 @@ bool TryModifyShaderForStereo(const void* bytecode, SIZE_T byteLength,
         return false;
 
     outData.ModifiedShaderAvailable = true;
-    DumpShaderPair(bytecode, byteLength, outBlob.data(), outBlob.size());
     return true;
 }
 
-// Before/after disassembly for the first few modified shaders, next to the exe.
-void DumpShaderPair(const void* orig, SIZE_T origLen, const void* mod, SIZE_T modLen)
+// Before/after disassembly, named by modification index and CRC so the files
+// line up with the TryBuildModifiedVS[N] log lines.
+void DumpShaderPair(const void* orig, SIZE_T origLen, const void* mod, SIZE_T modLen,
+                    unsigned idx, DWORD crc)
 {
-    static unsigned s_dumped = 0;
-    if (s_dumped >= 4) return;
-    const unsigned idx = s_dumped++;
+    if (!gInfo.DumpModifiedShaders) return;
+    if (idx > 400) return;
 
     ID3DBlob* a = nullptr; ID3DBlob* b = nullptr;
     if (FAILED(D3DDisassemble(orig, origLen, 0, nullptr, &a)) || !a) return;
     if (FAILED(D3DDisassemble(mod, modLen, 0, nullptr, &b)) || !b) { a->Release(); return; }
 
     char path[MAX_PATH];
-    sprintf_s(path, "wiz3D_shader_%u.txt", idx);
+    sprintf_s(path, "wiz3D_vs_%03u_%08lX.txt", idx, crc);
     FILE* f = nullptr;
     if (fopen_s(&f, path, "wb") == 0 && f)
     {
