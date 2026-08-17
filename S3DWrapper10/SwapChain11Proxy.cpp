@@ -429,7 +429,13 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::GetBuffer(UINT Buffer, REFIID riid, 
     HRESULT hr = m_wrappedBB->QueryInterface(riid, ppSurface);
     if (SUCCEEDED(hr))
     {
-        DDILog("SwapChain11Proxy::GetBuffer(0): returned wrapped BB=%p\n", m_wrappedBB);
+        // Register whatever interface pointer the game actually got: QI may
+        // hand back a different address than m_wrappedBB, and CreateRTV
+        // compares against the pointer the game passes back in.
+        if (m_parent && *ppSurface)
+            m_parent->RegisterBackBufferTexture(*ppSurface);
+        DDILog("SwapChain11Proxy::GetBuffer(0): returned wrapped BB=%p (as %p) registered on dev=%p\n",
+               m_wrappedBB, *ppSurface, m_parent);
         return hr;
     }
     return m_real->GetBuffer(Buffer, riid, ppSurface);

@@ -358,6 +358,11 @@ public:
 	// near-black (MSAA on). Kept as a flag rather than an unconditional fix so
 	// the two policies can be A/B'd against games that currently work.
 	bool		DisableBlindCBScan;
+	// Shift the whole first column via the matrix's w terms instead of only
+	// _31/_13. Required for WorldViewProjection matrices, where the single-
+	// element form scales the shift by each mesh's own object space and makes
+	// attached objects drift apart. Flagged so it can be A/B'd.
+	bool		FullColumnEyeShift;
 	// DX10/11 COM-wrap replay: also snapshot and replay writes to dynamic
 	// VERTEX and INDEX buffers, not just constant buffers.
 	//
@@ -373,6 +378,9 @@ public:
 	// streams large dynamic buffers and the frame cost matters more than
 	// stereo correctness on those passes.
 	bool		ReplayDynamicBuffers;
+	// Issue each draw twice live (NVIDIA Automatic's model) instead of recording
+	// the frame and replaying it for the right eye at Present. Disables replay.
+	bool		DuplicateDraws;
 	// Option B (Stage 4c): internal dev override for the per-eye horizontal
 	// shift applied to projection matrices' m[2][0] during the right-eye
 	// replay. Not surfaced in the user-facing wiz3D_Config.xml — the user
@@ -494,7 +502,9 @@ public:
 		UseCOMWrapReplay = true;      // Right-eye replay at Present (4c CB math + 4e analyzer use this).
 		COMWrapEyeShift  = 0.0f;      // 0 = use per-game profile StereoBase; non-zero = override.
 		DisableBlindCBScan = false;   // false = legacy heuristic CB scan; true = analyzer-only.
+		FullColumnEyeShift = false;   // false = legacy single-element shift.
 		ReplayDynamicBuffers = true;  // Replay dynamic VB/IB writes so re-issued draws see their own geometry.
+		DuplicateDraws   = false;     // false = record+replay at Present; true = issue each draw twice live.
 		DrawType = 2;
 		DeviceMode = DEVICE_MODE_AUTO;
 		MultiWindowsMode = MULTI_WINDOWS_MODE_AUTO;

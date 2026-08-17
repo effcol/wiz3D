@@ -50,6 +50,11 @@ public:
     ID3D11Buffer*  GetReal()       const { return m_real;   }
     Device11Proxy* GetParent()     const { return m_parent; }
 
+    // Right-eye CB sibling, so draw duplication switches eyes by rebinding
+    // rather than rewriting a shared buffer. Null unless gInfo.DuplicateDraws.
+    ID3D11Buffer*  GetRealRight()  const { return m_realRight; }
+    void           SetRealRight(ID3D11Buffer* p) { m_realRight = p; }
+
     // Stage 4c.1: sticky tag — set when *SetConstantBuffers fires on a
     // vertex-pipeline stage (VS / GS / HS / DS). Map/Unmap consults this
     // to decide whether to record + eye-shift the captured CB bytes.
@@ -60,8 +65,9 @@ public:
     void TagVSBound()      { m_vsBound = true; }
 
 private:
-    ID3D11Buffer*  m_real;     // owned (released in dtor)
-    Device11Proxy* m_parent;   // not owned
+    ID3D11Buffer*  m_real;      // owned (released in dtor)
+    ID3D11Buffer*  m_realRight; // owned, null unless a stereo CB sibling
+    Device11Proxy* m_parent;    // not owned
     LONG           m_refs;
     bool           m_vsBound;
 };

@@ -20,22 +20,19 @@
 #include "Texture3D11Proxy.h"
 #include "proxy_factory.h"     // TryUnwrap* helpers
 #include "AdapterFunctions.h"  // DDILog
+#include "..\S3DAPI\ShaderProfileData.h"  // g_ProfileData matrix declarations
 
-// Per-resource caps on stack-allocated temp arrays used to unwrap proxy pointers
-// before forwarding to the real D3D11 runtime. These MUST be sized to the D3D11
-// spec maximum per resource type — undersizing makes the runtime read past our
-// array into uninitialized stack memory and treat random values as pointers,
-// dereference them, and AV. Caused the Metro 2033 / MP3 / De Blob right-eye
-// breakage in May 2026 (a single kMaxUnwrapArray=16 was too small for SRVs and
-// VBs in particular).
-static constexpr UINT kMaxSRVs       = 128;  // D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT
-static constexpr UINT kMaxSamplers   = 16;   // D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT
-static constexpr UINT kMaxCBs        = 15;   // D3D11_1_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT (14 in plain D3D11)
-static constexpr UINT kMaxRTVs       = 8;    // D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT
-static constexpr UINT kMaxUAVs       = 64;   // D3D11_1_UAV_SLOT_COUNT (8 in plain D3D11)
-static constexpr UINT kMaxVBs        = 32;   // D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT
-static constexpr UINT kMaxSOBuffers  = 4;    // D3D11_SO_BUFFER_SLOT_COUNT
-static constexpr UINT kMaxClassInst  = 253;  // D3D11_SHADER_MAX_INTERFACES
+// Slot-count maxima now live on Context11Proxy (see the header) so the
+// eye-tracking arrays and the unwrap temporaries stay the same size.
+using wiz3d::Context11Proxy;
+static constexpr UINT kMaxSRVs       = Context11Proxy::kMaxSRVs;
+static constexpr UINT kMaxSamplers   = Context11Proxy::kMaxSamplers;
+static constexpr UINT kMaxCBs        = Context11Proxy::kMaxCBs;
+static constexpr UINT kMaxRTVs       = Context11Proxy::kMaxRTVs;
+static constexpr UINT kMaxUAVs       = Context11Proxy::kMaxUAVs;
+static constexpr UINT kMaxVBs        = Context11Proxy::kMaxVBs;
+static constexpr UINT kMaxSOBuffers  = Context11Proxy::kMaxSOBuffers;
+static constexpr UINT kMaxClassInst  = Context11Proxy::kMaxClassInst;
 
 // Stage 3c.1: lightweight inline unwrap for ID3D11Buffer*. Used at every
 // method boundary that hands a buffer to the real D3D11 runtime — passing
@@ -112,8 +109,11 @@ Context11Proxy::Context11Proxy(ID3D11DeviceContext* real, Device11Proxy* parent)
     , m_activeEye(Eye::Left)
     , m_presentHookActive(false)
     , m_boundVS(nullptr)
+    , m_boundPS(nullptr)
 {
     for (UINT i = 0; i < kMaxVSCBSlots; ++i) m_boundVSCBs[i] = nullptr;
+    for (UINT i = 0; i < kMaxPSCBSlots; ++i) m_boundPSCBs[i] = nullptr;
+    ResetEyeTracking();
     if (m_real)
     {
         if (FAILED(m_real->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void**>(&m_real1)))) m_real1 = nullptr;
@@ -162,12 +162,19 @@ void Context11Proxy::LogAndResetFrameDrawStats()
                " recorded=%zu | CB patches: targeted=%u blind=%u skipped=%u"
                " | matrices: shifted=%u guardRejected=%u"
                " | dynBuf: replayed=%u skipped=%u"
-               " (DisableBlindCBScan=%d ortho=%d shadow=%d)%s\n",
+               " | dup: duplicated=%u mono=%u uavSkip=%u monoDSV=%u noRightRTV=%u"
+               " depthOnly=%u noRightTarget=%u"
+               " (DuplicateDraws=%d DisableBlindCBScan=%d ortho=%d shadow=%d)%s\n",
                s_frame, m_drawsThisFrame, m_dispatchesThisFrame,
                m_cmdListsThisFrame, m_frameCommands.size(),
                m_cbTargetedThisFrame, m_cbBlindThisFrame, m_cbSkippedThisFrame,
                m_cbMatShiftedThisFrame, m_cbMatRejectedThisFrame,
                m_dynBufReplaysThisFrame, m_dynBufSkippedThisFrame,
+               m_drawsDuplicatedThisFrame, m_drawsMonoThisFrame,
+               m_drawsUavSkippedThisFrame, m_drawsMonoDsvThisFrame,
+               m_drawsNoRightRTVThisFrame,
+               m_drawsDepthOnlyThisFrame, m_drawsNoRightTargetThisFrame,
+               (int)gInfo.DuplicateDraws,
                (int)gInfo.DisableBlindCBScan,
                (int)!gInfo.SkipCheckOrthoMatrix, (int)gInfo.CheckShadowMatrix,
                (m_cmdListsThisFrame > 0)
@@ -185,6 +192,13 @@ void Context11Proxy::LogAndResetFrameDrawStats()
     m_cbMatRejectedThisFrame  = 0;
     m_dynBufReplaysThisFrame  = 0;
     m_dynBufSkippedThisFrame  = 0;
+    m_drawsDuplicatedThisFrame = 0;
+    m_drawsMonoThisFrame       = 0;
+    m_drawsUavSkippedThisFrame = 0;
+    m_drawsMonoDsvThisFrame    = 0;
+    m_drawsNoRightRTVThisFrame = 0;
+    m_drawsDepthOnlyThisFrame     = 0;
+    m_drawsNoRightTargetThisFrame = 0;
 }
 
 void Context11Proxy::ReplayFrameCommands(Eye eye)
@@ -205,6 +219,263 @@ void Context11Proxy::ReplayFrameCommands(Eye eye)
     m_activeEye = saved;
 }
 
+void Context11Proxy::SetPresentHookActive(bool active)
+{
+    // Draw duplication issues both eyes live, so recording would be overhead
+    // and replaying it would double every draw a second time.
+    m_presentHookActive = active && !gInfo.DuplicateDraws;
+}
+
+void Context11Proxy::ResetEyeTracking()
+{
+    memset(m_srvSlots, 0, sizeof(m_srvSlots));
+    memset(m_cbSlots,  0, sizeof(m_cbSlots));
+    memset(m_rtvLeft,  0, sizeof(m_rtvLeft));
+    memset(m_rtvRight, 0, sizeof(m_rtvRight));
+    m_numRTVs     = 0;
+    m_dsvLeft     = nullptr;
+    m_dsvRight    = nullptr;
+    m_omAnyStereo = false;
+    m_omHasUAVs   = false;
+    m_omMonoDSV   = false;
+}
+
+void Context11Proxy::TrackSRVs(StageIdx stage, UINT StartSlot, UINT NumViews,
+                               ID3D11ShaderResourceView* const* ppSRVs)
+{
+    if (!gInfo.DuplicateDraws || stage >= ST_COUNT) return;
+    SRVEyeSlots& s = m_srvSlots[stage];
+    for (UINT i = 0; i < NumViews; ++i)
+    {
+        UINT slot = StartSlot + i;
+        if (slot >= kMaxSRVs) break;
+        ID3D11ShaderResourceView* p = ppSRVs ? ppSRVs[i] : nullptr;
+        s.left[slot]  = UnwrapSRVForEye(p, false);
+        s.right[slot] = UnwrapSRVForEye(p, true);
+        if (slot + 1 > s.high) s.high = slot + 1;
+    }
+    s.anyStereo = false;
+    for (UINT i = 0; i < s.high; ++i)
+        if (s.left[i] != s.right[i]) { s.anyStereo = true; break; }
+}
+
+void Context11Proxy::TrackCBs(StageIdx stage, UINT StartSlot, UINT NumBuffers,
+                              ID3D11Buffer* const* ppCBs)
+{
+    if (!gInfo.DuplicateDraws || stage >= ST_COUNT) return;
+    CBEyeSlots& s = m_cbSlots[stage];
+    for (UINT i = 0; i < NumBuffers; ++i)
+    {
+        UINT slot = StartSlot + i;
+        if (slot >= kMaxCBs) break;
+        ID3D11Buffer* p = ppCBs ? ppCBs[i] : nullptr;
+        ID3D11Buffer* left  = p;
+        ID3D11Buffer* right = p;
+        if (p)
+        {
+            if (auto* bp = TryUnwrapBuffer(static_cast<ID3D11Resource*>(p)))
+            {
+                left  = bp->GetReal();
+                right = bp->GetRealRight() ? bp->GetRealRight() : left;
+            }
+        }
+        s.left[slot]  = left;
+        s.right[slot] = right;
+        if (slot + 1 > s.high) s.high = slot + 1;
+    }
+    s.anyStereo = false;
+    for (UINT i = 0; i < s.high; ++i)
+        if (s.left[i] != s.right[i]) { s.anyStereo = true; break; }
+}
+
+void Context11Proxy::TrackOM(UINT NumViews, ID3D11RenderTargetView* const* ppRTVs,
+                             ID3D11DepthStencilView* pDSV)
+{
+    if (!gInfo.DuplicateDraws) return;
+    m_omHasUAVs = false;
+    m_numRTVs = NumViews <= kMaxRTVs ? NumViews : kMaxRTVs;
+    memset(m_rtvLeft,  0, sizeof(m_rtvLeft));
+    memset(m_rtvRight, 0, sizeof(m_rtvRight));
+    bool anyRTVStereo = false;
+    for (UINT i = 0; i < m_numRTVs; ++i)
+    {
+        ID3D11RenderTargetView* p = ppRTVs ? ppRTVs[i] : nullptr;
+        m_rtvLeft[i]  = p;
+        // Mono targets must be written exactly once, so the right-eye pass
+        // leaves them unbound rather than blending into them a second time.
+        m_rtvRight[i] = nullptr;
+        if (auto* rp = TryUnwrapRTV(p))
+        {
+            m_rtvLeft[i]  = rp->GetReal();
+            m_rtvRight[i] = rp->GetRealRight();
+            if (rp->GetRealRight()) anyRTVStereo = true;
+        }
+    }
+    // A mono depth-stencil stays bound for the right pass: nulling it would
+    // drop depth testing entirely, which is worse than testing against depth
+    // the left pass already wrote. Counted so we can see if MP3 hits it.
+    m_dsvLeft = m_dsvRight = pDSV;
+    bool dsvStereo = false;
+    if (auto* dp = TryUnwrapDSV(pDSV))
+    {
+        m_dsvLeft  = dp->GetReal();
+        m_dsvRight = dp->GetRealRight() ? dp->GetRealRight() : dp->GetReal();
+        dsvStereo  = (dp->GetRealRight() != nullptr);
+    }
+    m_omMonoDSV   = (pDSV != nullptr) && !dsvStereo;
+    m_omAnyStereo = anyRTVStereo || dsvStereo;
+}
+
+void Context11Proxy::RecordGameFacingOM(UINT NumViews,
+                                        ID3D11RenderTargetView* const* ppRTVs,
+                                        ID3D11DepthStencilView* pDSV)
+{
+    m_numRTVGame = NumViews <= kMaxRTVs ? NumViews : kMaxRTVs;
+    memset(m_rtvGame, 0, sizeof(m_rtvGame));
+    for (UINT i = 0; i < m_numRTVGame; ++i)
+        m_rtvGame[i] = ppRTVs ? ppRTVs[i] : nullptr;
+    m_dsvGame = pDSV;
+}
+
+void STDMETHODCALLTYPE Context11Proxy::OMGetRenderTargets(
+    UINT NumViews, ID3D11RenderTargetView** ppRenderTargetViews,
+    ID3D11DepthStencilView** ppDepthStencilView)
+{
+    if (ppRenderTargetViews)
+    {
+        for (UINT i = 0; i < NumViews; ++i)
+        {
+            ID3D11RenderTargetView* v = (i < m_numRTVGame) ? m_rtvGame[i] : nullptr;
+            if (v) v->AddRef();
+            ppRenderTargetViews[i] = v;
+        }
+    }
+    if (ppDepthStencilView)
+    {
+        if (m_dsvGame) m_dsvGame->AddRef();
+        *ppDepthStencilView = m_dsvGame;
+    }
+}
+
+void STDMETHODCALLTYPE Context11Proxy::OMGetRenderTargetsAndUnorderedAccessViews(
+    UINT NumRTVs, ID3D11RenderTargetView** ppRenderTargetViews,
+    ID3D11DepthStencilView** ppDepthStencilView,
+    UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView** ppUnorderedAccessViews)
+{
+    if (ppRenderTargetViews || ppDepthStencilView)
+        OMGetRenderTargets(NumRTVs, ppRenderTargetViews, ppDepthStencilView);
+    // UAVs aren't eye-doubled, so the real ones are the game-facing ones.
+    if (ppUnorderedAccessViews)
+        m_real->OMGetRenderTargetsAndUnorderedAccessViews(
+            0, nullptr, nullptr, UAVStartSlot, NumUAVs, ppUnorderedAccessViews);
+}
+
+void Context11Proxy::BindStageSRVs(StageIdx stage, bool right)
+{
+    SRVEyeSlots& s = m_srvSlots[stage];
+    ID3D11ShaderResourceView* const* v = right ? s.right : s.left;
+    switch (stage)
+    {
+    case ST_VS: m_real->VSSetShaderResources(0, s.high, v); break;
+    case ST_PS: m_real->PSSetShaderResources(0, s.high, v); break;
+    case ST_GS: m_real->GSSetShaderResources(0, s.high, v); break;
+    case ST_HS: m_real->HSSetShaderResources(0, s.high, v); break;
+    case ST_DS: m_real->DSSetShaderResources(0, s.high, v); break;
+    case ST_CS: m_real->CSSetShaderResources(0, s.high, v); break;
+    default: break;
+    }
+}
+
+void Context11Proxy::BindStageCBs(StageIdx stage, bool right)
+{
+    CBEyeSlots& s = m_cbSlots[stage];
+    ID3D11Buffer* const* v = right ? s.right : s.left;
+    switch (stage)
+    {
+    case ST_VS: m_real->VSSetConstantBuffers(0, s.high, v); break;
+    case ST_PS: m_real->PSSetConstantBuffers(0, s.high, v); break;
+    case ST_GS: m_real->GSSetConstantBuffers(0, s.high, v); break;
+    case ST_HS: m_real->HSSetConstantBuffers(0, s.high, v); break;
+    case ST_DS: m_real->DSSetConstantBuffers(0, s.high, v); break;
+    case ST_CS: m_real->CSSetConstantBuffers(0, s.high, v); break;
+    default: break;
+    }
+}
+
+void Context11Proxy::BindEye(bool right)
+{
+    // The duplicated draw and this rebind both call m_real directly, so they
+    // bypass the proxy methods that carry FrameTrace. Log them here instead.
+    if (FrameTraceActive())
+    {
+        FrameTrace("    BindEye(%c) numRTV=%u rtv0=%p dsv=%p",
+                   right ? 'R' : 'L', m_numRTVs,
+                   m_numRTVs ? (right ? m_rtvRight[0] : m_rtvLeft[0]) : nullptr,
+                   right ? m_dsvRight : m_dsvLeft);
+        for (UINT st = 0; st < ST_COUNT; ++st)
+            if (m_srvSlots[st].anyStereo || m_cbSlots[st].anyStereo)
+                FrameTrace(" [st%u srv=%d cb=%d]", st,
+                           (int)m_srvSlots[st].anyStereo, (int)m_cbSlots[st].anyStereo);
+        FrameTrace("\n");
+    }
+    if (m_omAnyStereo)
+        m_real->OMSetRenderTargets(m_numRTVs,
+                                   right ? m_rtvRight : m_rtvLeft,
+                                   right ? m_dsvRight : m_dsvLeft);
+    for (UINT st = 0; st < ST_COUNT; ++st)
+    {
+        if (m_srvSlots[st].anyStereo) BindStageSRVs((StageIdx)st, right);
+        if (m_cbSlots[st].anyStereo)  BindStageCBs((StageIdx)st, right);
+    }
+}
+
+bool Context11Proxy::BeginRightEyeDraw()
+{
+    if (!gInfo.DuplicateDraws) return false;
+    if (m_activeEye != Eye::Left) return false;
+    if (m_omHasUAVs) { ++m_drawsUavSkippedThisFrame; return false; }
+    if (!m_omAnyStereo) { ++m_drawsMonoThisFrame; return false; }
+    ++m_drawsDuplicatedThisFrame;
+    if (m_omMonoDSV) ++m_drawsMonoDsvThisFrame;
+    // Duplicated, but every right-eye RTV is null: the second draw writes
+    // nowhere. Should be impossible while m_omAnyStereo is set via an RTV.
+    // Depth-only passes (shadow maps) bind no RTV at all and still reach the
+    // right eye through the DSV, so they are counted apart from real misses.
+    if (m_numRTVs == 0)
+    {
+        ++m_drawsDepthOnlyThisFrame;
+        if (!m_dsvRight) ++m_drawsNoRightTargetThisFrame;
+    }
+    else
+    {
+        bool anyRight = false;
+        for (UINT i = 0; i < m_numRTVs && !anyRight; ++i)
+            if (m_rtvRight[i]) anyRight = true;
+        if (!anyRight)
+        {
+            ++m_drawsNoRightRTVThisFrame;
+            ++m_drawsNoRightTargetThisFrame;
+        }
+    }
+    m_activeEye = Eye::Right;
+    BindEye(true);
+    return true;
+}
+
+void Context11Proxy::EndRightEyeDraw()
+{
+    BindEye(false);
+    m_activeEye = Eye::Left;
+}
+
+// Re-issue a draw for the right eye immediately after the game's own call.
+#define DUPLICATE_DRAW(CALL)              \
+    do {                                  \
+        if (!BeginRightEyeDraw()) break;  \
+        m_real->CALL;                     \
+        EndRightEyeDraw();                \
+    } while (0)
+
 // Stage 4b.4 (more state setters): record-and-replay for *SetShaderResources
 // across all 6 shader stages. Each stage's method body is identical except
 // for the method name, so a macro keeps the boilerplate tractable. Stage 3c.2
@@ -217,6 +488,7 @@ void Context11Proxy::ReplayFrameCommands(Eye eye)
 void STDMETHODCALLTYPE Context11Proxy::STAGE_PREFIX##SetShaderResources(                    \
     UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView* const* ppShaderResourceViews)  \
 {                                                                                           \
+    TrackSRVs(ST_##STAGE_PREFIX, StartSlot, NumViews, ppShaderResourceViews);               \
     ID3D11ShaderResourceView* rawSRVs[kMaxSRVs] = { 0 };                                    \
     UINT setCap = NumViews <= kMaxSRVs ? NumViews : kMaxSRVs;                               \
     bool pickRight = (m_activeEye == Eye::Right);                                           \
@@ -286,6 +558,7 @@ void STDMETHODCALLTYPE Context11Proxy::STAGE_PREFIX##SetConstantBuffers(        
 {                                                                                           \
     /* Stage 3c.1: unwrap wrapped buffers before forwarding. Also stage-tag */              \
     /* the proxy when VS-pipeline so 4c.1's Map filter can consult it. */                   \
+    TrackCBs(ST_##STAGE_PREFIX, StartSlot, NumBuffers, ppConstantBuffers);                  \
     ID3D11Buffer* rawCBs[kMaxCBs] = { 0 };                                                  \
     UINT cap = NumBuffers <= kMaxCBs ? NumBuffers : kMaxCBs;                                \
     for (UINT i = 0; i < cap; ++i)                                                          \
@@ -320,7 +593,6 @@ void STDMETHODCALLTYPE Context11Proxy::STAGE_PREFIX##SetConstantBuffers(        
             m_real->STAGE_PREFIX##SetConstantBuffers(StartSlot, NumBuffers, raw);           \
         });                                                                                 \
 }
-RECORD_CB_SET(PS, 0)
 RECORD_CB_SET(GS, 1)
 RECORD_CB_SET(HS, 1)
 RECORD_CB_SET(DS, 1)
@@ -333,6 +605,7 @@ RECORD_CB_SET(CS, 0)
 void STDMETHODCALLTYPE Context11Proxy::VSSetConstantBuffers(
     UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers)
 {
+    TrackCBs(ST_VS, StartSlot, NumBuffers, ppConstantBuffers);
     ID3D11Buffer* rawCBs[kMaxCBs] = { 0 };
     UINT cap = NumBuffers <= kMaxCBs ? NumBuffers : kMaxCBs;
     for (UINT i = 0; i < cap; ++i)
@@ -372,6 +645,44 @@ void STDMETHODCALLTYPE Context11Proxy::VSSetConstantBuffers(
         });
 }
 
+// PS variant of RECORD_CB_SET: same body minus the VS-pipeline tag, plus the
+// m_boundPSCBs[] slot snapshot the profile matrix lookup needs in Unmap.
+void STDMETHODCALLTYPE Context11Proxy::PSSetConstantBuffers(
+    UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers)
+{
+    TrackCBs(ST_PS, StartSlot, NumBuffers, ppConstantBuffers);
+    ID3D11Buffer* rawCBs[kMaxCBs] = { 0 };
+    UINT cap = NumBuffers <= kMaxCBs ? NumBuffers : kMaxCBs;
+    for (UINT i = 0; i < cap; ++i)
+    {
+        ID3D11Buffer* p = ppConstantBuffers ? ppConstantBuffers[i] : nullptr;
+        UINT slot = StartSlot + i;
+        if (slot < kMaxPSCBSlots) m_boundPSCBs[slot] = p;
+
+        if (p)
+        {
+            if (auto* bp = wiz3d::TryUnwrapBuffer(static_cast<ID3D11Resource*>(p)))
+                rawCBs[i] = bp->GetReal();
+            else
+                rawCBs[i] = p;
+        }
+    }
+    m_real->PSSetConstantBuffers(StartSlot, NumBuffers, ppConstantBuffers ? rawCBs : nullptr);
+    if (!m_presentHookActive) return;
+    std::vector<ComRefHolder> refs;
+    refs.reserve(NumBuffers);
+    for (UINT i = 0; i < NumBuffers; ++i)
+        refs.emplace_back(ppConstantBuffers ? ppConstantBuffers[i] : nullptr);
+    m_frameCommands.emplace_back(
+        [this, StartSlot, NumBuffers, refs]() {
+            ID3D11Buffer* raw[kMaxCBs] = { 0 };
+            UINT replayCap = NumBuffers <= kMaxCBs ? NumBuffers : kMaxCBs;
+            for (UINT i = 0; i < replayCap; ++i)
+                raw[i] = UnwrapBuf(static_cast<ID3D11Buffer*>(refs[i].p));
+            m_real->PSSetConstantBuffers(StartSlot, NumBuffers, raw);
+        });
+}
+
 // *SetShader — takes the stage-specific shader interface plus the
 // class-instance array. Class instances are rarely non-null (used for
 // dynamic shader linking) but the array is captured for fidelity.
@@ -398,7 +709,6 @@ void STDMETHODCALLTYPE Context11Proxy::STAGE_PREFIX##SetShader(                 
                 NumClassInstances);                                                         \
         });                                                                                 \
 }
-RECORD_SHADER_SET(PS, ID3D11PixelShader)
 RECORD_SHADER_SET(GS, ID3D11GeometryShader)
 RECORD_SHADER_SET(HS, ID3D11HullShader)
 RECORD_SHADER_SET(DS, ID3D11DomainShader)
@@ -434,7 +744,43 @@ void STDMETHODCALLTYPE Context11Proxy::VSSetShader(
                 ciRefs.empty() ? nullptr : raw, NumClassInstances);
         });
 }
+
+// PS variant: snapshots m_boundPS so Unmap can match the bound pixel shader's
+// CRC against BaseProfile.xml's <PixelShader> matrix declarations. Not
+// AddRef'd, same rationale as m_boundVS above.
+void STDMETHODCALLTYPE Context11Proxy::PSSetShader(
+    ID3D11PixelShader* pShader, ID3D11ClassInstance* const* ppClassInstances,
+    UINT NumClassInstances)
+{
+    m_boundPS = pShader;
+    m_real->PSSetShader(pShader, ppClassInstances, NumClassInstances);
+    if (!m_presentHookActive) return;
+    ComRefHolder shaderRef(pShader);
+    std::vector<ComRefHolder> ciRefs;
+    ciRefs.reserve(NumClassInstances);
+    for (UINT i = 0; i < NumClassInstances; ++i)
+        ciRefs.emplace_back(ppClassInstances ? ppClassInstances[i] : nullptr);
+    m_frameCommands.emplace_back(
+        [this, shaderRef, ciRefs, NumClassInstances]() {
+            ID3D11ClassInstance* raw[kMaxClassInst] = { 0 };
+            UINT cap = NumClassInstances <= kMaxClassInst ? NumClassInstances : kMaxClassInst;
+            for (UINT i = 0; i < cap; ++i)
+                raw[i] = static_cast<ID3D11ClassInstance*>(ciRefs[i].p);
+            m_real->PSSetShader(
+                static_cast<ID3D11PixelShader*>(shaderRef.p),
+                ciRefs.empty() ? nullptr : raw, NumClassInstances);
+        });
+}
 #undef RECORD_SHADER_SET
+
+// CRC of a bound shader, 0 if unknown. Lets the frame trace name the shader a
+// BaseProfile.xml <VertexShader>/<PixelShader> entry would have to target.
+static DWORD BoundShaderCRC(Device11Proxy* parent, void* shader)
+{
+    if (!parent || !shader) return 0;
+    const ShaderAnalysis11Result* info = parent->LookupShaderProjection(shader);
+    return info ? info->crc32 : 0;
+}
 
 // Stage 4b.7: record-and-replay for draw/dispatch. Pure POD captures for the
 // non-Indirect variants; Indirect/Dispatch-with-buffer use ComRefHolder to
@@ -448,10 +794,13 @@ void STDMETHODCALLTYPE Context11Proxy::Draw(UINT VertexCount, UINT StartVertexLo
 {
     ++m_drawsThisFrame;
     if (FrameTraceActive())
-        FrameTrace("    Draw eye=%c vcount=%u start=%u\n",
+        FrameTrace("    Draw eye=%c vcount=%u start=%u vs=0x%08lX ps=0x%08lX\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
-                   VertexCount, StartVertexLocation);
+                   VertexCount, StartVertexLocation,
+                   BoundShaderCRC(m_parent, m_boundVS),
+                   BoundShaderCRC(m_parent, m_boundPS));
     m_real->Draw(VertexCount, StartVertexLocation);
+    DUPLICATE_DRAW(Draw(VertexCount, StartVertexLocation));
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this, VertexCount, StartVertexLocation]()
@@ -469,10 +818,13 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexed(
 {
     ++m_drawsThisFrame;
     if (FrameTraceActive())
-        FrameTrace("    DrawIndexed eye=%c icount=%u start=%u base=%d\n",
+        FrameTrace("    DrawIndexed eye=%c icount=%u start=%u base=%d vs=0x%08lX ps=0x%08lX\n",
                    m_activeEye == Eye::Right ? 'R' : 'L',
-                   IndexCount, StartIndexLocation, BaseVertexLocation);
+                   IndexCount, StartIndexLocation, BaseVertexLocation,
+                   BoundShaderCRC(m_parent, m_boundVS),
+                   BoundShaderCRC(m_parent, m_boundPS));
     m_real->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
+    DUPLICATE_DRAW(DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation));
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this, IndexCount, StartIndexLocation, BaseVertexLocation]()
@@ -492,6 +844,8 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstanced(
     ++m_drawsThisFrame;
     m_real->DrawInstanced(VertexCountPerInstance, InstanceCount,
                           StartVertexLocation, StartInstanceLocation);
+    DUPLICATE_DRAW(DrawInstanced(VertexCountPerInstance, InstanceCount,
+                                 StartVertexLocation, StartInstanceLocation));
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this, VertexCountPerInstance, InstanceCount,
@@ -510,6 +864,9 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
     m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount,
                                   StartIndexLocation, BaseVertexLocation,
                                   StartInstanceLocation);
+    DUPLICATE_DRAW(DrawIndexedInstanced(IndexCountPerInstance, InstanceCount,
+                                        StartIndexLocation, BaseVertexLocation,
+                                        StartInstanceLocation));
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this, IndexCountPerInstance, InstanceCount, StartIndexLocation,
@@ -525,6 +882,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawAuto()
 {
     ++m_drawsThisFrame;
     m_real->DrawAuto();
+    DUPLICATE_DRAW(DrawAuto());
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this]() { m_real->DrawAuto(); });
@@ -535,6 +893,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstancedIndirect(
 {
     ++m_drawsThisFrame;
     m_real->DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
+    DUPLICATE_DRAW(DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs));
     if (!m_presentHookActive) return;
     ComRefHolder bufRef(pBufferForArgs);
     m_frameCommands.emplace_back(
@@ -550,6 +909,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstancedIndirect(
 {
     ++m_drawsThisFrame;
     m_real->DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs);
+    DUPLICATE_DRAW(DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs));
     if (!m_presentHookActive) return;
     ComRefHolder bufRef(pBufferForArgs);
     m_frameCommands.emplace_back(
@@ -634,13 +994,17 @@ void Context11Proxy::DoOMSetRenderTargets(
     // latter is null, so we fall back to left). Stage 4b.8 will flip
     // m_activeEye between L/R passes during the per-frame replay.
     bool pickRight = (m_activeEye == Eye::Right);
+    RecordGameFacingOM(NumViews, ppRenderTargetViews, pDepthStencilView);
     if (FrameTraceActive())
     {
-        RTV11Proxy* rtv0 = (NumViews > 0 && ppRenderTargetViews)
-                               ? TryUnwrapRTV(ppRenderTargetViews[0]) : nullptr;
+        ID3D11RenderTargetView* raw0 = (NumViews > 0 && ppRenderTargetViews)
+                                           ? ppRenderTargetViews[0] : nullptr;
+        RTV11Proxy* rtv0 = raw0 ? TryUnwrapRTV(raw0) : nullptr;
         DSV11Proxy* dsv  = TryUnwrapDSV(pDepthStencilView);
-        FrameTrace("  OMSet eye=%c NumViews=%u rtv0={proxy=%p stereo=%d right=%p} dsv={proxy=%p stereo=%d right=%p}\n",
-                   pickRight ? 'R' : 'L', NumViews,
+        // ptr!=0 with proxy==0 means the game bound a real RTV we can't resolve
+        // — a bypass, not an unbind. The two used to look identical here.
+        FrameTrace("  OMSet eye=%c NumViews=%u rtv0={ptr=%p proxy=%p stereo=%d right=%p} dsv={proxy=%p stereo=%d right=%p}\n",
+                   pickRight ? 'R' : 'L', NumViews, raw0,
                    rtv0, rtv0 ? rtv0->GetRealRight() != nullptr : 0,
                    rtv0 ? rtv0->GetRealRight() : nullptr,
                    dsv,  dsv  ? dsv->GetRealRight() != nullptr  : 0,
@@ -677,6 +1041,7 @@ void STDMETHODCALLTYPE Context11Proxy::OMSetRenderTargets(
     UINT NumViews, ID3D11RenderTargetView* const* ppRenderTargetViews,
     ID3D11DepthStencilView* pDepthStencilView)
 {
+    TrackOM(NumViews, ppRenderTargetViews, pDepthStencilView);
     DoOMSetRenderTargets(NumViews, ppRenderTargetViews, pDepthStencilView);
 
     // Stage 4b.4: record-for-replay, but only when the Present hook is
@@ -714,6 +1079,21 @@ void Context11Proxy::DoOMSetRenderTargetsAndUnorderedAccessViews(
     const UINT* pUAVInitialCounts)
 {
     bool pickRight = (m_activeEye == Eye::Right);
+    // KEEP_RENDER_TARGETS leaves the existing binding in place, so don't
+    // overwrite what we recorded from the last real bind.
+    if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL)
+        RecordGameFacingOM(NumRTVs, ppRenderTargetViews, pDepthStencilView);
+    // Was untraced, so binds through this path looked like "no RTV bound".
+    if (FrameTraceActive())
+    {
+        ID3D11RenderTargetView* raw0 = (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL &&
+                                        NumRTVs > 0 && ppRenderTargetViews)
+                                       ? ppRenderTargetViews[0] : nullptr;
+        RTV11Proxy* r0 = raw0 ? TryUnwrapRTV(raw0) : nullptr;
+        FrameTrace("  OMSetUAV eye=%c NumRTVs=%u NumUAVs=%u rtv0={ptr=%p proxy=%p stereo=%d}\n",
+                   pickRight ? 'R' : 'L', NumRTVs, NumUAVs, raw0,
+                   r0, r0 ? (r0->GetRealRight() != nullptr) : 0);
+    }
     ID3D11RenderTargetView* realRTVs[kMaxRTVs] = { 0 };
     ID3D11RenderTargetView* const* rtvsToUse = ppRenderTargetViews;
     if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL &&
@@ -765,6 +1145,13 @@ void STDMETHODCALLTYPE Context11Proxy::OMSetRenderTargetsAndUnorderedAccessViews
     ID3D11UnorderedAccessView* const* ppUnorderedAccessViews,
     const UINT* pUAVInitialCounts)
 {
+    // D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL leaves the OM bindings
+    // alone, so the tracked pair stays valid and must not be overwritten.
+    if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL)
+        TrackOM(NumRTVs, ppRenderTargetViews, pDepthStencilView);
+    if (gInfo.DuplicateDraws && NumUAVs > 0 &&
+        NumUAVs != D3D11_KEEP_UNORDERED_ACCESS_VIEWS)
+        m_omHasUAVs = true;
     DoOMSetRenderTargetsAndUnorderedAccessViews(
         NumRTVs, ppRenderTargetViews, pDepthStencilView,
         UAVStartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);
@@ -865,10 +1252,22 @@ void STDMETHODCALLTYPE Context11Proxy::ClearUnorderedAccessViewFloat(
     m_real->ClearUnorderedAccessViewFloat(UnwrapUAVForEye(pUnorderedAccessView, pickRight), Values);
 }
 
+// Under duplication there is no replay pass to redo an operation for the right
+// eye, so anything writing a stereo resource has to mirror into the sibling now.
+static inline bool NeedsRightMirror(ID3D11Resource* pDst, bool pickRight)
+{
+    return gInfo.DuplicateDraws && !pickRight && pDst &&
+           UnwrapResourceForEye(pDst, true) != UnwrapResourceForEye(pDst, false);
+}
+
 void STDMETHODCALLTYPE Context11Proxy::GenerateMips(ID3D11ShaderResourceView* pShaderResourceView)
 {
     bool pickRight = (m_activeEye == Eye::Right);
     m_real->GenerateMips(UnwrapSRVForEye(pShaderResourceView, pickRight));
+    if (gInfo.DuplicateDraws && !pickRight &&
+        UnwrapSRVForEye(pShaderResourceView, true) !=
+        UnwrapSRVForEye(pShaderResourceView, false))
+        m_real->GenerateMips(UnwrapSRVForEye(pShaderResourceView, true));
 }
 
 void Context11Proxy::DoCopyResource(
@@ -877,6 +1276,9 @@ void Context11Proxy::DoCopyResource(
     bool pickRight = (m_activeEye == Eye::Right);
     m_real->CopyResource(UnwrapResourceForEye(pDstResource, pickRight),
                          UnwrapResourceForEye(pSrcResource, pickRight));
+    if (NeedsRightMirror(pDstResource, pickRight))
+        m_real->CopyResource(UnwrapResourceForEye(pDstResource, true),
+                             UnwrapResourceForEye(pSrcResource, true));
 }
 
 void STDMETHODCALLTYPE Context11Proxy::CopyResource(
@@ -903,6 +1305,10 @@ void Context11Proxy::DoCopySubresourceRegion(
     m_real->CopySubresourceRegion(
         UnwrapResourceForEye(pDstResource, pickRight), DstSubresource, DstX, DstY, DstZ,
         UnwrapResourceForEye(pSrcResource, pickRight), SrcSubresource, pSrcBox);
+    if (NeedsRightMirror(pDstResource, pickRight))
+        m_real->CopySubresourceRegion(
+            UnwrapResourceForEye(pDstResource, true), DstSubresource, DstX, DstY, DstZ,
+            UnwrapResourceForEye(pSrcResource, true), SrcSubresource, pSrcBox);
 }
 
 void STDMETHODCALLTYPE Context11Proxy::CopySubresourceRegion(
@@ -959,6 +1365,9 @@ struct EyeShiftMatrix
 {
     DWORD matrixRegister;   // register index inside CB
     BOOL  matrixIsTransposed;
+    // Set for matrices declared <Inverse Value="1"/> in BaseProfile.xml: the CB
+    // holds P^-1 (deferred passes reconstructing position), not P.
+    BOOL  matrixIsInverse;
 };
 
 // ---------------------------------------------------------------------------
@@ -983,6 +1392,45 @@ struct EyeShiftMatrix
 // `f` is the matrix in register order, so f[0]=_11, f[3]=_14, f[12]=_41,
 // f[15]=_44 — matching the legacy _RC element names used below.
 // ---------------------------------------------------------------------------
+// Last forward matrix we shifted, kept so the inverse detector further down can
+// recognise an inverse by multiplying the two out. Diagnostic, immediate ctx.
+static float s_lastForwardMatrix[16];
+static bool  s_haveForwardMatrix = false;
+
+// Ring of distinct mono matrices we shifted this frame. The camera view-
+// projection is among them, so a candidate inverse can be identified by
+// multiplying against each and looking for identity.
+static const int kFwdRing = 12;
+static float s_fwdRing[kFwdRing][16];
+static int   s_fwdRingCount = 0;
+
+static void RememberForwardMatrix(const float* f)
+{
+    for (int i = 0; i < s_fwdRingCount; ++i)
+    {
+        bool same = true;
+        for (int k = 0; k < 16 && same; ++k)
+            if (fabsf(s_fwdRing[i][k] - f[k]) > 1e-5f) same = false;
+        if (same) return;
+    }
+    // Roll, so the ring always holds the most recent distinct matrices and
+    // tracks the camera as it moves.
+    static int s_next = 0;
+    memcpy(s_fwdRing[s_next], f, 16 * sizeof(float));
+    s_next = (s_next + 1) % kFwdRing;
+    if (s_fwdRingCount < kFwdRing) ++s_fwdRingCount;
+}
+
+// Camera projection _11, cached from the last bare projection matrix seen.
+static float s_projXScale = 0.f;
+
+// Right-eye clip-space x shift per unit w. The forward and inverse paths
+// describe the same transform T, so both must use this same value.
+static float EyeShiftB(float eyeShift)
+{
+    return eyeShift * (s_projXScale != 0.f ? s_projXScale : 1.f);
+}
+
 static bool ShouldSkipProjectionMatrix(const float* f, bool transposed)
 {
     // Orthographic: no perspective divide, i.e. the row/column that produces w
@@ -1029,15 +1477,68 @@ static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
         size_t base = size_t(m.matrixRegister) * kRegBytes;
         if (base + kMat4Bytes > byteCount) continue;
         float* f = reinterpret_cast<float*>(data + base);
+        const bool transposed = (m.matrixIsTransposed != 0);
+
+        // Inverse (unprojection) matrices. The forward path is P' = P*T with
+        // T = I except T._41 = b, so the corrected inverse is T^-1 * P^-1.
+        // NB: none of the guards below apply — an inverse view-projection has
+        // no ortho / shadow signature to test.
+        if (m.matrixIsInverse)
+        {
+            const float s = EyeShiftB(eyeShift);
+            if (transposed)
+            {
+                // stored = Q^T, so the update is column 4 -= s * column 1.
+                f[3] -= s * f[0];   f[7]  -= s * f[4];
+                f[11] -= s * f[8];  f[15] -= s * f[12];
+            }
+            else
+            {
+                // T^-1 touches row 4 only: row4 -= s * row1.
+                f[12] -= s * f[0];  f[13] -= s * f[1];
+                f[14] -= s * f[2];  f[15] -= s * f[3];
+            }
+            if (outShifted) ++*outShifted;
+            continue;
+        }
+
         float xScale = f[0];
         if (xScale == 0.f) continue;
-        const bool transposed = (m.matrixIsTransposed != 0);
         if (ShouldSkipProjectionMatrix(f, transposed))
         {
             if (outRejected) ++*outRejected;
             continue;
         }
-        if (transposed)
+        // Snapshot the mono matrix before shifting, for the inverse detector.
+        memcpy(s_lastForwardMatrix, f, sizeof(s_lastForwardMatrix));
+        s_haveForwardMatrix = true;
+        RememberForwardMatrix(f);
+
+        // A bare projection has no w translation; cache its real xScale. Done
+        // unconditionally — the inverse path needs it even with the flag off.
+        const bool pureProj = transposed
+            ? (fabsf(f[12]) < 1e-6f && fabsf(f[13]) < 1e-6f && fabsf(f[15]) < 1e-6f)
+            : (fabsf(f[3])  < 1e-6f && fabsf(f[7])  < 1e-6f && fabsf(f[15]) < 1e-6f);
+        if (pureProj) s_projXScale = xScale;
+
+        if (gInfo.FullColumnEyeShift)
+        {
+            // Never fall back to this matrix's own _11: a WVP bakes world
+            // scale into it, which is the per-object variation that makes
+            // attached meshes drift apart.
+            const float b = EyeShiftB(eyeShift);
+            if (transposed)
+            {
+                f[0] += b * f[12];  f[1] += b * f[13];
+                f[2] += b * f[14];  f[3] += b * f[15];
+            }
+            else
+            {
+                f[0] += b * f[3];   f[4]  += b * f[7];
+                f[8] += b * f[11];  f[12] += b * f[15];
+            }
+        }
+        else if (transposed)
         {
             // m[2][0] = register 0, component 2
             f[2] += eyeShift * xScale;
@@ -1048,6 +1549,222 @@ static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
             f[8] += eyeShift * xScale;
         }
         if (outShifted) ++*outShifted;
+    }
+}
+
+// A*B == I within tolerance, with either operand optionally transposed so all
+// four storage conventions are covered.
+static bool MultiplyIsIdentity(const float* A, const float* B, bool transA, bool transB)
+{
+    for (int r = 0; r < 4; ++r)
+        for (int c = 0; c < 4; ++c)
+        {
+            float sum = 0.f;
+            for (int k = 0; k < 4; ++k)
+                sum += (transA ? A[k * 4 + r] : A[r * 4 + k]) *
+                       (transB ? B[c * 4 + k] : B[k * 4 + c]);
+            if (fabsf(sum - ((r == c) ? 1.f : 0.f)) > 2e-2f) return false;
+        }
+    return true;
+}
+
+// An inverse perspective projection has a distinctive zero pattern: only
+// _11, _22 and the two z/w terms are populated, and that pattern is symmetric
+// under transpose, so only which of the two terms is ~1 tells them apart.
+static bool LooksLikeInverseProjection(const float* f, bool& outTransposed)
+{
+    static const int kZero[] = { 1, 2, 3, 4, 6, 7, 8, 9, 10, 12, 13 };
+    for (int i = 0; i < _countof(kZero); ++i)
+        if (fabsf(f[kZero[i]]) > 1e-4f) return false;
+    if (fabsf(f[0]) < 1e-6f || fabsf(f[5]) < 1e-6f) return false;
+    if (fabsf(f[11]) < 1e-6f || fabsf(f[14]) < 1e-6f) return false;
+    outTransposed = fabsf(f[11] - 1.f) < fabsf(f[14] - 1.f);
+    return true;
+}
+
+// A view-projection factors as V*P with V rigid, so in the product's last
+// column the first three components are the camera forward axis: unit length,
+// and orthogonal to the (scaled) right and up columns. A candidate is an
+// inverse view-projection exactly when its inverse has that structure — which
+// the _44==0 tests above cannot see, since (V*P)._44 is the camera-relative z
+// of the world origin and is generally non-zero.
+static bool InverseIsViewProjection(const float* f, bool& outTransposed)
+{
+    D3DXMATRIX cand(f), A;
+    if (!D3DXMatrixInverse(&A, nullptr, &cand)) return false;
+
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        #define ELEM(r, c) (pass ? A.m[c][r] : A.m[r][c])
+        const float c3[3] = { ELEM(0,3), ELEM(1,3), ELEM(2,3) };
+        const float n3 = sqrtf(c3[0]*c3[0] + c3[1]*c3[1] + c3[2]*c3[2]);
+        if (fabsf(n3 - 1.f) > 0.02f) continue;
+
+        const float c0[3] = { ELEM(0,0), ELEM(1,0), ELEM(2,0) };
+        const float c1[3] = { ELEM(0,1), ELEM(1,1), ELEM(2,1) };
+        #undef ELEM
+        const float n0 = sqrtf(c0[0]*c0[0] + c0[1]*c0[1] + c0[2]*c0[2]);
+        const float n1 = sqrtf(c1[0]*c1[0] + c1[1]*c1[1] + c1[2]*c1[2]);
+        if (n0 < 1e-4f || n1 < 1e-4f) continue;
+        if (fabsf((c0[0]*c3[0] + c0[1]*c3[1] + c0[2]*c3[2]) / n0) > 0.02f) continue;
+        if (fabsf((c1[0]*c3[0] + c1[1]*c3[1] + c1[2]*c3[2]) / n1) > 0.02f) continue;
+        outTransposed = (pass == 1);
+        return true;
+    }
+    return false;
+}
+
+// Inverse view matrix: a rigid transform, so the upper 3x3 is orthonormal and
+// the last column is exactly (0,0,0,1). Its translation row is the camera
+// world position, which differs per eye — a prime suspect for screen-space
+// passes that reconstruct view-space position and then go to world space.
+static bool LooksLikeInverseView(const float* f, bool& outTransposed, float outCamPos[3])
+{
+    for (int pass = 0; pass < 2; ++pass)
+    {
+        #define M(r, c) (pass ? f[(c) * 4 + (r)] : f[(r) * 4 + (c)])
+        if (fabsf(M(0,3)) > 1e-4f || fabsf(M(1,3)) > 1e-4f ||
+            fabsf(M(2,3)) > 1e-4f || fabsf(M(3,3) - 1.f) > 1e-3f) continue;
+
+        bool ok = true;
+        float row[3][3];
+        for (int r = 0; r < 3 && ok; ++r)
+        {
+            for (int c = 0; c < 3; ++c) row[r][c] = M(r, c);
+            const float n = sqrtf(row[r][0]*row[r][0] + row[r][1]*row[r][1] + row[r][2]*row[r][2]);
+            if (fabsf(n - 1.f) > 0.02f) ok = false;
+        }
+        if (!ok) continue;
+        // Mutually orthogonal rows confirm a rotation rather than a coincidence.
+        if (fabsf(row[0][0]*row[1][0] + row[0][1]*row[1][1] + row[0][2]*row[1][2]) > 0.02f) continue;
+        if (fabsf(row[0][0]*row[2][0] + row[0][1]*row[2][1] + row[0][2]*row[2][2]) > 0.02f) continue;
+
+        outCamPos[0] = M(3,0); outCamPos[1] = M(3,1); outCamPos[2] = M(3,2);
+        #undef M
+        outTransposed = (pass == 1);
+        return true;
+    }
+    return false;
+}
+
+// Diagnostic only: names every CB register holding such a matrix, with the
+// shader CRCs and slot a BaseProfile.xml <Inverse> entry would need.
+static void ReportInverseProjectionCandidates(
+    const unsigned char* data, size_t byteCount,
+    DWORD vsCRC, DWORD psCRC, int vsSlot, int psSlot)
+{
+    constexpr size_t kRegBytes = 16;
+    // Proof the scan ran, so an empty result is a real negative.
+    static unsigned s_scans = 0;
+    if ((++s_scans % 512) == 0)
+        FrameTrace("    INVSCAN buffers=%u haveFwd=%d lastSize=%u\n",
+                   s_scans, (int)s_haveForwardMatrix, (unsigned)byteCount);
+
+    for (size_t reg = 0; (reg + 4) * kRegBytes <= byteCount; ++reg)
+    {
+        // Matrices are laid out on 4-register boundaries; scanning every offset
+        // reports misaligned windows into a neighbouring matrix as hits.
+        if ((reg & 3) != 0) continue;
+        const float* f = reinterpret_cast<const float*>(data + reg * kRegBytes);
+        // Uninitialised fill (0xCDCDCDCD decodes to ~-4.3e8) and NaN otherwise
+        // pass the inverse test as noise. Reject before testing.
+        bool sane = true;
+        for (int i = 0; i < 16 && sane; ++i)
+            if (!(fabsf(f[i]) < 1e6f)) sane = false;
+        if (!sane) continue;
+
+        bool transposed = false;
+        const char* how = nullptr;
+        float camPos[3] = { 0, 0, 0 };
+        if (InverseIsViewProjection(f, transposed))
+        {
+            how = "INVVP";
+        }
+        else if (LooksLikeInverseView(f, transposed, camPos) &&
+                 (fabsf(camPos[0]) + fabsf(camPos[1]) + fabsf(camPos[2])) > 0.01f)
+        {
+            // Identity trivially satisfies the rigid test and is everywhere in
+            // constant buffers, so require a real translation.
+            DDILog("  INVVIEW: reg=%u transposed=%d vs=0x%08lX ps=0x%08lX"
+                   " cb(vs=%d ps=%d) camPos=[%.2f %.2f %.2f]\n",
+                   (unsigned)reg, (int)transposed, vsCRC, psCRC,
+                   vsSlot, psSlot, camPos[0], camPos[1], camPos[2]);
+            how = "INVVIEW";
+        }
+        else if (LooksLikeInverseProjection(f, transposed))
+        {
+            how = "struct";
+        }
+        else
+        {
+            // Pairing-free test: invert the candidate and ask whether the
+            // result is a perspective transform. True of any inverse
+            // view-projection regardless of how dense the matrix itself is.
+            D3DXMATRIX cand(f), inv;
+            if (D3DXMatrixInverse(&inv, nullptr, &cand))
+            {
+                if (fabsf(inv._44) < 1e-3f && fabsf(inv._34) > 0.5f)
+                { how = "invIsProj";  transposed = false; }
+                else if (fabsf(inv._44) < 1e-3f && fabsf(inv._43) > 0.5f)
+                { how = "invIsProjT"; transposed = true;  }
+            }
+        }
+
+        // Decisive check: does this candidate invert a matrix we actually
+        // shift? If so it is the camera inverse and this is the register.
+        int pairedWith = -1;
+        for (int i = 0; i < s_fwdRingCount && pairedWith < 0; ++i)
+        {
+            if      (MultiplyIsIdentity(f, s_fwdRing[i], false, false)) { pairedWith = i; transposed = false; }
+            else if (MultiplyIsIdentity(f, s_fwdRing[i], true,  false)) { pairedWith = i; transposed = true;  }
+            else if (MultiplyIsIdentity(f, s_fwdRing[i], false, true))  { pairedWith = i; transposed = true;  }
+            if (pairedWith >= 0) how = "PAIRED";
+        }
+        if (!how) continue;
+        if (pairedWith >= 0)
+            DDILog("  INVPAIR: reg=%u transposed=%d vs=0x%08lX ps=0x%08lX cb(vs=%d ps=%d)"
+                   " inverts shifted matrix #%d\n",
+                   (unsigned)reg, (int)transposed, vsCRC, psCRC, vsSlot, psSlot, pairedWith);
+        FrameTrace("    INVPROJ(%s) reg=%u transposed=%d vs=0x%08lX ps=0x%08lX"
+                   " vsSlot=%d psSlot=%d [%.4f %.4f %.4f %.4f]\n",
+                   how, (unsigned)reg, (int)transposed, vsCRC, psCRC,
+                   vsSlot, psSlot, f[0], f[5], f[11], f[14]);
+    }
+}
+
+// Hand-authored matrix declarations from BaseProfile.xml, covering what the
+// bytecode analyzer cannot detect — chiefly inverse view-projection matrices.
+static void AddProfileMatrixTargets(const ShaderProfileDataMap& map, DWORD crc,
+                                    ID3D11Buffer* const* boundCBs, UINT numSlots,
+                                    ID3D11Resource* pResource,
+                                    std::vector<EyeShiftMatrix>& targets)
+{
+    if (!crc) return;
+    ShaderProfileDataMap::const_iterator it = map.find(crc);
+    if (it == map.end() || !it->second.m_pMatrices) return;
+    const ShaderMatrices* sm = it->second.m_pMatrices;
+    for (BYTE i = 0; i < sm->matrixSize; ++i)
+    {
+        const ShaderMatrixData& md = sm->matrix[i];
+        if (md.incorrectProjection) continue;
+        if (md.constantBuffer >= numSlots) continue;
+        static unsigned s_miss = 0, s_hit = 0;
+        if (boundCBs[md.constantBuffer] != pResource)
+        {
+            if (s_miss++ < 8)
+                DDILog("  Profile: crc=0x%08lX declares cb=%u but that slot holds a different buffer\n",
+                       crc, (unsigned)md.constantBuffer);
+            continue;
+        }
+        if (s_hit++ < 8)
+            DDILog("  Profile HIT: crc=0x%08lX cb=%u reg=%u transposed=%d inverse=%d\n",
+                   crc, (unsigned)md.constantBuffer, (unsigned)md.matrixRegister,
+                   (int)md.matrixIsTransposed, (int)md.inverse);
+        EyeShiftMatrix em;
+        em.matrixRegister     = md.matrixRegister;
+        em.matrixIsTransposed = md.matrixIsTransposed;
+        em.matrixIsInverse    = md.inverse;
+        targets.push_back(em);
     }
 }
 
@@ -1091,7 +1808,8 @@ HRESULT STDMETHODCALLTYPE Context11Proxy::Map(
                                     : pResource;
     HRESULT hr = m_real->Map(realRes, Subresource, MapType, MapFlags, pMappedResource);
     if (FAILED(hr) || !pMappedResource) return hr;
-    if (!m_presentHookActive) return hr;
+    // Duplication needs CB capture too, and never arms m_presentHookActive.
+    if (!m_presentHookActive && !gInfo.DuplicateDraws) return hr;
     if (!gInfo.UseCOMWrapReplay) return hr;
 
     // Stage 4c: record write maps on CONSTANT BUFFERS. Stage 4c.1 additionally
@@ -1126,10 +1844,15 @@ HRESULT STDMETHODCALLTYPE Context11Proxy::Map(
                                            D3D11_BIND_INDEX_BUFFER)) != 0;
     if (isCB)
     {
-        if (!buf->IsVSBound()) return hr;
+        // Under duplication every CB write must reach the sibling even when it
+        // needs no eye shift, or the right eye reads stale constants.
+        if (!gInfo.DuplicateDraws && !buf->IsVSBound()) return hr;
     }
     else if (isGeom)
     {
+        // Draw duplication re-issues each draw while its geometry is still
+        // live, so there is nothing to snapshot and nothing to go stale.
+        if (gInfo.DuplicateDraws) return hr;
         if (!gInfo.ReplayDynamicBuffers) return hr;
         // WRITE_DISCARD only, and the restriction is a correctness requirement
         // rather than a heuristic. Our replay rewrites the whole buffer, which
@@ -1250,10 +1973,96 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                             EyeShiftMatrix em;
                             em.matrixRegister     = pmd.matrixRegister;
                             em.matrixIsTransposed = pmd.matrixIsTransposed;
+                            em.matrixIsInverse    = FALSE;
                             targets.push_back(em);
                         }
                     }
                 }
+            }
+
+            // Profile-declared matrices, added on top of whatever the analyzer
+            // found. A profile hit also counts as knowing this buffer.
+            // One-time proof that BaseProfile.xml actually loaded for this exe.
+            static bool s_profileLogged = false;
+            if (!s_profileLogged)
+            {
+                s_profileLogged = true;
+                DDILog("  Profile data loaded: VS=%u PS=%u GS=%u entries (profile='%S')\n",
+                       (unsigned)g_ProfileData.VSCRCData.size(),
+                       (unsigned)g_ProfileData.PSCRCData.size(),
+                       (unsigned)g_ProfileData.GSCRCData.size(),
+                       gInfo.ProfileName);
+            }
+
+            size_t beforeProfile = targets.size();
+            AddProfileMatrixTargets(g_ProfileData.VSCRCData,
+                                    BoundShaderCRC(m_parent, m_boundVS),
+                                    m_boundVSCBs, kMaxVSCBSlots, pResource, targets);
+            AddProfileMatrixTargets(g_ProfileData.PSCRCData,
+                                    BoundShaderCRC(m_parent, m_boundPS),
+                                    m_boundPSCBs, kMaxPSCBSlots, pResource, targets);
+            if (targets.size() != beforeProfile) analyzerKnows = true;
+
+            if (FrameTraceActive())
+            {
+                // Seed the ring from this buffer's own forward matrices first:
+                // a camera CB usually holds both the view-projection and its
+                // inverse, and the pairing test needs this frame's values.
+                for (size_t ti = 0; ti < targets.size(); ++ti)
+                {
+                    if (targets[ti].matrixIsInverse) continue;
+                    size_t off = size_t(targets[ti].matrixRegister) * 16;
+                    if (off + 64 <= bytes.size())
+                        RememberForwardMatrix(
+                            reinterpret_cast<const float*>(bytes.data() + off));
+                }
+                int vsSlot = -1, psSlot = -1;
+                for (UINT s = 0; s < kMaxVSCBSlots; ++s)
+                    if (m_boundVSCBs[s] == pResource) { vsSlot = (int)s; break; }
+                for (UINT s = 0; s < kMaxPSCBSlots; ++s)
+                    if (m_boundPSCBs[s] == pResource) { psSlot = (int)s; break; }
+                // Scanned regardless of current binding: games commonly write
+                // a CB before binding it, so slot may legitimately be unknown.
+                ReportInverseProjectionCandidates(
+                        bytes.data(), bytes.size(),
+                        BoundShaderCRC(m_parent, m_boundVS),
+                        BoundShaderCRC(m_parent, m_boundPS), vsSlot, psSlot);
+            }
+
+            // Draw duplication keeps the two eyes' constants in separate
+            // buffers, so the patch lands in the sibling now rather than in a
+            // replay closure that rewrites one shared buffer later.
+            if (gInfo.DuplicateDraws)
+            {
+                Buffer11Proxy* bp = TryUnwrapBuffer(pResource);
+                ID3D11Buffer* rightBuf = bp ? bp->GetRealRight() : nullptr;
+                if (rightBuf)
+                {
+                    const bool useBlindNow = targets.empty() &&
+                        !(gInfo.DisableBlindCBScan && analyzerKnows);
+                    if      (!targets.empty()) ++m_cbTargetedThisFrame;
+                    else if (useBlindNow)      ++m_cbBlindThisFrame;
+                    else                       ++m_cbSkippedThisFrame;
+
+                    D3D11_MAPPED_SUBRESOURCE mapped = {};
+                    if (SUCCEEDED(m_real->Map(rightBuf, subres, mapType, 0, &mapped))
+                        && mapped.pData)
+                    {
+                        memcpy(mapped.pData, bytes.data(), bytes.size());
+                        float eyeShift = wiz3D_GetEffectiveEyeShift();
+                        if (!targets.empty())
+                            ApplyTargetedEyeShiftToCB(
+                                static_cast<unsigned char*>(mapped.pData),
+                                bytes.size(), eyeShift, targets,
+                                &m_cbMatShiftedThisFrame, &m_cbMatRejectedThisFrame);
+                        else if (useBlindNow)
+                            ApplyEyeShiftToCB(static_cast<unsigned char*>(mapped.pData),
+                                              bytes.size(), eyeShift);
+                        m_real->Unmap(rightBuf, subres);
+                    }
+                }
+                m_activeMaps.erase(it);
+                break;
             }
 
             // Patch policy. With DisableBlindCBScan set we never guess: a
@@ -1311,6 +2120,21 @@ void Context11Proxy::DoUpdateSubresource(
     m_real->UpdateSubresource(UnwrapResourceForEye(pDstResource, pickRight),
                               DstSubresource, pDstBox,
                               pSrcData, SrcRowPitch, SrcDepthPitch);
+
+    if (NeedsRightMirror(pDstResource, pickRight))
+        m_real->UpdateSubresource(UnwrapResourceForEye(pDstResource, true),
+                                  DstSubresource, pDstBox,
+                                  pSrcData, SrcRowPitch, SrcDepthPitch);
+
+    // Buffers have no stereo sibling in UnwrapResourceForEye, so CBs filled by
+    // UpdateSubresource rather than Map need mirroring explicitly.
+    if (gInfo.DuplicateDraws)
+    {
+        Buffer11Proxy* bp = TryUnwrapBuffer(pDstResource);
+        if (bp && bp->GetRealRight())
+            m_real->UpdateSubresource(bp->GetRealRight(), DstSubresource, pDstBox,
+                                      pSrcData, SrcRowPitch, SrcDepthPitch);
+    }
 }
 
 // True for the BC1..BC7 block-compressed format families. UpdateSubresource on
@@ -1427,6 +2251,7 @@ void STDMETHODCALLTYPE Context11Proxy::UpdateSubresource(
 void STDMETHODCALLTYPE Context11Proxy::ClearState()
 {
     m_real->ClearState();
+    ResetEyeTracking();
     if (!m_presentHookActive) return;
     m_frameCommands.emplace_back(
         [this]() { m_real->ClearState(); });
@@ -1465,6 +2290,10 @@ void Context11Proxy::DoResolveSubresource(
     m_real->ResolveSubresource(
         UnwrapResourceForEye(pDstResource, pickRight), DstSubresource,
         UnwrapResourceForEye(pSrcResource, pickRight), SrcSubresource, Format);
+    if (NeedsRightMirror(pDstResource, pickRight))
+        m_real->ResolveSubresource(
+            UnwrapResourceForEye(pDstResource, true), DstSubresource,
+            UnwrapResourceForEye(pSrcResource, true), SrcSubresource, Format);
 }
 
 void STDMETHODCALLTYPE Context11Proxy::ResolveSubresource(
@@ -1507,6 +2336,9 @@ void Context11Proxy::DoClearRenderTargetView(
                    ColorRGBA ? ColorRGBA[2] : 0.f, ColorRGBA ? ColorRGBA[3] : 0.f);
     }
     m_real->ClearRenderTargetView(real, ColorRGBA);
+    // No replay pass to clear the sibling later, so do it now.
+    if (gInfo.DuplicateDraws && rtv && rtv->GetRealRight() && !pickRight)
+        m_real->ClearRenderTargetView(rtv->GetRealRight(), ColorRGBA);
 }
 
 void STDMETHODCALLTYPE Context11Proxy::ClearRenderTargetView(
@@ -1541,6 +2373,9 @@ void Context11Proxy::DoClearDepthStencilView(
         real = (pickRight && right) ? right : dsv->GetReal();
     }
     m_real->ClearDepthStencilView(real, ClearFlags, Depth, Stencil);
+    // No replay pass to clear the sibling later, so do it now.
+    if (gInfo.DuplicateDraws && dsv && dsv->GetRealRight() && !pickRight)
+        m_real->ClearDepthStencilView(dsv->GetRealRight(), ClearFlags, Depth, Stencil);
 }
 
 void STDMETHODCALLTYPE Context11Proxy::ClearDepthStencilView(

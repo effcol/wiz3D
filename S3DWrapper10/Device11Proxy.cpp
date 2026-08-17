@@ -11,6 +11,8 @@
 #include "Texture1D11Proxy.h"
 #include "Texture3D11Proxy.h"
 #include "StereoHeuristic.h"
+#include "..\S3DAPI\ReadData.h"            // ReadCurrentProfile
+#include "..\S3DAPI\ShaderProfileData.h"   // g_ProfileData
 #include "proxy_factory.h"     // for IID_wiz3D_Device11Proxy
 #include "AdapterFunctions.h"  // DDILog
 
@@ -27,6 +29,26 @@
 
 namespace wiz3d
 {
+
+// Vendor id drives per-vendor config sections; 0 is an acceptable fallback.
+static DWORD GetVendorIdFromDevice(ID3D11Device* dev)
+{
+    DWORD vendor = 0;
+    IDXGIDevice* dxgiDev = nullptr;
+    if (dev && SUCCEEDED(dev->QueryInterface(__uuidof(IDXGIDevice),
+                                             reinterpret_cast<void**>(&dxgiDev))) && dxgiDev)
+    {
+        IDXGIAdapter* adapter = nullptr;
+        if (SUCCEEDED(dxgiDev->GetAdapter(&adapter)) && adapter)
+        {
+            DXGI_ADAPTER_DESC desc;
+            if (SUCCEEDED(adapter->GetDesc(&desc))) vendor = desc.VendorId;
+            adapter->Release();
+        }
+        dxgiDev->Release();
+    }
+    return vendor;
+}
 
 Device11Proxy::Device11Proxy(ID3D11Device* real)
     : m_real(real)
@@ -53,6 +75,28 @@ Device11Proxy::Device11Proxy(ID3D11Device* real)
         if (FAILED(m_real->QueryInterface(__uuidof(ID3D11Device3), reinterpret_cast<void**>(&m_real3)))) m_real3 = nullptr;
         LOG_VERBOSE("  Device11Proxy ctor: real=%p real1=%p real2=%p real3=%p\n",
                     m_real, m_real1, m_real2, m_real3);
+    }
+
+    // Populate g_ProfileData. Only D3DDeviceWrapper (legacy DDI) and DX9 ever
+    // called this, so under COM-wrap every per-game profile — mono shader
+    // lists, matrix declarations — silently did nothing.
+    static bool s_profileRead = false;
+    if (!s_profileRead)
+    {
+        s_profileRead = true;
+        // ReadConfig bails early when g_docConfig is null (it is, under
+        // COM-wrap), so DefaultProfile presets never load and a game profile
+        // without its own <Presets> would leave separation at zero. Keep the
+        // camera state we already had; we only want the shader/matrix data.
+        DataInput savedInput = gInfo.Input;
+        ReadCurrentProfile(GetVendorIdFromDevice(m_real));
+        gInfo.Input = savedInput;
+        DDILog("  Device11Proxy: ReadCurrentProfile done, VS=%u PS=%u GS=%u entries,"
+               " eyeShift=%.6f\n",
+               (unsigned)g_ProfileData.VSCRCData.size(),
+               (unsigned)g_ProfileData.PSCRCData.size(),
+               (unsigned)g_ProfileData.GSCRCData.size(),
+               wiz3D_GetEffectiveEyeShift());
     }
 }
 
@@ -156,7 +200,10 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
     // apart, so a shader we had positively cleared still fell through to the
     // heuristic CB scan. Storing the negative result makes that distinction
     // available at the call site.
-    if (analyzed)
+    // Store on CRC alone too: pixel shaders always fail analysis (no
+    // SV_Position output) but BaseProfile.xml still matches them by CRC.
+    // parsed stays false there, so analyzerKnows is unaffected.
+    if (analyzed || info.crc32)
         self->StoreShaderProjection(*ppShader, info);
     return hr;
 }
@@ -172,6 +219,17 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateVertexShader(
             return m_real->CreateVertexShader(b, n, cl, pp);
         },
         pShaderBytecode, BytecodeLength, pClassLinkage, ppVertexShader);
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreatePixelShader(
+    const void* pShaderBytecode, SIZE_T BytecodeLength,
+    ID3D11ClassLinkage* pClassLinkage, ID3D11PixelShader** ppPixelShader)
+{
+    return AnalyzeAndCreate<ID3D11PixelShader>("Pixel", this,
+        [this](const void* b, SIZE_T n, ID3D11ClassLinkage* cl, ID3D11PixelShader** pp) {
+            return m_real->CreatePixelShader(b, n, cl, pp);
+        },
+        pShaderBytecode, BytecodeLength, pClassLinkage, ppPixelShader);
 }
 
 HRESULT STDMETHODCALLTYPE Device11Proxy::CreateGeometryShader(
@@ -556,6 +614,27 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateBuffer(
     HRESULT hr = m_real->CreateBuffer(pDesc, pInitialData, ppBuffer);
     if (FAILED(hr) || !ppBuffer || !*ppBuffer) return hr;
     auto* bufProxy = new Buffer11Proxy(*ppBuffer, this);
+
+    // Right-eye CB sibling for the draw-duplication path. Alloc failure is
+    // non-fatal: the sibling stays null and those constants render mono.
+    if (gInfo.DuplicateDraws && pDesc &&
+        (pDesc->BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0)
+    {
+        ID3D11Buffer* right = nullptr;
+        if (SUCCEEDED(m_real->CreateBuffer(pDesc, pInitialData, &right)) && right)
+        {
+            bufProxy->SetRealRight(right);
+            NVDM_TRACE_FIRST_N(8,
+                "  Device11Proxy::CreateBuffer: right-eye CB sibling ok (size=%u usage=%d)\n",
+                pDesc->ByteWidth, (int)pDesc->Usage);
+        }
+        else
+            NVDM_TRACE_FIRST_N(8,
+                "  Device11Proxy::CreateBuffer: right-eye CB sibling alloc FAILED"
+                " (size=%u) -- constants stay mono for this buffer\n",
+                pDesc->ByteWidth);
+    }
+
     *ppBuffer = static_cast<ID3D11Buffer*>(bufProxy);
     return hr;
 }

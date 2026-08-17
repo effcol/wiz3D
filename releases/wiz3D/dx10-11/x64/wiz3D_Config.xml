@@ -120,6 +120,9 @@
 		     Set to 1 if the right eye looks wrong (tinted, dark, or washed out)
 		     while the left eye is correct. -->
 		<DisableBlindCBScan Value="0"/>
+		<!-- Shift the whole matrix column instead of one element. Set to 1 if
+		     attached objects drift apart in one eye. -->
+		<FullColumnEyeShift Value="0"/>
 		<!-- DX10/11 right-eye replay: also replay writes to dynamic vertex and
 		     index buffers, not just constant buffers. 1 (default) = on.
 		     Geometry the game refills between draws (HUD, text, particle
@@ -128,6 +131,9 @@
 		     game streams large dynamic buffers and the per-frame copy cost
 		     outweighs stereo correctness on those passes. -->
 		<ReplayDynamicBuffers Value="1"/>
+		<!-- Issue every draw twice instead of replaying the frame at Present.
+		     0 (default) = replay, 1 = duplicate. Disables ReplayDynamicBuffers. -->
+		<DuplicateDraws Value="0"/>
 		<!-- Write debug info to log files: 0=off 1=on -->
 		<CollectDebugInformation Value="0"/>
 		<!-- Screenshot format: 0=PNG (default), 1=PNS (stereo PNG), 2=JPEG, 3=JPS (stereo JPEG), 4=BMP, 5=DDS. PNS/JPS are the same bytes as PNG/JPG but with a stereo-aware extension some 3D viewers (e.g. Stereo Photo Maker) recognise as a side-by-side pair. -->
