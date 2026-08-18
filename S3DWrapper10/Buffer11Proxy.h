@@ -74,7 +74,8 @@ public:
     // draw path can tell geometry that reached the right eye corrected from
     // geometry that is still sitting at the left eye's position.
     bool EverShifted() const { return m_everShifted; }
-    void MarkShifted()       { m_everShifted = true; }
+    void MarkShifted(unsigned frame) { m_everShifted = true; m_shiftedFrame = frame; }
+    unsigned ShiftedFrame() const { return m_shiftedFrame; }
 
     struct MatrixTarget { DWORD reg; BOOL transposed; BOOL inverse; };
     const std::vector<MatrixTarget>& LearnedMatrices() const { return m_learned; }
@@ -92,6 +93,7 @@ private:
     LONG           m_refs;
     bool           m_vsBound;
     bool           m_everShifted = false;
+    unsigned       m_shiftedFrame = 0;
     std::vector<MatrixTarget> m_learned;
 };
 

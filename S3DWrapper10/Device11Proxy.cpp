@@ -323,11 +323,23 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreatePixelShader(
     const void* pShaderBytecode, SIZE_T BytecodeLength,
     ID3D11ClassLinkage* pClassLinkage, ID3D11PixelShader** ppPixelShader)
 {
+    static unsigned s_psDump = 0;
+    DumpShaderBytecode("ps", pShaderBytecode, BytecodeLength, s_psDump++);
     return AnalyzeAndCreate<ID3D11PixelShader>("Pixel", this,
         [this](const void* b, SIZE_T n, ID3D11ClassLinkage* cl, ID3D11PixelShader** pp) {
             return m_real->CreatePixelShader(b, n, cl, pp);
         },
         pShaderBytecode, BytecodeLength, pClassLinkage, ppPixelShader);
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateComputeShader(
+    const void* pShaderBytecode, SIZE_T BytecodeLength,
+    ID3D11ClassLinkage* pClassLinkage, ID3D11ComputeShader** ppComputeShader)
+{
+    static unsigned s_csDump = 0;
+    DumpShaderBytecode("cs", pShaderBytecode, BytecodeLength, s_csDump++);
+    return m_real->CreateComputeShader(pShaderBytecode, BytecodeLength,
+                                       pClassLinkage, ppComputeShader);
 }
 
 HRESULT STDMETHODCALLTYPE Device11Proxy::CreateGeometryShader(

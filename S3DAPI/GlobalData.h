@@ -369,6 +369,7 @@ public:
 	// Bisection aid: modify only the first N eligible vertex shaders. 0 = no
 	// limit. Halve it to find which shader breaks the driver.
 	DWORD		ModifyShadersMaxCount;
+	int			DumpModifiedShaders;
 	// Start the frame trace at the first frame with at least this many draws.
 	DWORD		FrameTraceMinDraws;
 	// DX10/11 COM-wrap replay: also snapshot and replay writes to dynamic
@@ -513,6 +514,7 @@ public:
 		FullColumnEyeShift = false;   // false = legacy single-element shift.
 		ModifyShadersDX11  = false;   // false = constant-buffer patching only.
 		ModifyShadersMaxCount = 0;    // 0 = modify every eligible shader.
+		DumpModifiedShaders = 0;      // 1 = write per-shader before/after disassembly.
 		FrameTraceMinDraws    = 0;    // 0 = frame-number gate only.
 		ReplayDynamicBuffers = true;  // Replay dynamic VB/IB writes so re-issued draws see their own geometry.
 		DuplicateDraws   = false;     // false = record+replay at Present; true = issue each draw twice live.

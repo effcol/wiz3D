@@ -35,4 +35,7 @@ bool TryModifyShaderForStereo(const void* bytecode, SIZE_T byteLength,
 void DumpShaderPair(const void* orig, SIZE_T origLen, const void* mod, SIZE_T modLen,
                     unsigned idx, DWORD crc);
 
+// Plain disassembly to wiz3D_<kind>_<idx>.txt, for reading what a pass consumes.
+void DumpShaderBytecode(const char* kind, const void* code, SIZE_T len, unsigned idx);
+
 } // namespace wiz3d

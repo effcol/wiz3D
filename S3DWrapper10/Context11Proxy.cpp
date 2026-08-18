@@ -235,8 +235,17 @@ void Context11Proxy::ReleaseStereoShiftCBs()
 static int s_matDumpRejected = 0;
 static int s_matDumpShifted  = 0;
 
+// Present counter, so a buffer's last eye-shift can be dated against the frame
+// being drawn rather than only "ever shifted at some point".
+static unsigned s_frameId = 0;
+
 // Camera projection _11, cached from the last clean view-projection seen.
 static float s_projXScale = 0.f;
+
+// Camera right axis in world space, taken from the forward matrix's x basis.
+// V^-1's first row is that same axis, which is what identifies a view inverse.
+static float s_camRight[3] = { 0.f, 0.f, 0.f };
+static bool  s_haveCamRight = false;
 
 // Spread of |w basis| across shifted matrices: 1.0 everywhere means every
 // targeted matrix is a clean VP, anything else means scaled WVPs are in play.
@@ -275,13 +284,50 @@ void Context11Proxy::TallyDrawCoverage()
         ++m_drawsVSNoMatrixThisFrame;
         return;
     }
-    for (UINT s = 0; s < kMaxVSCBSlots; ++s)
+    // GTA V presents twice per game frame, so allow a few Presents of slack
+    // before calling a shift stale; a CB the game stopped rewriting keeps a
+    // valid shifted sibling and must not be reported as uncorrected.
+    unsigned newest = 0;
+    bool anyEver = false, anySlot = false;
+    for (auto it = info->projection.matrixData.cb.begin();
+         it != info->projection.matrixData.cb.end(); ++it)
     {
-        if (!m_boundVSCBs[s]) continue;
-        Buffer11Proxy* b = TryUnwrapBuffer(m_boundVSCBs[s]);
-        if (b && b->EverShifted()) return;
+        const DWORD slot = it->first;
+        if (slot >= kMaxVSCBSlots || !m_boundVSCBs[slot]) continue;
+        anySlot = true;
+        Buffer11Proxy* b = TryUnwrapBuffer(m_boundVSCBs[slot]);
+        if (!b || !b->EverShifted()) continue;
+        anyEver = true;
+        if (b->ShiftedFrame() > newest) newest = b->ShiftedFrame();
     }
-    ++m_drawsVSNeverShiftedThisFrame;
+    // The shift lands in the right-eye sibling, so it only reaches the right eye
+    // if that sibling is what gets bound for the duplicated draw.
+    for (auto it = info->projection.matrixData.cb.begin();
+         it != info->projection.matrixData.cb.end(); ++it)
+    {
+        const DWORD slot = it->first;
+        if (slot >= kMaxCBs || !m_boundVSCBs[slot]) continue;
+        ID3D11Buffer* r = m_cbSlots[ST_VS].right[slot];
+        if (!r || r == m_cbSlots[ST_VS].left[slot])
+        {
+            ++m_drawsVSNoSiblingCBThisFrame;
+            ++m_uncorrectedVSDraws[BoundShaderCRC(m_parent, m_boundVS)];
+            break;
+        }
+    }
+
+    if (!anySlot) return;
+    if (!anyEver)
+    {
+        ++m_drawsVSNeverShiftedThisFrame;
+        ++m_uncorrectedVSDraws[BoundShaderCRC(m_parent, m_boundVS)];
+        return;
+    }
+    if (s_frameId > newest + 4)
+    {
+        ++m_drawsVSStaleShiftThisFrame;
+        ++m_uncorrectedVSDraws[BoundShaderCRC(m_parent, m_boundVS)];
+    }
 }
 
 std::string Context11Proxy::DescribeAllContexts()
@@ -301,8 +347,8 @@ std::string Context11Proxy::DescribeAllContexts()
 
 void Context11Proxy::LogAndResetFrameDrawStats()
 {
-    static unsigned s_frame = 0;
-    ++s_frame;
+    ++s_frameId;
+    const unsigned s_frame = s_frameId;
     // Publish before any reset so the trace gate sees this frame's real count.
     if ((int)m_drawsThisFrame > g_FrameTraceLastFrameDraws)
         g_FrameTraceLastFrameDraws = (int)m_drawsThisFrame;
@@ -319,7 +365,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
         if (gInfo.ModifyShadersDX11 && m_parent) m_parent->LogShaderModStats();
         DDILog("  [frame %u] immediate-ctx=%p: draws=%u dispatches=%u cmdLists=%u"
                " recorded=%zu | CB patches: targeted=%u blind=%u skipped=%u"
-               " | matrices: shifted=%u guardRejected=%u"
+               " | matrices: shifted=%u guardRejected=%u viewInv=%u"
                " | dynBuf: replayed=%u skipped=%u"
                " | dup: duplicated=%u mono=%u uavSkip=%u monoDSV=%u noRightRTV=%u"
                " depthOnly=%u noRightTarget=%u dispDup=%u"
@@ -328,6 +374,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
                m_cmdListsThisFrame, m_frameCommands.size(),
                m_cbTargetedThisFrame, m_cbBlindThisFrame, m_cbSkippedThisFrame,
                m_cbMatShiftedThisFrame, m_cbMatRejectedThisFrame,
+               m_cbViewInvShiftedThisFrame,
                m_dynBufReplaysThisFrame, m_dynBufSkippedThisFrame,
                m_drawsDuplicatedThisFrame, m_drawsMonoThisFrame,
                m_drawsUavSkippedThisFrame, m_drawsMonoDsvThisFrame,
@@ -352,13 +399,38 @@ void Context11Proxy::LogAndResetFrameDrawStats()
     }
 
     DDILog("  [frame %u] basis |w|: min=%.4f max=%.4f projXScale=%.4f"
-           " | uncorrected draws: vsUnparsed=%u vsNoMatrix=%u cbNeverShifted=%u\n",
+           " | uncorrected draws: vsUnparsed=%u vsNoMatrix=%u cbNeverShifted=%u"
+           " cbStale=%u noSiblingCB=%u\n",
            s_frame, s_wnMin, s_wnMax, s_projXScale,
            m_drawsVSUnparsedThisFrame, m_drawsVSNoMatrixThisFrame,
-           m_drawsVSNeverShiftedThisFrame);
+           m_drawsVSNeverShiftedThisFrame, m_drawsVSStaleShiftThisFrame,
+           m_drawsVSNoSiblingCBThisFrame);
     m_drawsVSUnparsedThisFrame     = 0;
     m_drawsVSNoMatrixThisFrame     = 0;
     m_drawsVSNeverShiftedThisFrame = 0;
+    m_drawsVSStaleShiftThisFrame   = 0;
+    m_drawsVSNoSiblingCBThisFrame  = 0;
+
+    // Which shaders those uncorrected draws belong to: the tree/wire/paint
+    // geometry should name itself here.
+    if (!m_uncorrectedVSDraws.empty())
+    {
+        std::vector<std::pair<unsigned, DWORD>> byUse;
+        for (std::map<DWORD, unsigned>::const_iterator it = m_uncorrectedVSDraws.begin();
+             it != m_uncorrectedVSDraws.end(); ++it)
+            byUse.push_back(std::make_pair(it->second, it->first));
+        std::sort(byUse.begin(), byUse.end());
+        std::string line;
+        char b2[64];
+        for (size_t k = byUse.size(); k-- > 0 && byUse.size() - k <= 12; )
+        {
+            sprintf_s(b2, " %08lX=%u", byUse[k].second, byUse[k].first);
+            line += b2;
+        }
+        DDILog("  [frame %u] uncorrected VS (%zu distinct):%s\n",
+               s_frame, m_uncorrectedVSDraws.size(), line.c_str());
+        m_uncorrectedVSDraws.clear();
+    }
 
     // Which modified shaders the scene actually draws with; creation order says
     // nothing about this, so the cap cannot be aimed without it.
@@ -395,6 +467,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
     m_cbSkippedThisFrame      = 0;
     m_cbMatShiftedThisFrame   = 0;
     m_cbMatRejectedThisFrame  = 0;
+    m_cbViewInvShiftedThisFrame = 0;
     m_dynBufReplaysThisFrame  = 0;
     m_dynBufSkippedThisFrame  = 0;
     m_drawsDuplicatedThisFrame = 0;
@@ -1812,6 +1885,41 @@ static bool ShouldSkipProjectionMatrix(const float* f, bool transposed)
     return false;
 }
 
+// A view inverse (camera-to-world) has last column (0,0,0,1) and a first row
+// equal to the camera right axis, which the forward matrix already gave us.
+static bool LooksLikeViewInverse(const float* f)
+{
+    if (!s_haveCamRight) return false;
+    if (fabsf(f[3]) > 1e-4f || fabsf(f[7]) > 1e-4f ||
+        fabsf(f[11]) > 1e-4f || fabsf(f[15] - 1.f) > 1e-4f) return false;
+    const float n = sqrtf(f[0] * f[0] + f[1] * f[1] + f[2] * f[2]);
+    if (fabsf(n - 1.f) > 0.02f) return false;
+    const float d = f[0] * s_camRight[0] + f[1] * s_camRight[1] + f[2] * s_camRight[2];
+    return d > 0.999f;
+}
+
+// Deferred passes rebuild world position through gViewInverse, so the right eye
+// must undo the view-space shear: (V*T)^-1 = T^-1 * V^-1. Same row3/row4 update
+// DX9 applies in BaseStereoRenderer-inl.h:304, with raw view-space m31/m41.
+static void ApplyViewInverseShift(unsigned char* data, size_t byteCount,
+                                  float eyeShift, unsigned* outShifted)
+{
+    if (eyeShift == 0.f) return;
+    const float m31 = eyeShift;
+    const float m41 = EyeOffsetM41(eyeShift);
+    const size_t regs = byteCount / 16;
+    for (size_t r = 0; r + 4 <= regs; ++r)
+    {
+        float* f = reinterpret_cast<float*>(data + r * 16);
+        if (!LooksLikeViewInverse(f)) continue;
+        f[8]  -= m31 * f[0];  f[9]  -= m31 * f[1];
+        f[10] -= m31 * f[2];  f[11] -= m31 * f[3];
+        f[12] -= m41 * f[0];  f[13] -= m41 * f[1];
+        f[14] -= m41 * f[2];  f[15] -= m41 * f[3];
+        if (outShifted) ++*outShifted;
+    }
+}
+
 // outShifted / outRejected are diagnostic tallies (may be null); they feed the
 // per-frame summary so we can see the guards actually firing.
 static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
@@ -1896,7 +2004,17 @@ static void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
         float basisXn, basisWn;
         MatrixBasisNorms(f, transposed, basisXn, basisWn);
         if (basisWn > 1e-6f && fabsf(basisWn - 1.f) < 0.05f)
+        {
             s_projXScale = basisXn / basisWn;
+            if (basisXn > 1e-6f)
+            {
+                const float inv = 1.f / basisXn;
+                s_camRight[0] = (transposed ? f[0] : f[0])  * inv;
+                s_camRight[1] = (transposed ? f[1] : f[4])  * inv;
+                s_camRight[2] = (transposed ? f[2] : f[8])  * inv;
+                s_haveCamRight = true;
+            }
+        }
         if (basisWn < s_wnMin) s_wnMin = basisWn;
         if (basisWn > s_wnMax) s_wnMax = basisWn;
         const float camXScale = ProjXScaleFromMatrix(f, transposed);
@@ -2144,6 +2262,7 @@ static void AddProfileMatrixTargets(const ShaderProfileDataMap& map, DWORD crc,
         em.matrixRegister     = md.matrixRegister;
         em.matrixIsTransposed = md.matrixIsTransposed;
         em.matrixIsInverse    = md.inverse;
+        em.matrixFromLearned  = FALSE;
         targets.push_back(em);
     }
 }
@@ -2352,6 +2471,7 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                             em.matrixRegister     = pmd.matrixRegister;
                             em.matrixIsTransposed = pmd.matrixIsTransposed;
                             em.matrixIsInverse    = FALSE;
+                            em.matrixFromLearned  = FALSE;
                             targets.push_back(em);
                         }
                     }
@@ -2463,11 +2583,16 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                                 static_cast<unsigned char*>(mapped.pData),
                                 bytes.size(), eyeShift, targets,
                                 &m_cbMatShiftedThisFrame, &m_cbMatRejectedThisFrame);
-                            if (m_cbMatShiftedThisFrame != before) bp->MarkShifted();
+                            if (m_cbMatShiftedThisFrame != before) bp->MarkShifted(s_frameId);
                         }
                         else if (useBlindNow)
                             ApplyEyeShiftToCB(static_cast<unsigned char*>(mapped.pData),
                                               bytes.size(), eyeShift);
+                        // gViewInverse sits in the same buffer as the projection
+                        // it pairs with, so scan every copied CB for it.
+                        ApplyViewInverseShift(
+                            static_cast<unsigned char*>(mapped.pData),
+                            bytes.size(), eyeShift, &m_cbViewInvShiftedThisFrame);
                         m_real->Unmap(rightBuf, subres);
                     }
                 }

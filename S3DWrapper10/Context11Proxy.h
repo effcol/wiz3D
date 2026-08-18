@@ -464,10 +464,15 @@ private:
     // rejected by the ortho / shadow-map guards in ShouldSkipProjectionMatrix.
     unsigned             m_cbMatShiftedThisFrame  = 0;
     unsigned             m_cbMatRejectedThisFrame = 0;
+    unsigned             m_cbViewInvShiftedThisFrame = 0;
     // Draw-level stereo coverage: why a draw's geometry could not be corrected.
     unsigned             m_drawsVSUnparsedThisFrame     = 0;
     unsigned             m_drawsVSNoMatrixThisFrame     = 0;
     unsigned             m_drawsVSNeverShiftedThisFrame = 0;
+    unsigned             m_drawsVSStaleShiftThisFrame   = 0;
+    unsigned             m_drawsVSNoSiblingCBThisFrame  = 0;
+    // Draws per VS CRC for geometry that reached the right eye uncorrected.
+    std::map<DWORD, unsigned> m_uncorrectedVSDraws;
     void TallyDrawCoverage();
     void BeginDraw(UINT vertexCount);
     // Draws per modified-shader CRC, so the ones the scene really uses are known.

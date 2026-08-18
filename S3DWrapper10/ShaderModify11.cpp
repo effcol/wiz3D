@@ -122,6 +122,24 @@ bool TryModifyShaderForStereo(const void* bytecode, SIZE_T byteLength,
     return true;
 }
 
+void DumpShaderBytecode(const char* kind, const void* code, SIZE_T len, unsigned idx)
+{
+    if (!gInfo.DumpModifiedShaders || idx > 400 || !code) return;
+
+    ID3DBlob* a = nullptr;
+    if (FAILED(D3DDisassemble(code, len, 0, nullptr, &a)) || !a) return;
+
+    char path[MAX_PATH];
+    sprintf_s(path, "wiz3D_%s_%03u.txt", kind, idx);
+    FILE* f = nullptr;
+    if (fopen_s(&f, path, "wb") == 0 && f)
+    {
+        fprintf(f, "%s\n", (const char*)a->GetBufferPointer());
+        fclose(f);
+    }
+    a->Release();
+}
+
 // Before/after disassembly, named by modification index and CRC so the files
 // line up with the TryBuildModifiedVS[N] log lines.
 void DumpShaderPair(const void* orig, SIZE_T origLen, const void* mod, SIZE_T modLen,
