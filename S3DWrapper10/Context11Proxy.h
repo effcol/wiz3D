@@ -464,7 +464,6 @@ private:
     // rejected by the ortho / shadow-map guards in ShouldSkipProjectionMatrix.
     unsigned             m_cbMatShiftedThisFrame  = 0;
     unsigned             m_cbMatRejectedThisFrame = 0;
-    unsigned             m_cbViewInvShiftedThisFrame = 0;
     // Draw-level stereo coverage: why a draw's geometry could not be corrected.
     unsigned             m_drawsVSUnparsedThisFrame     = 0;
     unsigned             m_drawsVSNoMatrixThisFrame     = 0;
