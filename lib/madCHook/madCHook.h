@@ -57,6 +57,17 @@ namespace madCHookShim {
         return entries;
     }
 
+    // MinHook fills the caller's "original" only on MH_OK, so remember trampolines ourselves.
+    struct TrampolineEntry {
+        LPVOID pTarget;
+        LPVOID pTrampoline;
+    };
+
+    inline std::vector<TrampolineEntry>& GetTrampolines() {
+        static std::vector<TrampolineEntry> tramps;
+        return tramps;
+    }
+
     inline std::mutex& GetMutex() {
         static std::mutex mtx;
         return mtx;
@@ -65,6 +76,26 @@ namespace madCHookShim {
     inline void RegisterHook(LPVOID pTarget, PVOID* ppOriginal) {
         std::lock_guard<std::mutex> lock(GetMutex());
         GetHookEntries().push_back({ pTarget, ppOriginal });
+    }
+
+    inline void RememberTrampoline(LPVOID pTarget, LPVOID pTrampoline) {
+        std::lock_guard<std::mutex> lock(GetMutex());
+        for (auto& e : GetTrampolines()) {
+            if (e.pTarget == pTarget) {
+                e.pTrampoline = pTrampoline;
+                return;
+            }
+        }
+        GetTrampolines().push_back({ pTarget, pTrampoline });
+    }
+
+    inline LPVOID FindTrampoline(LPVOID pTarget) {
+        std::lock_guard<std::mutex> lock(GetMutex());
+        for (auto& e : GetTrampolines()) {
+            if (e.pTarget == pTarget)
+                return e.pTrampoline;
+        }
+        return nullptr;
     }
 
     inline LPVOID FindTarget(PVOID* ppOriginal) {
@@ -164,8 +195,17 @@ inline BOOL HookAPI(const char* pszModule, const char* pszFuncName,
     // Use MH_CreateHook with the resolved address (more reliable than MH_CreateHookApi
     // when the module was loaded via full path)
     MH_STATUS status = MH_CreateHook((LPVOID)pTarget, pDetour, ppOriginal);
-    if (status != MH_OK && status != MH_ERROR_ALREADY_CREATED)
+    if (status == MH_OK) {
+        madCHookShim::RememberTrampoline((LPVOID)pTarget, *ppOriginal);
+    } else if (status == MH_ERROR_ALREADY_CREATED) {
+        // See HookCode: MinHook does not fill *ppOriginal in this case.
+        LPVOID pTrampoline = madCHookShim::FindTrampoline((LPVOID)pTarget);
+        if (!pTrampoline)
+            return FALSE;
+        *ppOriginal = pTrampoline;
+    } else {
         return FALSE;
+    }
 
     // Track it so UnhookAPI can find the target
     madCHookShim::RegisterHook((LPVOID)pTarget, ppOriginal);
@@ -216,8 +256,17 @@ inline BOOL HookCode(PVOID pCode, void* pCallback, PVOID* ppNextHook, DWORD /*fl
         return FALSE;
 
     MH_STATUS status = MH_CreateHook(pCode, pCallback, ppNextHook);
-    if (status != MH_OK && status != MH_ERROR_ALREADY_CREATED)
+    if (status == MH_OK) {
+        madCHookShim::RememberTrampoline(pCode, *ppNextHook);
+    } else if (status == MH_ERROR_ALREADY_CREATED) {
+        // Several proxies hook one shared d3d9 function, so reuse the first trampoline.
+        LPVOID pTrampoline = madCHookShim::FindTrampoline(pCode);
+        if (!pTrampoline)
+            return FALSE;
+        *ppNextHook = pTrampoline;
+    } else {
         return FALSE;
+    }
 
     madCHookShim::RegisterHook(pCode, ppNextHook);
 
