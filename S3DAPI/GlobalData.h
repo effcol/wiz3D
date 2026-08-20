@@ -339,6 +339,57 @@ public:
 	// interesting state is further in (e.g. set to 600 to start ~10s into
 	// gameplay at 60fps).
 	DWORD		FrameTraceStartFrame;
+	// DX10/11 (Aug 2026): controls the per-eye constant-buffer patch policy
+	// used by the right-eye replay in Context11Proxy::Unmap.
+	//
+	//   false (default) — legacy behaviour. When the shader analyzer has no
+	//     projection-matrix entry for the CB being written, fall back to
+	//     ApplyEyeShiftToCB: a heuristic scan that walks the whole buffer at
+	//     4-byte offsets looking for anything shaped like a perspective matrix
+	//     and shifts EVERY match.
+	//   true — trust the analyzer. If it successfully parsed the bound vertex
+	//     shader and reports no projection matrix in this buffer, leave the
+	//     buffer alone instead of guessing.
+	//
+	// The heuristic's match test (m[2][3]==1, m[3][3]==0, m[0][0]!=0,
+	// m[1][1]!=0) is cheap to satisfy by accident, and MP3 issues thousands of
+	// CB writes per frame, so false positives corrupt unrelated constants —
+	// the suspected cause of the right eye rendering depth-green (MSAA off) or
+	// near-black (MSAA on). Kept as a flag rather than an unconditional fix so
+	// the two policies can be A/B'd against games that currently work.
+	bool		DisableBlindCBScan;
+	// Shift the whole first column via the matrix's w terms instead of only
+	// _31/_13. Required for WorldViewProjection matrices, where the single-
+	// element form scales the shift by each mesh's own object space and makes
+	// attached objects drift apart. Flagged so it can be A/B'd.
+	bool		FullColumnEyeShift;
+	// DX10\11 COM-wrap: modify vertex shaders so they shift their own output
+	// position, instead of patching a projection matrix in a constant buffer.
+	bool		ModifyShadersDX11;
+	// Bisection aid: modify only the first N eligible vertex shaders. 0 = no
+	// limit. Halve it to find which shader breaks the driver.
+	DWORD		ModifyShadersMaxCount;
+	int			DumpModifiedShaders;
+	// Start the frame trace at the first frame with at least this many draws.
+	DWORD		FrameTraceMinDraws;
+	// DX10/11 COM-wrap replay: also snapshot and replay writes to dynamic
+	// VERTEX and INDEX buffers, not just constant buffers.
+	//
+	// The right-eye replay re-issues the frame's draws at Present, after the
+	// game has finished writing. Geometry the game refills between draws — the
+	// map(WRITE_DISCARD)/fill/unmap/draw loop used for HUD, text and particle
+	// batches — is therefore stale by replay time: every draw reads the last
+	// batch written rather than its own. Without this, such passes replay with
+	// the correct draw calls and render nothing in the right eye (observed as
+	// Max Payne 3's missing right-eye HUD). Static geometry is unaffected.
+	//
+	// Costs one full-buffer copy per qualifying Unmap, so set to 0 if a game
+	// streams large dynamic buffers and the frame cost matters more than
+	// stereo correctness on those passes.
+	bool		ReplayDynamicBuffers;
+	// Issue each draw twice live (NVIDIA Automatic's model) instead of recording
+	// the frame and replaying it for the right eye at Present. Disables replay.
+	bool		DuplicateDraws;
 	// Option B (Stage 4c): internal dev override for the per-eye horizontal
 	// shift applied to projection matrices' m[2][0] during the right-eye
 	// replay. Not surfaced in the user-facing wiz3D_Config.xml — the user
@@ -459,6 +510,14 @@ public:
 		UseCOMWrapSwapChain = true;   // Swap-chain wrap + Present hook (4d composite needs this).
 		UseCOMWrapReplay = true;      // Right-eye replay at Present (4c CB math + 4e analyzer use this).
 		COMWrapEyeShift  = 0.0f;      // 0 = use per-game profile StereoBase; non-zero = override.
+		DisableBlindCBScan = true;    // Never guess: the blind scan corrupted cascade transforms.
+		FullColumnEyeShift = true;    // Real 1/z parallax; false = legacy single-element shift.
+		ModifyShadersDX11  = false;   // false = constant-buffer patching only.
+		ModifyShadersMaxCount = 0;    // 0 = modify every eligible shader.
+		DumpModifiedShaders = 0;      // 1 = write per-shader before/after disassembly.
+		FrameTraceMinDraws    = 0;    // 0 = frame-number gate only.
+		ReplayDynamicBuffers = true;  // Replay dynamic VB/IB writes so re-issued draws see their own geometry.
+		DuplicateDraws   = true;      // Issue each draw twice live; false = legacy record+replay.
 		DrawType = 2;
 		DeviceMode = DEVICE_MODE_AUTO;
 		MultiWindowsMode = MULTI_WINDOWS_MODE_AUTO;

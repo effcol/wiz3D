@@ -229,6 +229,12 @@ bool ModifyShader( const TShaderList& originalShader, unsigned outputRegisterInd
 		modifiedShader.push_back(tmpDeclInst);
 	}
 
+	//--- same for the cb decl: without this a shader declaring no constant buffer
+	//--- would reference cb[freeCBIndex] undeclared and fault in the driver
+	if (!addedCbDecl) {
+		modifiedShader.push_back(cbDeclInst);
+	}
+
 	//--- substitute output register ---
 	//--- copy all command before "ret" one ---
 	int outputMask = 0;
@@ -259,7 +265,10 @@ bool ModifyShader( const TShaderList& originalShader, unsigned outputRegisterInd
 		//--- change command if needed;
 		if (outputOperand) 
 		{
-			if (immediateOperand && si.getOperation()->getType() == D3D10_SB_OPCODE_MOV)
+			// Full-write only: bailing on the tail of a split write ("mov o0.xyz, v0"
+			// then "mov o0.w, l(1)") left o0.xyz redirected but never written back.
+			if (immediateOperand && si.getOperation()->getType() == D3D10_SB_OPCODE_MOV &&
+				outputMask == ShaderOperand::ALL_COMPONENTS)
 			{
 				// Disable modification if immediate operand detected, this is not a worldViewProj transform and
 				// modification of such command can lead to crash(Detected in BFBC 2)

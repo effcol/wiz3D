@@ -7,6 +7,8 @@
 #include "Texture2D11Proxy.h"
 #include "proxy_factory.h"     // IID_wiz3D_SwapChain11Proxy (declared in 4b.2 update)
 #include "AdapterFunctions.h"  // DDILog
+#include "..\S3DAPI\ReadData.h"      // WriteInputData — persist hotkey-tuned stereo
+#include "..\S3DAPI\KeyboardHook.h"  // gKbdHook — the DX9 paths' hotkey thread
 #include <d3dcompiler.h>
 
 #pragma comment(lib, "dxguid.lib")
@@ -18,6 +20,9 @@ namespace wiz3d
 SwapChain11Proxy::SwapChain11Proxy(IDXGISwapChain* real, IDXGISwapChain1* real1, Device11Proxy* parent)
     : m_real(real)
     , m_real1(real1)
+    , m_real2(nullptr)
+    , m_real3(nullptr)
+    , m_real4(nullptr)
     , m_parent(parent)
     , m_refs(1)
     , m_leftBB(nullptr)
@@ -42,13 +47,38 @@ SwapChain11Proxy::SwapChain11Proxy(IDXGISwapChain* real, IDXGISwapChain1* real1,
     // crashed at OnPresentBoundaryPre line 92 with ECX=1 — Device11Proxy
     // memory had been freed and m_ctxProxy was reading reused heap data).
     if (m_parent) m_parent->AddRef();
-    DDILog("SwapChain11Proxy ctor: real=%p real1=%p parent=%p\n", real, real1, parent);
+    // The DX9 paths' KeyboardHook: refcounted, own polling thread, writes
+    // gInfo.Input — which is what the COM-wrap stereo math reads.
+    gKbdHook.initialize(&gInfo.Input);
+    // Cache the higher-version chains so QI can return `this` for them.
+    if (m_real)
+    {
+        if (FAILED(m_real->QueryInterface(__uuidof(IDXGISwapChain2), reinterpret_cast<void**>(&m_real2)))) m_real2 = nullptr;
+        if (FAILED(m_real->QueryInterface(__uuidof(IDXGISwapChain3), reinterpret_cast<void**>(&m_real3)))) m_real3 = nullptr;
+        if (FAILED(m_real->QueryInterface(__uuidof(IDXGISwapChain4), reinterpret_cast<void**>(&m_real4)))) m_real4 = nullptr;
+    }
+    DDILog("SwapChain11Proxy ctor: real=%p real1=%p real2=%p real3=%p real4=%p parent=%p\n",
+           real, real1, m_real2, m_real3, m_real4, parent);
+    // SwapEffect >= 3 is flip-model, where the game rotates through buffers
+    // by index instead of always drawing to buffer 0.
+    DXGI_SWAP_CHAIN_DESC scd = {};
+    if (m_real && SUCCEEDED(m_real->GetDesc(&scd)))
+        DDILog("  SwapChain desc: BufferCount=%u %ux%u fmt=%d SwapEffect=%d Flags=0x%X\n",
+               scd.BufferCount, scd.BufferDesc.Width, scd.BufferDesc.Height,
+               (int)scd.BufferDesc.Format, (int)scd.SwapEffect, scd.Flags);
 }
 
 SwapChain11Proxy::~SwapChain11Proxy()
 {
+    // Persist hotkey-tuned stereo values: the legacy DDI wrapper saves them on
+    // teardown, but the COM-wrap path never did, so tuning died with the run.
+    WriteInputData(&gInfo.Input);
+    gKbdHook.clear();
     ReleaseStereoBackBuffer();
     ReleaseComposite();
+    if (m_real4)  { m_real4->Release();  m_real4  = nullptr; }
+    if (m_real3)  { m_real3->Release();  m_real3  = nullptr; }
+    if (m_real2)  { m_real2->Release();  m_real2  = nullptr; }
     if (m_real1)  { m_real1->Release();  m_real1  = nullptr; }
     if (m_real)   { m_real->Release();   m_real   = nullptr; }
     if (m_parent) { m_parent->Release(); m_parent = nullptr; }
@@ -79,6 +109,26 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::QueryInterface(REFIID riid, void** p
         AddRef();
         return S_OK;
     }
+    // Only claim a version the real chain actually supports, so a game can
+    // still feature-detect correctly on older runtimes.
+    if (riid == __uuidof(IDXGISwapChain2) && m_real2)
+    {
+        *ppvObj = static_cast<IDXGISwapChain2*>(this);
+        AddRef();
+        return S_OK;
+    }
+    if (riid == __uuidof(IDXGISwapChain3) && m_real3)
+    {
+        *ppvObj = static_cast<IDXGISwapChain3*>(this);
+        AddRef();
+        return S_OK;
+    }
+    if (riid == __uuidof(IDXGISwapChain4) && m_real4)
+    {
+        *ppvObj = static_cast<IDXGISwapChain4*>(this);
+        AddRef();
+        return S_OK;
+    }
     // Stage 4b.2: private identity IID — used by the dxgi.dll-side factory
     // hook (4b.3) to detect "is this swap chain one of ours?" cross-DLL.
     if (riid == IID_wiz3D_SwapChain11Proxy)
@@ -87,10 +137,8 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::QueryInterface(REFIID riid, void** p
         AddRef();
         return S_OK;
     }
-    // IDXGISwapChain2/3/4: pass through unwrapped for now. Future iteration
-    // can extend if needed by Win11-era games. Log so we can spot games that
-    // depend on the higher-version SC interfaces (same diagnostic pattern as
-    // Device11Proxy::QI bypass-risk lines).
+    // Anything still unhandled goes to the real chain unwrapped, which lets
+    // the game drive it behind our back. Logged so those cases stay visible.
     HRESULT hr = m_real->QueryInterface(riid, ppvObj);
     static int s_logged = 0;
     if (s_logged < 8)
@@ -165,6 +213,8 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
     m_bbWidth  = desc.BufferDesc.Width;
     m_bbHeight = desc.BufferDesc.Height;
     m_bbFormat = desc.BufferDesc.Format;
+    // The ZPS hotkey step is expressed in pixels and scaled by this width.
+    gKbdHook.setBackBufferWidth(m_bbWidth);
 
     ID3D11Device* dev = m_parent->GetReal();
     if (!dev) return E_FAIL;
@@ -384,7 +434,16 @@ void SwapChain11Proxy::DoComposite()
     ctx->OMSetBlendState(m_compositeBlend, blendFactor, 0xFFFFFFFF);
     ctx->OMSetDepthStencilState(m_compositeDepthStencil, 0);
 
-    ID3D11ShaderResourceView* srvs[2] = { m_leftSRV, m_rightSRV };
+    // Stereo toggle presents the left eye to both sides; SwapEyes crosses them.
+    ID3D11ShaderResourceView* eyeL = m_leftSRV;
+    ID3D11ShaderResourceView* eyeR = gInfo.Input.StereoActive ? m_rightSRV : m_leftSRV;
+    if (gInfo.Input.SwapEyes && gInfo.Input.StereoActive)
+    {
+        ID3D11ShaderResourceView* t = eyeL;
+        eyeL = eyeR;
+        eyeR = t;
+    }
+    ID3D11ShaderResourceView* srvs[2] = { eyeL, eyeR };
     ctx->PSSetShaderResources(0, 2, srvs);
     ctx->PSSetSamplers(0, 1, &m_compositeSampler);
 
@@ -414,7 +473,14 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::GetBuffer(UINT Buffer, REFIID riid, 
     // through to the real swap chain (multi-buffer / shared-surface use is
     // rare for the games we wrap; first-pass leaves them unwrapped).
     if (Buffer != 0 || !ppSurface)
+    {
+        // Logged separately: a flip-model game asking for a non-zero index
+        // gets a real buffer while index 0 is wrapped, mixing the two.
+        static unsigned s_nonZero = 0;
+        if (s_nonZero++ < 16)
+            DDILog("SwapChain11Proxy::GetBuffer(%u): UNWRAPPED real buffer returned\n", Buffer);
         return m_real->GetBuffer(Buffer, riid, ppSurface);
+    }
 
     if (FAILED(EnsureStereoBackBuffer()))
         return m_real->GetBuffer(Buffer, riid, ppSurface);
@@ -429,7 +495,13 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::GetBuffer(UINT Buffer, REFIID riid, 
     HRESULT hr = m_wrappedBB->QueryInterface(riid, ppSurface);
     if (SUCCEEDED(hr))
     {
-        DDILog("SwapChain11Proxy::GetBuffer(0): returned wrapped BB=%p\n", m_wrappedBB);
+        // Register whatever interface pointer the game actually got: QI may
+        // hand back a different address than m_wrappedBB, and CreateRTV
+        // compares against the pointer the game passes back in.
+        if (m_parent && *ppSurface)
+            m_parent->RegisterBackBufferTexture(*ppSurface);
+        DDILog("SwapChain11Proxy::GetBuffer(0): returned wrapped BB=%p (as %p) registered on dev=%p\n",
+               m_wrappedBB, *ppSurface, m_parent);
         return hr;
     }
     return m_real->GetBuffer(Buffer, riid, ppSurface);
@@ -486,6 +558,9 @@ void SwapChain11Proxy::OnPresentBoundaryPost()
     if (!m_parent) return;
     Context11Proxy* ctx = m_parent->GetContextProxy();
     if (!ctx) return;
+    // Diagnostic: must run BEFORE ClearFrameCommands() so the summary sees the
+    // recording for the frame that just presented, not an empty vector.
+    ctx->LogAndResetFrameDrawStats();
     ctx->ClearFrameCommands();
     ctx->SetPresentHookActive(true);
 }
@@ -515,6 +590,27 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::ResizeBuffers(
     ReleaseStereoBackBuffer();
     HRESULT hr = m_real->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
     DDILog("SwapChain11Proxy::ResizeBuffers -> hr=0x%08lX\n", hr);
+    return hr;
+}
+
+// Same invalidation as ResizeBuffers: it reallocates the same buffers, so our
+// stereo siblings and the recorded command stream must go first.
+HRESULT STDMETHODCALLTYPE SwapChain11Proxy::ResizeBuffers1(
+    UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT Format, UINT SwapChainFlags,
+    const UINT* pCreationNodeMask, IUnknown* const* ppPresentQueue)
+{
+    if (!m_real3) return E_NOINTERFACE;
+    if (m_parent)
+    {
+        if (Context11Proxy* ctx = m_parent->GetContextProxy())
+            ctx->ClearFrameCommands();
+    }
+    DDILog("SwapChain11Proxy::ResizeBuffers1: count=%u %ux%u fmt=%d flags=0x%X\n",
+           BufferCount, Width, Height, (int)Format, SwapChainFlags);
+    ReleaseStereoBackBuffer();
+    HRESULT hr = m_real3->ResizeBuffers1(BufferCount, Width, Height, Format,
+                                         SwapChainFlags, pCreationNodeMask, ppPresentQueue);
+    DDILog("SwapChain11Proxy::ResizeBuffers1 -> hr=0x%08lX\n", hr);
     return hr;
 }
 

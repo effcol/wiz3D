@@ -11,6 +11,10 @@
 #include "Texture1D11Proxy.h"
 #include "Texture3D11Proxy.h"
 #include "StereoHeuristic.h"
+#include "DxbcRebuild.h"                   // DxbcSelfTest
+#include "ShaderModify11.h"                // TryModifyShaderForStereo
+#include "..\S3DAPI\ReadData.h"            // ReadCurrentProfile
+#include "..\S3DAPI\ShaderProfileData.h"   // g_ProfileData
 #include "proxy_factory.h"     // for IID_wiz3D_Device11Proxy
 #include "AdapterFunctions.h"  // DDILog
 
@@ -27,6 +31,26 @@
 
 namespace wiz3d
 {
+
+// Vendor id drives per-vendor config sections; 0 is an acceptable fallback.
+static DWORD GetVendorIdFromDevice(ID3D11Device* dev)
+{
+    DWORD vendor = 0;
+    IDXGIDevice* dxgiDev = nullptr;
+    if (dev && SUCCEEDED(dev->QueryInterface(__uuidof(IDXGIDevice),
+                                             reinterpret_cast<void**>(&dxgiDev))) && dxgiDev)
+    {
+        IDXGIAdapter* adapter = nullptr;
+        if (SUCCEEDED(dxgiDev->GetAdapter(&adapter)) && adapter)
+        {
+            DXGI_ADAPTER_DESC desc;
+            if (SUCCEEDED(adapter->GetDesc(&desc))) vendor = desc.VendorId;
+            adapter->Release();
+        }
+        dxgiDev->Release();
+    }
+    return vendor;
+}
 
 Device11Proxy::Device11Proxy(ID3D11Device* real)
     : m_real(real)
@@ -53,6 +77,46 @@ Device11Proxy::Device11Proxy(ID3D11Device* real)
         if (FAILED(m_real->QueryInterface(__uuidof(ID3D11Device3), reinterpret_cast<void**>(&m_real3)))) m_real3 = nullptr;
         LOG_VERBOSE("  Device11Proxy ctor: real=%p real1=%p real2=%p real3=%p\n",
                     m_real, m_real1, m_real2, m_real3);
+    }
+
+    // Populate g_ProfileData. Only D3DDeviceWrapper (legacy DDI) and DX9 ever
+    // called this, so under COM-wrap every per-game profile — mono shader
+    // lists, matrix declarations — silently did nothing.
+    static bool s_profileRead = false;
+    if (!s_profileRead)
+    {
+        s_profileRead = true;
+        // ReadConfig bails early when g_docConfig is null (it is, under
+        // COM-wrap), so DefaultProfile presets never load and a game profile
+        // without its own <Presets> would leave separation at zero. Keep the
+        // camera state we already had; we only want the shader/matrix data.
+        DataInput savedInput = gInfo.Input;
+        ReadCurrentProfile(GetVendorIdFromDevice(m_real));
+        // Restoring unconditionally also discarded presets a profile really did
+        // supply, pinning every game to the built-in 0.16 / 0.5. Keep what the
+        // profile gave us; fall back only when it gave nothing usable.
+        const CameraPreset* loaded = gInfo.Input.GetActivePreset();
+        if (!loaded || loaded->StereoBase == 0.f)
+            gInfo.Input = savedInput;
+        // Method 0 shifts via dp4 with the stereo projection's _31/_41 skew, which
+        // only the DX9 renderer computes. Method 2 is x += sep*(w - conv), which
+        // needs just separation and convergence — the values we actually have.
+        if (gInfo.ModifyShadersDX11 && gInfo.VertexShaderModificationMethod != 2)
+        {
+            DDILog("  Device11Proxy: ModifyShadersDX11 forces VertexShaderModificationMethod 2 (was %d)\n",
+                   (int)gInfo.VertexShaderModificationMethod);
+            gInfo.VertexShaderModificationMethod = 2;
+        }
+        const CameraPreset* act = gInfo.Input.GetActivePreset();
+        DDILog("  Device11Proxy: preset StereoBase=%.6f One_div_ZPS=%.6f (converge=%.2f units)\n",
+               act ? act->StereoBase : 0.f, act ? act->One_div_ZPS : 0.f,
+               (act && act->One_div_ZPS != 0.f) ? 1.f / act->One_div_ZPS : 0.f);
+        DDILog("  Device11Proxy: ReadCurrentProfile done, VS=%u PS=%u GS=%u entries,"
+               " eyeShift=%.6f\n",
+               (unsigned)g_ProfileData.VSCRCData.size(),
+               (unsigned)g_ProfileData.PSCRCData.size(),
+               (unsigned)g_ProfileData.GSCRCData.size(),
+               wiz3D_GetEffectiveEyeShift());
     }
 }
 
@@ -122,6 +186,17 @@ const ShaderAnalysis11Result* Device11Proxy::LookupShaderProjection(void* shader
     return p;
 }
 
+const Device11Proxy::ModifiedVS* Device11Proxy::LookupModifiedVS(ID3D11VertexShader* original) const
+{
+    if (!original) return nullptr;
+    auto* self = const_cast<Device11Proxy*>(this);
+    EnterCriticalSection(&self->m_shaderProjLock);
+    auto it = m_modifiedVS.find(original);
+    const ModifiedVS* p = (it == m_modifiedVS.end()) ? nullptr : &it->second;
+    LeaveCriticalSection(&self->m_shaderProjLock);
+    return p;
+}
+
 namespace {
 
 template<typename TShader, typename CreateFn>
@@ -132,14 +207,23 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
     HRESULT hr = createReal(pBytecode, byteLength, pClassLinkage, ppShader);
     if (FAILED(hr) || !ppShader || !*ppShader) return hr;
 
+    // One-time proof, against real game bytecode, that our checksum matches the
+    // compiler's and that a rebuilt container is byte-identical to the original.
+    static bool s_selfTested = false;
+    if (!s_selfTested && pBytecode && byteLength > 32)
+    {
+        s_selfTested = true;
+        DxbcSelfTest(pBytecode, byteLength);
+    }
+
     ShaderAnalysis11Result info;
-    if (AnalyzeShader11(pBytecode, byteLength, info) && !info.projection.matrixData.cb.empty())
+    const bool analyzed = AnalyzeShader11(pBytecode, byteLength, info);
+    if (analyzed && !info.projection.matrixData.cb.empty())
     {
         NVDM_TRACE_FIRST_N(32,
             "  Device11Proxy::Create%sShader: CRC=0x%08lX shader=%p matrices in %u CB(s)\n",
             tag, info.crc32, *ppShader,
             (unsigned)info.projection.matrixData.cb.size());
-        self->StoreShaderProjection(*ppShader, info);
     }
     else
     {
@@ -147,6 +231,20 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
             "  Device11Proxy::Create%sShader: CRC=0x%08lX shader=%p (no projection found, parsed=%d)\n",
             tag, info.crc32, *ppShader, (int)info.parsed);
     }
+
+    // Store EVERY successfully-parsed result, including ones with no
+    // projection matrices (Aug 2026). Previously we only stored shaders that
+    // had matrices, which meant LookupShaderProjection returned null for two
+    // very different situations: "analyzed, definitively has no projection"
+    // and "never analyzed at all". Context11Proxy::Unmap could not tell them
+    // apart, so a shader we had positively cleared still fell through to the
+    // heuristic CB scan. Storing the negative result makes that distinction
+    // available at the call site.
+    // Store on CRC alone too: pixel shaders always fail analysis (no
+    // SV_Position output) but BaseProfile.xml still matches them by CRC.
+    // parsed stays false there, so analyzerKnows is unaffected.
+    if (analyzed || info.crc32)
+        self->StoreShaderProjection(*ppShader, info);
     return hr;
 }
 
@@ -156,11 +254,92 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateVertexShader(
     const void* pShaderBytecode, SIZE_T BytecodeLength,
     ID3D11ClassLinkage* pClassLinkage, ID3D11VertexShader** ppVertexShader)
 {
-    return AnalyzeAndCreate<ID3D11VertexShader>("Vertex", this,
+    HRESULT hr = AnalyzeAndCreate<ID3D11VertexShader>("Vertex", this,
         [this](const void* b, SIZE_T n, ID3D11ClassLinkage* cl, ID3D11VertexShader** pp) {
             return m_real->CreateVertexShader(b, n, cl, pp);
         },
         pShaderBytecode, BytecodeLength, pClassLinkage, ppVertexShader);
+
+    if (gInfo.ModifyShadersDX11 && SUCCEEDED(hr) && ppVertexShader && *ppVertexShader)
+        TryBuildModifiedVS(pShaderBytecode, BytecodeLength, pClassLinkage, *ppVertexShader);
+    return hr;
+}
+
+// Builds the self-shifting variant of a vertex shader and keeps it beside the
+// original. Only shaders the analyzer found no projection matrix in are worth
+// modifying — the rest are already handled by targeted CB patching.
+void Device11Proxy::TryBuildModifiedVS(const void* bytecode, SIZE_T byteLength,
+                                       ID3D11ClassLinkage* linkage, ID3D11VertexShader* original)
+{
+    const ShaderAnalysis11Result* info = LookupShaderProjection(original);
+    if (!info || !info->parsed) { ++m_vsModSkippedUnparsed; return; }
+    if (!info->projection.matrixData.cb.empty()) { ++m_vsModSkippedHasMatrix; return; }
+    if (gInfo.ModifyShadersMaxCount && m_vsModOk >= gInfo.ModifyShadersMaxCount) return;
+
+    std::vector<BYTE> blob;
+    ModifiedShaderData mdata;
+    if (!TryModifyShaderForStereo(bytecode, byteLength, info->posRegister, false, blob, mdata))
+    {
+        ++m_vsModFailed;
+        NVDM_TRACE_FIRST_N(8, "  TryBuildModifiedVS: CRC=0x%08lX modify FAILED\n", info->crc32);
+        return;
+    }
+
+    ID3D11VertexShader* modified = nullptr;
+    HRESULT hr = m_real->CreateVertexShader(blob.data(), blob.size(), linkage, &modified);
+    if (FAILED(hr) || !modified)
+    {
+        ++m_vsModRejected;
+        NVDM_TRACE_FIRST_N(8,
+            "  TryBuildModifiedVS: CRC=0x%08lX runtime REJECTED modified shader hr=0x%08lX\n",
+            info->crc32, hr);
+        return;
+    }
+
+    ++m_vsModOk;
+    DumpShaderPair(bytecode, byteLength, blob.data(), blob.size(), m_vsModOk, info->crc32);
+    // Index is the bisection handle: with ModifyShadersMaxCount set, only
+    // shaders below that index are modified, so the last one logged before a
+    // crash narrows the culprit.
+    DDILog("  TryBuildModifiedVS[%u]: CRC=0x%08lX OK cb=%u dp4Reg=%u (orig=%zu mod=%zu bytes)\n",
+           m_vsModOk, info->crc32, mdata.CBIndex, mdata.dp4VectorRegister, byteLength, blob.size());
+
+    EnterCriticalSection(&m_shaderProjLock);
+    ModifiedVS& slot = m_modifiedVS[original];
+    if (slot.shader) slot.shader->Release();   // shader pointer reuse after a Release
+    slot.shader = modified;
+    slot.data   = mdata;
+    LeaveCriticalSection(&m_shaderProjLock);
+}
+
+void Device11Proxy::LogShaderModStats() const
+{
+    DDILog("  VS modification: ok=%u failed=%u rejected=%u skipped(hasMatrix)=%u skipped(unparsed)=%u\n",
+           m_vsModOk, m_vsModFailed, m_vsModRejected,
+           m_vsModSkippedHasMatrix, m_vsModSkippedUnparsed);
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreatePixelShader(
+    const void* pShaderBytecode, SIZE_T BytecodeLength,
+    ID3D11ClassLinkage* pClassLinkage, ID3D11PixelShader** ppPixelShader)
+{
+    static unsigned s_psDump = 0;
+    DumpShaderBytecode("ps", pShaderBytecode, BytecodeLength, s_psDump++);
+    return AnalyzeAndCreate<ID3D11PixelShader>("Pixel", this,
+        [this](const void* b, SIZE_T n, ID3D11ClassLinkage* cl, ID3D11PixelShader** pp) {
+            return m_real->CreatePixelShader(b, n, cl, pp);
+        },
+        pShaderBytecode, BytecodeLength, pClassLinkage, ppPixelShader);
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateComputeShader(
+    const void* pShaderBytecode, SIZE_T BytecodeLength,
+    ID3D11ClassLinkage* pClassLinkage, ID3D11ComputeShader** ppComputeShader)
+{
+    static unsigned s_csDump = 0;
+    DumpShaderBytecode("cs", pShaderBytecode, BytecodeLength, s_csDump++);
+    return m_real->CreateComputeShader(pShaderBytecode, BytecodeLength,
+                                       pClassLinkage, ppComputeShader);
 }
 
 HRESULT STDMETHODCALLTYPE Device11Proxy::CreateGeometryShader(
@@ -464,6 +643,75 @@ void STDMETHODCALLTYPE Device11Proxy::GetImmediateContext3(ID3D11DeviceContext3*
     else *ppImmediateContext = nullptr;
 }
 
+// ---------------------------------------------------------------------------
+// Deferred-context creation — diagnostic passthrough (Aug 2026).
+//
+// Behaviour is UNCHANGED: we still hand the game the real deferred context.
+// The logging exists to answer a specific open question on Max Payne 3, where
+// the per-frame recording that feeds the right-eye replay comes back nearly
+// empty (19 commands / 2 draws for a full gameplay frame, when the real frame
+// is hundreds of draws). If the game builds its scene on deferred contexts,
+// those draws never pass through Context11Proxy at all, so the right-eye
+// sibling textures are never written — which would explain a right eye that
+// is black (MSAA on) or depth-garbage green (MSAA off) rather than merely
+// mis-shifted.
+//
+// Note this is a REPORTING hook only. Wrapping deferred contexts is not a
+// drop-in fix: a command list bakes its resource bindings at record time, so
+// replaying one for the right eye would just redraw the left. If these lines
+// fire, the replay design needs rework, not a patch here.
+// ---------------------------------------------------------------------------
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext(
+    UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext)
+{
+    HRESULT hr = m_real->CreateDeferredContext(ContextFlags, ppDeferredContext);
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext1(
+    UINT ContextFlags, ID3D11DeviceContext1** ppDeferredContext)
+{
+    HRESULT hr = m_real1 ? m_real1->CreateDeferredContext1(ContextFlags, ppDeferredContext)
+                         : E_NOINTERFACE;
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext1(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext2(
+    UINT ContextFlags, ID3D11DeviceContext2** ppDeferredContext)
+{
+    HRESULT hr = m_real2 ? m_real2->CreateDeferredContext2(ContextFlags, ppDeferredContext)
+                         : E_NOINTERFACE;
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext2(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE Device11Proxy::CreateDeferredContext3(
+    UINT ContextFlags, ID3D11DeviceContext3** ppDeferredContext)
+{
+    HRESULT hr = m_real3 ? m_real3->CreateDeferredContext3(ContextFlags, ppDeferredContext)
+                         : E_NOINTERFACE;
+    NVDM_TRACE_FIRST_N(8,
+        "  Device11Proxy::CreateDeferredContext3(flags=0x%X) hr=0x%08lX ctx=%p"
+        " -- UNWRAPPED: draws on this context bypass right-eye recording\n",
+        ContextFlags, hr,
+        ((SUCCEEDED(hr) && ppDeferredContext) ? (void*)*ppDeferredContext : nullptr));
+    return hr;
+}
+
 HRESULT STDMETHODCALLTYPE Device11Proxy::CreateBuffer(
     const D3D11_BUFFER_DESC* pDesc,
     const D3D11_SUBRESOURCE_DATA* pInitialData,
@@ -476,6 +724,28 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateBuffer(
     HRESULT hr = m_real->CreateBuffer(pDesc, pInitialData, ppBuffer);
     if (FAILED(hr) || !ppBuffer || !*ppBuffer) return hr;
     auto* bufProxy = new Buffer11Proxy(*ppBuffer, this);
+
+    // Right-eye sibling for CBs and UAV-capable buffers. Alloc failure is
+    // non-fatal: the sibling stays null and that buffer's data stays shared.
+    if (gInfo.DuplicateDraws && pDesc &&
+        (pDesc->BindFlags & (D3D11_BIND_CONSTANT_BUFFER |
+                             D3D11_BIND_UNORDERED_ACCESS)) != 0)
+    {
+        ID3D11Buffer* right = nullptr;
+        if (SUCCEEDED(m_real->CreateBuffer(pDesc, pInitialData, &right)) && right)
+        {
+            bufProxy->SetRealRight(right);
+            NVDM_TRACE_FIRST_N(8,
+                "  Device11Proxy::CreateBuffer: right-eye CB sibling ok (size=%u usage=%d)\n",
+                pDesc->ByteWidth, (int)pDesc->Usage);
+        }
+        else
+            NVDM_TRACE_FIRST_N(8,
+                "  Device11Proxy::CreateBuffer: right-eye CB sibling alloc FAILED"
+                " (size=%u) -- constants stay mono for this buffer\n",
+                pDesc->ByteWidth);
+    }
+
     *ppBuffer = static_cast<ID3D11Buffer*>(bufProxy);
     return hr;
 }
@@ -620,6 +890,7 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateShaderResourceView(
                                  : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetReal())
                                              : pResource;
     ID3D11Resource* realRightRes = tex2Proxy ? static_cast<ID3D11Resource*>(tex2Proxy->GetRealRight())
+                                 : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetRealRight())
                                              : nullptr;
 
     HRESULT hr = m_real->CreateShaderResourceView(realLeftRes, pDesc, ppSRView);
@@ -655,6 +926,7 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateUnorderedAccessView(
                                  : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetReal())
                                              : pResource;
     ID3D11Resource* realRightRes = tex2Proxy ? static_cast<ID3D11Resource*>(tex2Proxy->GetRealRight())
+                                 : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetRealRight())
                                              : nullptr;
 
     HRESULT hr = m_real->CreateUnorderedAccessView(realLeftRes, pDesc, ppUAView);

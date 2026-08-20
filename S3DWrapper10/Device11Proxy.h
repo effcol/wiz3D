@@ -24,6 +24,7 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // bundled lib/d3d10 dxgitype.h still
 #include <unordered_set>
 #include <unordered_map>
 #include "ShaderAnalyzer11.h"  // ShaderAnalysis11Result
+#include "..\ShaderAnalysis\modify.h"  // ModifiedShaderData
 
 namespace wiz3d
 {
@@ -66,10 +67,12 @@ public:
     HRESULT STDMETHODCALLTYPE CreateVertexShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11VertexShader** ppVertexShader) override;
     HRESULT STDMETHODCALLTYPE CreateGeometryShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11GeometryShader** ppGeometryShader) override;
     HRESULT STDMETHODCALLTYPE CreateGeometryShaderWithStreamOutput(const void* pShaderBytecode, SIZE_T BytecodeLength, const D3D11_SO_DECLARATION_ENTRY* pSODeclaration, UINT NumEntries, const UINT* pBufferStrides, UINT NumStrides, UINT RasterizedStream, ID3D11ClassLinkage* pClassLinkage, ID3D11GeometryShader** ppGeometryShader) override { return m_real->CreateGeometryShaderWithStreamOutput(pShaderBytecode, BytecodeLength, pSODeclaration, NumEntries, pBufferStrides, NumStrides, RasterizedStream, pClassLinkage, ppGeometryShader); }
-    HRESULT STDMETHODCALLTYPE CreatePixelShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11PixelShader** ppPixelShader) override           { return m_real->CreatePixelShader(pShaderBytecode, BytecodeLength, pClassLinkage, ppPixelShader); }
+    // Analyzed like the other stages: BaseProfile.xml keys its hand-written
+    // matrix declarations on pixel-shader CRC, so PS needs a stored entry too.
+    HRESULT STDMETHODCALLTYPE CreatePixelShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11PixelShader** ppPixelShader) override;
     HRESULT STDMETHODCALLTYPE CreateHullShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11HullShader** ppHullShader) override;
     HRESULT STDMETHODCALLTYPE CreateDomainShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11DomainShader** ppDomainShader) override;
-    HRESULT STDMETHODCALLTYPE CreateComputeShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11ComputeShader** ppComputeShader) override     { return m_real->CreateComputeShader(pShaderBytecode, BytecodeLength, pClassLinkage, ppComputeShader); }
+    HRESULT STDMETHODCALLTYPE CreateComputeShader(const void* pShaderBytecode, SIZE_T BytecodeLength, ID3D11ClassLinkage* pClassLinkage, ID3D11ComputeShader** ppComputeShader) override;
     HRESULT STDMETHODCALLTYPE CreateClassLinkage(ID3D11ClassLinkage** ppLinkage) override                                                                                                    { return m_real->CreateClassLinkage(ppLinkage); }
     HRESULT STDMETHODCALLTYPE CreateBlendState(const D3D11_BLEND_DESC* pBlendStateDesc, ID3D11BlendState** ppBlendState) override                                                            { return m_real->CreateBlendState(pBlendStateDesc, ppBlendState); }
     HRESULT STDMETHODCALLTYPE CreateDepthStencilState(const D3D11_DEPTH_STENCIL_DESC* pDepthStencilDesc, ID3D11DepthStencilState** ppDepthStencilState) override                             { return m_real->CreateDepthStencilState(pDepthStencilDesc, ppDepthStencilState); }
@@ -78,7 +81,12 @@ public:
     HRESULT STDMETHODCALLTYPE CreateQuery(const D3D11_QUERY_DESC* pQueryDesc, ID3D11Query** ppQuery) override                                                                                { return m_real->CreateQuery(pQueryDesc, ppQuery); }
     HRESULT STDMETHODCALLTYPE CreatePredicate(const D3D11_QUERY_DESC* pPredicateDesc, ID3D11Predicate** ppPredicate) override                                                                { return m_real->CreatePredicate(pPredicateDesc, ppPredicate); }
     HRESULT STDMETHODCALLTYPE CreateCounter(const D3D11_COUNTER_DESC* pCounterDesc, ID3D11Counter** ppCounter) override                                                                      { return m_real->CreateCounter(pCounterDesc, ppCounter); }
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext(UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext) override                                                                     { return m_real->CreateDeferredContext(ContextFlags, ppDeferredContext); }
+    // Diagnostic: out-of-line in the .cpp so it can DDILog. A game that
+    // renders on deferred contexts bypasses Context11Proxy's record-for-
+    // replay entirely (we hand back the REAL context), so the right eye
+    // never receives those draws. Logging here tells us whether that's
+    // happening rather than us inferring it from an empty command stream.
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext(UINT ContextFlags, ID3D11DeviceContext** ppDeferredContext) override;
     HRESULT STDMETHODCALLTYPE OpenSharedResource(HANDLE hResource, REFIID ReturnedInterface, void** ppResource) override                                                                     { return m_real->OpenSharedResource(hResource, ReturnedInterface, ppResource); }
     HRESULT STDMETHODCALLTYPE CheckFormatSupport(DXGI_FORMAT Format, UINT* pFormatSupport) override                                                                                          { return m_real->CheckFormatSupport(Format, pFormatSupport); }
     HRESULT STDMETHODCALLTYPE CheckMultisampleQualityLevels(DXGI_FORMAT Format, UINT SampleCount, UINT* pNumQualityLevels) override                                                          { return m_real->CheckMultisampleQualityLevels(Format, SampleCount, pNumQualityLevels); }
@@ -104,7 +112,7 @@ public:
     // games use the base CreateTexture2D / CreateRenderTargetView which are
     // already wrapped via the Device-base vtable slots.
     void    STDMETHODCALLTYPE GetImmediateContext1(ID3D11DeviceContext1** ppImmediateContext) override;
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext1(UINT ContextFlags, ID3D11DeviceContext1** ppDeferredContext) override                                                                  { return m_real1 ? m_real1->CreateDeferredContext1(ContextFlags, ppDeferredContext) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext1(UINT ContextFlags, ID3D11DeviceContext1** ppDeferredContext) override;
     HRESULT STDMETHODCALLTYPE CreateBlendState1(const D3D11_BLEND_DESC1* pBlendStateDesc, ID3D11BlendState1** ppBlendState) override                                                        { return m_real1 ? m_real1->CreateBlendState1(pBlendStateDesc, ppBlendState) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE CreateRasterizerState1(const D3D11_RASTERIZER_DESC1* pRasterizerDesc, ID3D11RasterizerState1** ppRasterizerState) override                                    { return m_real1 ? m_real1->CreateRasterizerState1(pRasterizerDesc, ppRasterizerState) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE CreateDeviceContextState(UINT Flags, const D3D_FEATURE_LEVEL* pFeatureLevels, UINT FeatureLevels, UINT SDKVersion, REFIID EmulatedInterface, D3D_FEATURE_LEVEL* pChosenFeatureLevel, ID3DDeviceContextState** ppContextState) override { return m_real1 ? m_real1->CreateDeviceContextState(Flags, pFeatureLevels, FeatureLevels, SDKVersion, EmulatedInterface, pChosenFeatureLevel, ppContextState) : E_NOINTERFACE; }
@@ -113,7 +121,7 @@ public:
 
     // ----- ID3D11Device2 (D3D11.2)
     void    STDMETHODCALLTYPE GetImmediateContext2(ID3D11DeviceContext2** ppImmediateContext) override;
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext2(UINT ContextFlags, ID3D11DeviceContext2** ppDeferredContext) override                                                                  { return m_real2 ? m_real2->CreateDeferredContext2(ContextFlags, ppDeferredContext) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext2(UINT ContextFlags, ID3D11DeviceContext2** ppDeferredContext) override;
     void    STDMETHODCALLTYPE GetResourceTiling(ID3D11Resource* pTiledResource, UINT* pNumTilesForEntireResource, D3D11_PACKED_MIP_DESC* pPackedMipDesc, D3D11_TILE_SHAPE* pStandardTileShapeForNonPackedMips, UINT* pNumSubresourceTilings, UINT FirstSubresourceTilingToGet, D3D11_SUBRESOURCE_TILING* pSubresourceTilingsForNonPackedMips) override { if (m_real2) m_real2->GetResourceTiling(pTiledResource, pNumTilesForEntireResource, pPackedMipDesc, pStandardTileShapeForNonPackedMips, pNumSubresourceTilings, FirstSubresourceTilingToGet, pSubresourceTilingsForNonPackedMips); }
     HRESULT STDMETHODCALLTYPE CheckMultisampleQualityLevels1(DXGI_FORMAT Format, UINT SampleCount, UINT Flags, UINT* pNumQualityLevels) override                                            { return m_real2 ? m_real2->CheckMultisampleQualityLevels1(Format, SampleCount, Flags, pNumQualityLevels) : E_NOINTERFACE; }
 
@@ -126,7 +134,7 @@ public:
     HRESULT STDMETHODCALLTYPE CreateRenderTargetView1(ID3D11Resource* pResource, const D3D11_RENDER_TARGET_VIEW_DESC1* pDesc1, ID3D11RenderTargetView1** ppRTView1) override                { return m_real3 ? m_real3->CreateRenderTargetView1(pResource, pDesc1, ppRTView1) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE CreateQuery1(const D3D11_QUERY_DESC1* pQueryDesc1, ID3D11Query1** ppQuery1) override                                                                          { return m_real3 ? m_real3->CreateQuery1(pQueryDesc1, ppQuery1) : E_NOINTERFACE; }
     void    STDMETHODCALLTYPE GetImmediateContext3(ID3D11DeviceContext3** ppImmediateContext) override;
-    HRESULT STDMETHODCALLTYPE CreateDeferredContext3(UINT ContextFlags, ID3D11DeviceContext3** ppDeferredContext) override                                                                  { return m_real3 ? m_real3->CreateDeferredContext3(ContextFlags, ppDeferredContext) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE CreateDeferredContext3(UINT ContextFlags, ID3D11DeviceContext3** ppDeferredContext) override;
     void    STDMETHODCALLTYPE WriteToSubresource(ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch) override { if (m_real3) m_real3->WriteToSubresource(pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch); }
     void    STDMETHODCALLTYPE ReadFromSubresource(void* pDstData, UINT DstRowPitch, UINT DstDepthPitch, ID3D11Resource* pSrcResource, UINT SrcSubresource, const D3D11_BOX* pSrcBox) override { if (m_real3) m_real3->ReadFromSubresource(pDstData, DstRowPitch, DstDepthPitch, pSrcResource, SrcSubresource, pSrcBox); }
 
@@ -223,6 +231,28 @@ private:
     // that draw, which falls back to mono).
     std::unordered_map<void*, ShaderAnalysis11Result> m_shaderProjections;
     CRITICAL_SECTION                                  m_shaderProjLock;
+
+public:
+    // Self-shifting variant of a vertex shader, plus the CB slot and registers
+    // ModifyShader reserved. Guarded by m_shaderProjLock.
+    struct ModifiedVS
+    {
+        ID3D11VertexShader* shader = nullptr;   // owned
+        ModifiedShaderData  data;
+    };
+    const ModifiedVS* LookupModifiedVS(ID3D11VertexShader* original) const;
+    void LogShaderModStats() const;
+
+private:
+    void TryBuildModifiedVS(const void* bytecode, SIZE_T byteLength,
+                            ID3D11ClassLinkage* linkage, ID3D11VertexShader* original);
+    std::unordered_map<ID3D11VertexShader*, ModifiedVS> m_modifiedVS;
+
+    unsigned m_vsModOk               = 0;
+    unsigned m_vsModFailed           = 0;
+    unsigned m_vsModRejected         = 0;
+    unsigned m_vsModSkippedHasMatrix = 0;
+    unsigned m_vsModSkippedUnparsed  = 0;
 
     // Real-pointer → Texture2D11Proxy fallback. See accessor doc above. Game
     // owns the real-pointer lifetime via the proxy; entry is unregistered in

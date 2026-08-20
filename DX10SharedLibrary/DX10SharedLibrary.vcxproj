@@ -207,6 +207,9 @@
     <ClCompile Include="..\S3DWrapper10\Texture1D11Proxy.cpp" />
     <ClCompile Include="..\S3DWrapper10\Texture3D11Proxy.cpp" />
     <ClCompile Include="..\S3DWrapper10\ShaderAnalyzer11.cpp" />
+    <ClCompile Include="..\S3DWrapper10\DxbcChecksum.cpp" />
+    <ClCompile Include="..\S3DWrapper10\DxbcRebuild.cpp" />
+    <ClCompile Include="..\S3DWrapper10\ShaderModify11.cpp" />
     <ClCompile Include="..\S3DWrapper10\Device10Proxy.cpp" />
     <ClCompile Include="..\S3DWrapper10\Texture2D10Proxy.cpp" />
     <ClCompile Include="..\S3DWrapper10\RTV10Proxy.cpp" />
@@ -464,6 +467,9 @@
     <ClInclude Include="..\S3DWrapper10\Commands\CreateShaderBase-inl.h" />
     <ClInclude Include="..\S3DWrapper10\Commands\CreateShaderBase.h" />
     <ClInclude Include="..\S3DWrapper10\AdapterFunctions.h" />
+    <ClInclude Include="..\S3DWrapper10\DxbcChecksum.h" />
+    <ClInclude Include="..\S3DWrapper10\DxbcRebuild.h" />
+    <ClInclude Include="..\S3DWrapper10\ShaderModify11.h" />
     <ClInclude Include="..\S3DWrapper10\Array.h" />
     <ClInclude Include="..\S3DWrapper10\Commands\DispatchBase11_0.h" />
     <ClInclude Include="..\S3DWrapper10\Commands\DrawBase.h" />

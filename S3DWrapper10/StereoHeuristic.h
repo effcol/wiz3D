@@ -84,6 +84,11 @@ inline bool ShouldDoubleDepthStencilTexture(UINT Width, UINT Height, const SIZE*
         case 0: return false;
         case 1: return true;
         default:
+            // Oversized depth targets are shadow atlases; their light-camera
+            // constants never shift, so a sibling is identical (GTA V: ~450 draws/frame).
+            if (pBBSize && (ULONGLONG)Width * Height >=
+                           4ull * (ULONGLONG)pBBSize->cx * (ULONGLONG)pBBSize->cy)
+                return false;
             if (gInfo.MonoDepthStencilTextures)                                                                            return false;
             if (gInfo.CreateSquareDSInMono && IsSquareSize_Stage3(Width, Height, gInfo.CreateBigSquareDSInStereo, pBBSize)) return false;
             if (gInfo.CreateDSThatLessThanBBInMono && IsLessThanBB_Stage3(Width, Height, pBBSize))                          return false;
@@ -102,6 +107,10 @@ inline bool ShouldDoubleTexture2D(const D3D11_TEXTURE2D_DESC* pDesc, const SIZE*
         return ShouldDoubleDepthStencilTexture(pDesc->Width, pDesc->Height, pBBSize);
     if ((pDesc->BindFlags & D3D11_BIND_RENDER_TARGET) != 0)
         return ShouldDoubleRenderTargetTexture(pDesc->Format, pDesc->Width, pDesc->Height, pBBSize);
+    // UAV-only textures are deliberately not doubled: NVIDIA's 3D Vision
+    // heuristics cover render targets and depth only, and a compute output
+    // written once outside a duplicated dispatch would leave the sibling
+    // uninitialised. GTA V has none of these anyway.
     return false;
 }
 

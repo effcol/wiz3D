@@ -13,6 +13,8 @@ void DDILog(const char* fmt, ...);
 // events with per-eye context. Default off — hot-path cost is one branch
 // against g_FrameTraceRemaining when disabled.
 extern int g_FrameTraceRemaining;
+// Draw count of the frame just presented, for the FrameTraceMinDraws gate.
+extern int g_FrameTraceLastFrameDraws;
 void FrameTrace(const char* fmt, ...);
 void FrameTraceTickFrame();  // call once at end of each Present
 inline bool FrameTraceActive() { return g_FrameTraceRemaining > 0; }

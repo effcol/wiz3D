@@ -56,6 +56,7 @@ void DDILog(const char* fmt, ...)
 // only need to send a single file back.
 // ---------------------------------------------------------------------------
 int g_FrameTraceRemaining = -1;  // -1 = uninitialized, 0 = done, >0 = active
+int g_FrameTraceLastFrameDraws = 0;
 
 void FrameTrace(const char* fmt, ...)
 {
@@ -89,6 +90,10 @@ void FrameTraceTickFrame()
 		// Present count is reached.
 		int startAt = (int)gInfo.FrameTraceStartFrame;
 		if (startAt > 0 && s_presentsSeen < startAt) return;
+		// Draw-count gate: waits for a frame that actually rendered something,
+		// so the capture lands on gameplay without guessing a frame number.
+		if (gInfo.FrameTraceMinDraws > 0 &&
+		    g_FrameTraceLastFrameDraws < (int)gInfo.FrameTraceMinDraws) return;
 
 		g_FrameTraceRemaining = (int)gInfo.VerboseFrameTrace;
 		if (g_FrameTraceRemaining > 0)

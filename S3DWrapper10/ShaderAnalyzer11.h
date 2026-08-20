@@ -27,6 +27,9 @@ struct ShaderAnalysis11Result
     bool                  parsed;     // SHDR/SHEX + OSGN chunks both present and parsed
     DWORD                 crc32;      // bytecode CRC32 — diagnostic, helps cross-match against legacy DDI logs
     ProjectionShaderData  projection; // matrix register info per CB
+    // Register holding SV_Position. ModifyShader needs it to know which output to
+    // shift; valid only when parsed is true.
+    DWORD                 posRegister;
 };
 
 // Analyze a DXBC bytecode blob. Returns true if a SHDR/SHEX + OSGN pair was
