@@ -510,14 +510,14 @@ public:
 		UseCOMWrapSwapChain = true;   // Swap-chain wrap + Present hook (4d composite needs this).
 		UseCOMWrapReplay = true;      // Right-eye replay at Present (4c CB math + 4e analyzer use this).
 		COMWrapEyeShift  = 0.0f;      // 0 = use per-game profile StereoBase; non-zero = override.
-		DisableBlindCBScan = false;   // false = legacy heuristic CB scan; true = analyzer-only.
-		FullColumnEyeShift = false;   // false = legacy single-element shift.
+		DisableBlindCBScan = true;    // Never guess: the blind scan corrupted cascade transforms.
+		FullColumnEyeShift = true;    // Real 1/z parallax; false = legacy single-element shift.
 		ModifyShadersDX11  = false;   // false = constant-buffer patching only.
 		ModifyShadersMaxCount = 0;    // 0 = modify every eligible shader.
 		DumpModifiedShaders = 0;      // 1 = write per-shader before/after disassembly.
 		FrameTraceMinDraws    = 0;    // 0 = frame-number gate only.
 		ReplayDynamicBuffers = true;  // Replay dynamic VB/IB writes so re-issued draws see their own geometry.
-		DuplicateDraws   = false;     // false = record+replay at Present; true = issue each draw twice live.
+		DuplicateDraws   = true;      // Issue each draw twice live; false = legacy record+replay.
 		DrawType = 2;
 		DeviceMode = DEVICE_MODE_AUTO;
 		MultiWindowsMode = MULTI_WINDOWS_MODE_AUTO;
