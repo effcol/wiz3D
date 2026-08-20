@@ -163,6 +163,23 @@
              proxy). Default: 0. -->
         <DisableStereoSpoof Value="0"/>
 
+        <!-- IgnoreStereoDisable: 1 = Stereo_Deactivate is answered NVAPI_OK but
+             otherwise ignored, so Stereo_IsActivated keeps reporting true.
+
+             Games with their own stereo renderer switch NVIDIA's *automatic*
+             stereo off by design, then poll IsActivated to decide whether to
+             keep rendering their own. Honouring the Deactivate answers "no" and
+             they drop to mono — the game never calls Stereo_Activate or
+             SetActiveEye, so NvDirectMode has no per-eye output to route.
+
+             Confirmed on Crysis 3 (CryEngine): without this it stops at
+             CreateHandleFromIUnknown → Deactivate and renders mono; with it the
+             sequence completes to Activate → SetActiveEye and per-eye capture
+             runs. Equivalent to 3Dmigoto's NoStereoDisable.
+
+             Read by nvapi[64].dll on DLL_PROCESS_ATTACH. Default: 0. -->
+        <IgnoreStereoDisable Value="0"/>
+
         <!-- UseLayoutStableProxy: D3D9 ONLY (ignored on d3d10/d3d11/opengl32).
              Tiered for games whose anti-tamper sniffs IDirect3D9 / Device
              internals.

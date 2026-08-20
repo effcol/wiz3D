@@ -252,6 +252,12 @@ static FakeStereoState g_Stereo = {
 // ============================================================
 static int g_disableStereoSpoof = 0;
 
+// Games with their own stereo renderer switch NVIDIA auto-stereo off, then ask
+// whether stereo is active to decide if they keep rendering it (Crysis 3).
+// Honouring the Deactivate answers "no" and they drop to mono. Same switch as
+// 3Dmigoto's NoStereoDisable (NVAPI/DllMain.cpp).
+static int g_ignoreStereoDisable = 0;
+
 // ============================================================
 // Stereo_SetNotificationMessage state. NVAPI lets a game register
 // (HWND, messageId); the driver PostMessage()s that message whenever
@@ -307,7 +313,8 @@ static void LoadConfig(HMODULE hSelf)
     buf[n] = '\0';
     fclose(f);
 
-    g_disableStereoSpoof = ReadConfigInt(buf, "DisableStereoSpoof", g_disableStereoSpoof);
+    g_disableStereoSpoof  = ReadConfigInt(buf, "DisableStereoSpoof", g_disableStereoSpoof);
+    g_ignoreStereoDisable = ReadConfigInt(buf, "IgnoreStereoDisable", g_ignoreStereoDisable);
     free(buf);
 }
 
@@ -698,6 +705,11 @@ NVAPI_INTERFACE Spoof_Stereo_Activate(StereoHandle)
 NVAPI_INTERFACE Spoof_Stereo_Deactivate(StereoHandle)
 {
     NVAPI_TRACE_FIRST("Stereo_Deactivate");
+    if (g_ignoreStereoDisable)
+    {
+        WriteLog("[NvApiProxy] Stereo_Deactivate ignored (IgnoreStereoDisable=1)\n");
+        return NVAPI_OK;
+    }
     if (ResolveWiz3DBridge() && ShouldApplyGameSet(g_gameHasReadActive))
         g_Wiz3D.SetStereoActive(0);
     g_Stereo.isActive = 0;
@@ -1296,8 +1308,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
         LoadConfig(hModule);
         char attachLine[160];
         _snprintf_s(attachLine, sizeof(attachLine), _TRUNCATE,
-                    "[NvApiProxy] DLL_PROCESS_ATTACH (wiz3D " DISPLAYED_VERSION ") DisableStereoSpoof=%d\n",
-                    g_disableStereoSpoof);
+                    "[NvApiProxy] DLL_PROCESS_ATTACH (wiz3D " DISPLAYED_VERSION ") DisableStereoSpoof=%d IgnoreStereoDisable=%d\n",
+                    g_disableStereoSpoof, g_ignoreStereoDisable);
         WriteLog(attachLine);
     }
     else if (reason == DLL_PROCESS_DETACH)
