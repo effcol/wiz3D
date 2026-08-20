@@ -7,6 +7,8 @@
 #include "Texture2D11Proxy.h"
 #include "proxy_factory.h"     // IID_wiz3D_SwapChain11Proxy (declared in 4b.2 update)
 #include "AdapterFunctions.h"  // DDILog
+#include "..\S3DAPI\ReadData.h"      // WriteInputData — persist hotkey-tuned stereo
+#include "..\S3DAPI\KeyboardHook.h"  // gKbdHook — the DX9 paths' hotkey thread
 #include <d3dcompiler.h>
 
 #pragma comment(lib, "dxguid.lib")
@@ -45,6 +47,9 @@ SwapChain11Proxy::SwapChain11Proxy(IDXGISwapChain* real, IDXGISwapChain1* real1,
     // crashed at OnPresentBoundaryPre line 92 with ECX=1 — Device11Proxy
     // memory had been freed and m_ctxProxy was reading reused heap data).
     if (m_parent) m_parent->AddRef();
+    // The DX9 paths' KeyboardHook: refcounted, own polling thread, writes
+    // gInfo.Input — which is what the COM-wrap stereo math reads.
+    gKbdHook.initialize(&gInfo.Input);
     // Cache the higher-version chains so QI can return `this` for them.
     if (m_real)
     {
@@ -65,6 +70,10 @@ SwapChain11Proxy::SwapChain11Proxy(IDXGISwapChain* real, IDXGISwapChain1* real1,
 
 SwapChain11Proxy::~SwapChain11Proxy()
 {
+    // Persist hotkey-tuned stereo values: the legacy DDI wrapper saves them on
+    // teardown, but the COM-wrap path never did, so tuning died with the run.
+    WriteInputData(&gInfo.Input);
+    gKbdHook.clear();
     ReleaseStereoBackBuffer();
     ReleaseComposite();
     if (m_real4)  { m_real4->Release();  m_real4  = nullptr; }
@@ -204,6 +213,8 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
     m_bbWidth  = desc.BufferDesc.Width;
     m_bbHeight = desc.BufferDesc.Height;
     m_bbFormat = desc.BufferDesc.Format;
+    // The ZPS hotkey step is expressed in pixels and scaled by this width.
+    gKbdHook.setBackBufferWidth(m_bbWidth);
 
     ID3D11Device* dev = m_parent->GetReal();
     if (!dev) return E_FAIL;
@@ -423,7 +434,16 @@ void SwapChain11Proxy::DoComposite()
     ctx->OMSetBlendState(m_compositeBlend, blendFactor, 0xFFFFFFFF);
     ctx->OMSetDepthStencilState(m_compositeDepthStencil, 0);
 
-    ID3D11ShaderResourceView* srvs[2] = { m_leftSRV, m_rightSRV };
+    // Stereo toggle presents the left eye to both sides; SwapEyes crosses them.
+    ID3D11ShaderResourceView* eyeL = m_leftSRV;
+    ID3D11ShaderResourceView* eyeR = gInfo.Input.StereoActive ? m_rightSRV : m_leftSRV;
+    if (gInfo.Input.SwapEyes && gInfo.Input.StereoActive)
+    {
+        ID3D11ShaderResourceView* t = eyeL;
+        eyeL = eyeR;
+        eyeR = t;
+    }
+    ID3D11ShaderResourceView* srvs[2] = { eyeL, eyeR };
     ctx->PSSetShaderResources(0, 2, srvs);
     ctx->PSSetSamplers(0, 1, &m_compositeSampler);
 

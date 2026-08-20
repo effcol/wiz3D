@@ -686,6 +686,7 @@ void Context11Proxy::BindCSUAVs(bool right)
 bool Context11Proxy::BeginRightEyeDispatch()
 {
     if (!gInfo.DuplicateDraws) return false;
+    if (!gInfo.Input.StereoActive) return false;
     if (m_activeEye != Eye::Left) return false;
     if (!m_csUAVSlots.anyStereo) return false;
     m_activeEye = Eye::Right;
@@ -759,6 +760,8 @@ void Context11Proxy::BindEye(bool right)
 bool Context11Proxy::BeginRightEyeDraw()
 {
     if (!gInfo.DuplicateDraws) return false;
+    // Stereo toggled off: skip the whole right-eye pass, not just the shift.
+    if (!gInfo.Input.StereoActive) return false;
     if (m_activeEye != Eye::Left) return false;
     if (m_omHasUAVs) { ++m_drawsUavSkippedThisFrame; return false; }
     if (!m_omAnyStereo) { ++m_drawsMonoThisFrame; return false; }
