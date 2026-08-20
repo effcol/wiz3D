@@ -1182,6 +1182,17 @@ void STDMETHODCALLTYPE Context11Proxy::PSSetShader(
 
 // CRC of a bound shader, 0 if unknown. Lets the frame trace name the shader a
 // BaseProfile.xml <VertexShader>/<PixelShader> entry would have to target.
+// Profile <VertexShader CRC Multiplier> scale for the bound shader's shift.
+// Multiplier="0" is the classic crosshair fix: that shader's draws stay mono.
+static float ProfileShaderMultiplier(Device11Proxy* parent, void* vs)
+{
+    if (g_ProfileData.VSCRCData.empty()) return 1.f;
+    const DWORD crc = BoundShaderCRC(parent, vs);
+    if (!crc) return 1.f;
+    ShaderProfileDataMap::const_iterator it = g_ProfileData.VSCRCData.find(crc);
+    return (it != g_ProfileData.VSCRCData.end()) ? it->second.m_Multiplier : 1.f;
+}
+
 static DWORD BoundShaderCRC(Device11Proxy* parent, void* shader)
 {
     if (!parent || !shader) return 0;
@@ -2355,7 +2366,8 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                         && mapped.pData)
                     {
                         memcpy(mapped.pData, bytes.data(), bytes.size());
-                        float eyeShift = wiz3D_GetEffectiveEyeShift();
+                        float eyeShift = wiz3D_GetEffectiveEyeShift()
+                                       * ProfileShaderMultiplier(m_parent, m_boundVS);
                         if (!targets.empty())
                         {
                             const unsigned before = m_cbMatShiftedThisFrame;
@@ -2388,8 +2400,11 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
             else if (useBlind)         ++m_cbBlindThisFrame;
             else                       ++m_cbSkippedThisFrame;
 
+            // Multiplier resolved now: the shader bound at write time is the
+            // one the profile entry describes, not whatever replays later.
+            const float profMult = ProfileShaderMultiplier(m_parent, m_boundVS);
             m_frameCommands.emplace_back(
-                [this, resRef, subres, bytes, mapType, targets, useBlind]()
+                [this, resRef, subres, bytes, mapType, targets, useBlind, profMult]()
                 {
                     if (m_activeEye != Eye::Right) return;
                     auto* gameRes = static_cast<ID3D11Resource*>(resRef.p);
@@ -2400,7 +2415,7 @@ void STDMETHODCALLTYPE Context11Proxy::Unmap(ID3D11Resource* pResource, UINT Sub
                     // The right eye always gets the game's bytes; only the
                     // stereo shift on top of them is policy-dependent.
                     memcpy(mapped.pData, bytes.data(), bytes.size());
-                    float eyeShift = wiz3D_GetEffectiveEyeShift();
+                    float eyeShift = wiz3D_GetEffectiveEyeShift() * profMult;
                     if (!targets.empty())
                     {
                         ApplyTargetedEyeShiftToCB(
