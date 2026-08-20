@@ -362,7 +362,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
                " recorded=%zu | CB patches: targeted=%u blind=%u skipped=%u"
                " | matrices: shifted=%u guardRejected=%u"
                " | dynBuf: replayed=%u skipped=%u"
-               " | dup: duplicated=%u mono=%u uavSkip=%u monoDSV=%u noRightRTV=%u"
+               " | dup: duplicated=%u mono=%u uavSkip=%u uavDup=%u monoDSV=%u noRightRTV=%u"
                " depthOnly=%u noRightTarget=%u dispDup=%u"
                " (DuplicateDraws=%d DisableBlindCBScan=%d ortho=%d shadow=%d)%s\n",
                s_frame, this, m_drawsThisFrame, m_dispatchesThisFrame,
@@ -371,7 +371,8 @@ void Context11Proxy::LogAndResetFrameDrawStats()
                m_cbMatShiftedThisFrame, m_cbMatRejectedThisFrame,
                m_dynBufReplaysThisFrame, m_dynBufSkippedThisFrame,
                m_drawsDuplicatedThisFrame, m_drawsMonoThisFrame,
-               m_drawsUavSkippedThisFrame, m_drawsMonoDsvThisFrame,
+               m_drawsUavSkippedThisFrame, m_drawsUavDupThisFrame,
+               m_drawsMonoDsvThisFrame,
                m_drawsNoRightRTVThisFrame,
                m_drawsDepthOnlyThisFrame, m_drawsNoRightTargetThisFrame,
                m_dispatchesDuplicatedThisFrame,
@@ -466,6 +467,7 @@ void Context11Proxy::LogAndResetFrameDrawStats()
     m_drawsDuplicatedThisFrame = 0;
     m_drawsMonoThisFrame       = 0;
     m_drawsUavSkippedThisFrame = 0;
+    m_drawsUavDupThisFrame = 0;
     m_drawsMonoDsvThisFrame    = 0;
     m_drawsNoRightRTVThisFrame = 0;
     m_drawsDepthOnlyThisFrame     = 0;
@@ -565,6 +567,9 @@ void Context11Proxy::TrackOM(UINT NumViews, ID3D11RenderTargetView* const* ppRTV
 {
     if (!gInfo.DuplicateDraws) return;
     m_omHasUAVs = false;
+    // A plain OMSetRenderTargets unbinds any output-merger UAVs.
+    m_omUavBound = false;
+    ClearOmUavRefs();
     m_numRTVs = NumViews <= kMaxRTVs ? NumViews : kMaxRTVs;
     memset(m_rtvLeft,  0, sizeof(m_rtvLeft));
     memset(m_rtvRight, 0, sizeof(m_rtvRight));
@@ -743,9 +748,35 @@ void Context11Proxy::BindEye(bool right)
         FrameTrace("\n");
     }
     if (m_omAnyStereo)
-        m_real->OMSetRenderTargets(m_numRTVs,
-                                   right ? m_rtvRight : m_rtvLeft,
-                                   right ? m_dsvRight : m_dsvLeft);
+    {
+        if (m_omUavBound)
+        {
+            // Plain OMSetRenderTargets would unbind the UAVs; sibling-less
+            // slots go null on the right so shared UAVs take only left writes.
+            ID3D11UnorderedAccessView* uavs[kMaxUAVs] = {};
+            for (UINT i = 0; i < m_omUavCount; ++i)
+            {
+                ID3D11UnorderedAccessView* l = UnwrapUAVForEye(m_omUavGame[i], false);
+                ID3D11UnorderedAccessView* r = UnwrapUAVForEye(m_omUavGame[i], true);
+                uavs[i] = right ? ((r != l) ? r : nullptr) : l;
+            }
+            // Initial counts once per game bind, or eye switches reset them.
+            const UINT* counts = nullptr;
+            if (right && m_omUavHasInit && !m_omUavRightInited)
+            {
+                counts = m_omUavInit;
+                m_omUavRightInited = true;
+            }
+            m_real->OMSetRenderTargetsAndUnorderedAccessViews(
+                m_numRTVs, right ? m_rtvRight : m_rtvLeft,
+                right ? m_dsvRight : m_dsvLeft,
+                m_omUavStart, m_omUavCount, uavs, counts);
+        }
+        else
+            m_real->OMSetRenderTargets(m_numRTVs,
+                                       right ? m_rtvRight : m_rtvLeft,
+                                       right ? m_dsvRight : m_dsvLeft);
+    }
     for (UINT st = 0; st < ST_COUNT; ++st)
     {
         if (m_srvSlots[st].anyStereo) BindStageSRVs((StageIdx)st, right);
@@ -757,14 +788,31 @@ void Context11Proxy::BindEye(bool right)
     if (m_modVSShader) BindStereoShiftCB(right);
 }
 
+void Context11Proxy::ClearOmUavRefs()
+{
+    for (UINT i = 0; i < m_omUavCount; ++i)
+        if (m_omUavGame[i]) { m_omUavGame[i]->Release(); m_omUavGame[i] = nullptr; }
+    m_omUavCount = 0;
+}
+
 bool Context11Proxy::BeginRightEyeDraw()
 {
     if (!gInfo.DuplicateDraws) return false;
     // Stereo toggled off: skip the whole right-eye pass, not just the shift.
     if (!gInfo.Input.StereoActive) return false;
     if (m_activeEye != Eye::Left) return false;
-    if (m_omHasUAVs) { ++m_drawsUavSkippedThisFrame; return false; }
-    if (!m_omAnyStereo) { ++m_drawsMonoThisFrame; return false; }
+    // Skipping UAV draws outright left GTA V's bloom bright-pass RTV black in
+    // the right eye — its histogram UAVs are shared, so demand only stereo RTs.
+    if (m_omHasUAVs)
+    {
+        if (!(m_omUavBound && m_omAnyStereo))
+        {
+            ++m_drawsUavSkippedThisFrame;
+            return false;
+        }
+        ++m_drawsUavDupThisFrame;
+    }
+    else if (!m_omAnyStereo) { ++m_drawsMonoThisFrame; return false; }
     ++m_drawsDuplicatedThisFrame;
     if (m_omMonoDSV) ++m_drawsMonoDsvThisFrame;
     // Duplicated, but every right-eye RTV is null: the second draw writes
@@ -1522,7 +1570,25 @@ void STDMETHODCALLTYPE Context11Proxy::OMSetRenderTargetsAndUnorderedAccessViews
         TrackOM(NumRTVs, ppRenderTargetViews, pDepthStencilView);
     if (gInfo.DuplicateDraws && NumUAVs > 0 &&
         NumUAVs != D3D11_KEEP_UNORDERED_ACCESS_VIEWS)
+    {
         m_omHasUAVs = true;
+        // Track the UAV binding (AddRef'd — the game may release views while
+        // the binding persists) so BindEye can re-issue it per eye.
+        ClearOmUavRefs();
+        m_omUavBound = true;
+        m_omUavStart = UAVStartSlot;
+        m_omUavCount = NumUAVs <= kMaxUAVs ? NumUAVs : kMaxUAVs;
+        m_omUavHasInit = (pUAVInitialCounts != nullptr);
+        m_omUavRightInited = false;
+        for (UINT i = 0; i < m_omUavCount; ++i)
+        {
+            ID3D11UnorderedAccessView* p =
+                ppUnorderedAccessViews ? ppUnorderedAccessViews[i] : nullptr;
+            if (p) p->AddRef();
+            m_omUavGame[i] = p;
+            m_omUavInit[i] = pUAVInitialCounts ? pUAVInitialCounts[i] : (UINT)-1;
+        }
+    }
     DoOMSetRenderTargetsAndUnorderedAccessViews(
         NumRTVs, ppRenderTargetViews, pDepthStencilView,
         UAVStartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);

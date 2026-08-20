@@ -725,10 +725,11 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateBuffer(
     if (FAILED(hr) || !ppBuffer || !*ppBuffer) return hr;
     auto* bufProxy = new Buffer11Proxy(*ppBuffer, this);
 
-    // Right-eye CB sibling for the draw-duplication path. Alloc failure is
-    // non-fatal: the sibling stays null and those constants render mono.
+    // Right-eye sibling for CBs and UAV-capable buffers. Alloc failure is
+    // non-fatal: the sibling stays null and that buffer's data stays shared.
     if (gInfo.DuplicateDraws && pDesc &&
-        (pDesc->BindFlags & D3D11_BIND_CONSTANT_BUFFER) != 0)
+        (pDesc->BindFlags & (D3D11_BIND_CONSTANT_BUFFER |
+                             D3D11_BIND_UNORDERED_ACCESS)) != 0)
     {
         ID3D11Buffer* right = nullptr;
         if (SUCCEEDED(m_real->CreateBuffer(pDesc, pInitialData, &right)) && right)
@@ -889,6 +890,7 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateShaderResourceView(
                                  : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetReal())
                                              : pResource;
     ID3D11Resource* realRightRes = tex2Proxy ? static_cast<ID3D11Resource*>(tex2Proxy->GetRealRight())
+                                 : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetRealRight())
                                              : nullptr;
 
     HRESULT hr = m_real->CreateShaderResourceView(realLeftRes, pDesc, ppSRView);
@@ -924,6 +926,7 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateUnorderedAccessView(
                                  : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetReal())
                                              : pResource;
     ID3D11Resource* realRightRes = tex2Proxy ? static_cast<ID3D11Resource*>(tex2Proxy->GetRealRight())
+                                 : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetRealRight())
                                              : nullptr;
 
     HRESULT hr = m_real->CreateUnorderedAccessView(realLeftRes, pDesc, ppUAView);

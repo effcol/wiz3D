@@ -424,10 +424,24 @@ private:
     bool BeginRightEyeDraw();
     void EndRightEyeDraw();
 
+    // OM-UAV binding, AddRef'd, so BindEye can re-issue it per eye — a plain
+    // OMSetRenderTargets would silently unbind the UAVs.
+    void ClearOmUavRefs();
+    bool  m_omUavBound = false;
+    UINT  m_omUavStart = 0;
+    UINT  m_omUavCount = 0;
+    ID3D11UnorderedAccessView* m_omUavGame[kMaxUAVs] = {};
+    UINT  m_omUavInit[kMaxUAVs] = {};
+    bool  m_omUavHasInit = false;
+    // Right siblings take the recorded initial counts exactly once per game
+    // bind; re-passing them on every eye switch would reset append counters.
+    bool  m_omUavRightInited = false;
+
     // Frame summary tally: draws issued twice vs left single (mono targets).
     unsigned m_drawsDuplicatedThisFrame = 0;
     unsigned m_drawsMonoThisFrame       = 0;
     unsigned m_drawsUavSkippedThisFrame = 0;
+    unsigned m_drawsUavDupThisFrame     = 0;
     unsigned m_drawsMonoDsvThisFrame    = 0;
     unsigned m_drawsNoRightRTVThisFrame = 0;
     // Depth-only draws (no RTV bound), and draws with no right-eye target of
