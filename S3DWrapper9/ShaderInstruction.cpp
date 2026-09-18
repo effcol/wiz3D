@@ -79,7 +79,33 @@ inline bool GetShaderoPosName(DWORD shaderVersion, const char* inputShader, char
 	{
 		const char* dcl_pos = strrstr(inputShader, "dcl_position");
 		if (dcl_pos)
-			sscanf(dcl_pos, "dcl_position %s", oPosName);
+		{
+			dcl_pos += (int)strlen("dcl_position");
+
+			while (*dcl_pos && *dcl_pos >= '0' && *dcl_pos <= '9')	// skip usage index (e.g. "dcl_position0")
+				dcl_pos++;
+
+			while (*dcl_pos && (*dcl_pos == ' ' || *dcl_pos == '\t' || *dcl_pos == '\n'))
+				dcl_pos++;
+
+			int len = 0;
+			while (dcl_pos[len] &&
+			       dcl_pos[len] != ' ' &&
+			       dcl_pos[len] != '\t' &&
+			       dcl_pos[len] != '\n')
+				len++;
+
+			if (len > 0)
+			{
+				memcpy(oPosName, dcl_pos, len);
+				oPosName[len] = '\0';
+			}
+			else
+			{
+				oPosName[0] = '\0';
+				return false;
+			}
+		}
 		else
 		{
 			oPosName[0] = '\0';
