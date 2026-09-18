@@ -188,19 +188,31 @@
              proxy). Default: 0. -->
         <DisableStereoSpoof Value="0"/>
 
-        <!-- IgnoreStereoDisable: 1 = Stereo_Deactivate is answered NVAPI_OK but
-             otherwise ignored, so Stereo_IsActivated keeps reporting true.
+        <!-- IgnoreStereoDisable: how Stereo_Deactivate is treated.
 
-             Games with their own stereo renderer switch NVIDIA's *automatic*
-             stereo off by design, then poll IsActivated to decide whether to
-             keep rendering their own. Honouring the Deactivate answers "no" and
-             they drop to mono — the game never calls Stereo_Activate or
-             SetActiveEye, so NvDirectMode has no per-eye output to route.
+             DEFAULT (0) = smart auto-detect.
+             * A Deactivate fired BEFORE the game's first Activate is the
+               "I'll manage my own stereo" handshake pattern (CryEngine
+               games — Crysis 2/3 — and some UE3 titles use this to tell
+               NVIDIA "don't run Automatic Mode on top of me"). We log
+               and ignore it, keeping wiz3D ready to route the per-eye
+               output the game IS about to render.
+             * A Deactivate fired AFTER at least one Activate is a real
+               user-driven toggle-off (in-game stereo menu, hotkey).
+               We honour it — wiz3D reports stereo off, game renders
+               mono, everything works as expected.
 
-             Confirmed on Crysis 3 (CryEngine): without this it stops at
-             CreateHandleFromIUnknown → Deactivate and renders mono; with it the
-             sequence completes to Activate → SetActiveEye and per-eye capture
-             runs. Equivalent to 3Dmigoto's NoStereoDisable.
+             This automatically fixes the CryEngine-style class of game
+             without breaking in-game menu toggles for games that
+             correctly route their own on/off through NvAPI.
+
+             1 = HARD OVERRIDE. Ignore every Stereo_Deactivate call
+             unconditionally, regardless of prior state. Only needed if
+             the auto-detect misfires — e.g. a game that Deactivates
+             mid-session as part of its normal loop for a scene we still
+             want to route per-eye. Trade-off: the game's in-game stereo
+             toggle stops being able to disable stereo (use wiz3D's own
+             hotkey instead).
 
              Read by nvapi[64].dll on DLL_PROCESS_ATTACH. Default: 0. -->
         <IgnoreStereoDisable Value="0"/>

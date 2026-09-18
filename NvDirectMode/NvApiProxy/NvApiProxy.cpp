@@ -747,9 +747,28 @@ NVAPI_INTERFACE Spoof_Stereo_Deactivate(StereoHandle)
 {
     NVAPI_TRACE_FIRST_N("Stereo_Deactivate", 16, "was=%d", (int)g_Stereo.isActive);
     _InterlockedIncrement(&g_deactivateCount);
-    if (g_ignoreStereoDisable)
+    // Auto-detect the "I'll manage my own stereo" handshake pattern:
+    // a Stereo_Deactivate that fires BEFORE any Stereo_Activate has
+    // ever fired is the game telling NVIDIA "don't do Automatic Mode
+    // on top of me" — NOT a user-driven off-toggle. Honouring it
+    // would leave wiz3D thinking stereo is off just as the game
+    // starts rendering per-eye internally (Crysis 2/3, CryEngine
+    // titles, some UE3 games). Log + no-op instead.
+    //
+    // A Deactivate that fires AFTER at least one Activate is a real
+    // toggle-off (game's own in-game menu, user pressed the game's
+    // stereo hotkey) — that we honour.
+    //
+    // g_ignoreStereoDisable=1 (config XML override) forces the ignore
+    // path unconditionally, for the rare game where the auto-detect
+    // gets it wrong (e.g. a game that Deactivates as part of its
+    // normal render loop for a scene we still want to route).
+    if (g_ignoreStereoDisable || g_activateCount == 0)
     {
-        WriteLog("[NvApiProxy] Stereo_Deactivate ignored (IgnoreStereoDisable=1)\n");
+        WriteLog(g_ignoreStereoDisable
+            ? "[NvApiProxy] Stereo_Deactivate ignored (IgnoreStereoDisable=1)\n"
+            : "[NvApiProxy] Stereo_Deactivate ignored — no prior Activate seen "
+              "(game likely announces its own stereo renderer)\n");
         return NVAPI_OK;
     }
     if (ResolveWiz3DBridge() && ShouldApplyGameSet(g_gameHasReadActive))
