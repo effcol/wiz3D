@@ -296,7 +296,7 @@ Games that render Stereoscipic 3D themselves and display that via 3D Vision's 'D
 | Silent Hunter 4: Wolves of the Pacific | DX9 | x86 | ✓ | ❌ Not Working | Crashes on startup. |
 | Silent Hunter 5: Battle of the Atlantic | DX9 | x86 | ✓ | Untested |  |
 | Sine Mora EX | DX9 | x86 | ✕ | ❌ Not Working |  |
-| Singularity | DX9 | x86 | ✓ | Untested |  |
+| Singularity | DX9 | x86 | ✓ | ✅ Working |  |
 | Sins of a Solar Empire | DX9 | x86 | ✓ | ✅ Mostly Working | Background at wrong depth. |
 | SkyDrift | DX9 | x86 | ✕ | ❌ Not Working |  |
 | Sonic Adventure 2 | DX9 | x86 | ✕ | ❌ Not Working | Black screen |
