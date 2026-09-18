@@ -770,22 +770,32 @@ static void SetupUmdRegistry(void)
             const WCHAR* pFileName = wcsrchr(umdPath, L'\\');
             pFileName = pFileName ? pFileName + 1 : umdPath;
 
-            HKEY hIZ3DKey;
-            if (RegCreateKeyExW(HKEY_CURRENT_USER,
-                    L"SOFTWARE\\iZ3D\\iZ3D Driver\\Win32",
-                    0, NULL, 0, KEY_WRITE, NULL, &hIZ3DKey, NULL) == ERROR_SUCCESS)
+            // Consumers pick the key by architecture (S3DWrapper10, S3DUtils,
+            // S3DInjector all do #ifndef WIN64 -> Win32 else Win64). Write both
+            // so a 64-bit wrapper finds it; a missing value made OpenAdapter10
+            // return E_FAIL, so D3D11CreateDevice handed the game a null device.
+            static const WCHAR* const kKeys[] = {
+                L"SOFTWARE\\iZ3D\\iZ3D Driver\\Win32",
+                L"SOFTWARE\\iZ3D\\iZ3D Driver\\Win64",
+            };
+            DWORD cbData = (DWORD)((wcslen(pFileName) + 1) * sizeof(WCHAR));
+            for (int k = 0; k < 2; ++k)
             {
-                DWORD cbData = (DWORD)((wcslen(pFileName) + 1) * sizeof(WCHAR));
-                RegSetValueExW(hIZ3DKey, L"DriverD3D10VistaModule", 0, REG_SZ,
-                    (const BYTE*)pFileName, cbData);
-                RegSetValueExW(hIZ3DKey, L"DriverD3D10Win7Module", 0, REG_SZ,
-                    (const BYTE*)pFileName, cbData);
-                RegCloseKey(hIZ3DKey);
-                Log("  Wrote UMD filename '%ls' to iZ3D registry\n", pFileName);
-            }
-            else
-            {
-                Log("  WARN: Could not write UMD filename to iZ3D registry\n");
+                HKEY hIZ3DKey;
+                if (RegCreateKeyExW(HKEY_CURRENT_USER, kKeys[k],
+                        0, NULL, 0, KEY_WRITE, NULL, &hIZ3DKey, NULL) == ERROR_SUCCESS)
+                {
+                    RegSetValueExW(hIZ3DKey, L"DriverD3D10VistaModule", 0, REG_SZ,
+                        (const BYTE*)pFileName, cbData);
+                    RegSetValueExW(hIZ3DKey, L"DriverD3D10Win7Module", 0, REG_SZ,
+                        (const BYTE*)pFileName, cbData);
+                    RegCloseKey(hIZ3DKey);
+                    Log("  Wrote UMD filename '%ls' to %ls\n", pFileName, kKeys[k]);
+                }
+                else
+                {
+                    Log("  WARN: Could not write UMD filename to %ls\n", kKeys[k]);
+                }
             }
         }
 
