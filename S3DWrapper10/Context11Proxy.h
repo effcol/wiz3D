@@ -18,6 +18,9 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // bundled lib/d3d10 dxgitype.h still
 #include <d3d11_3.h>  // ID3D11DeviceContext3 (inherits Context2/Context1/Context)
 #include <functional>
 #include <vector>
+#include <string>
+#include <map>
+#include <algorithm>
 
 namespace wiz3d
 {
@@ -64,6 +67,17 @@ class Device11Proxy;
 class Context11Proxy : public ID3D11DeviceContext3
 {
 public:
+    // D3D11 spec maxima. Undersizing makes the runtime read past our unwrap
+    // arrays into stack garbage and AV (Metro 2033 / MP3 / De Blob, May 2026).
+    static constexpr UINT kMaxSRVs      = 128; // D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT
+    static constexpr UINT kMaxSamplers  = 16;  // D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT
+    static constexpr UINT kMaxCBs       = 15;  // D3D11_1_COMMONSHADER_CONSTANT_BUFFER_API_SLOT_COUNT
+    static constexpr UINT kMaxRTVs      = 8;   // D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT
+    static constexpr UINT kMaxUAVs      = 64;  // D3D11_1_UAV_SLOT_COUNT
+    static constexpr UINT kMaxVBs       = 32;  // D3D11_IA_VERTEX_INPUT_RESOURCE_SLOT_COUNT
+    static constexpr UINT kMaxSOBuffers = 4;   // D3D11_SO_BUFFER_SLOT_COUNT
+    static constexpr UINT kMaxClassInst = 253; // D3D11_SHADER_MAX_INTERFACES
+
     Context11Proxy(ID3D11DeviceContext* real, Device11Proxy* parent);
     virtual ~Context11Proxy();
 
@@ -167,8 +181,10 @@ public:
     void STDMETHODCALLTYPE GetPredication(ID3D11Predicate** ppPredicate, BOOL* pPredicateValue) override                                                                                           { m_real->GetPredication(ppPredicate, pPredicateValue); }
     void STDMETHODCALLTYPE GSGetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView** ppShaderResourceViews) override                                                          { m_real->GSGetShaderResources(StartSlot, NumViews, ppShaderResourceViews); }
     void STDMETHODCALLTYPE GSGetSamplers(UINT StartSlot, UINT NumSamplers, ID3D11SamplerState** ppSamplers) override                                                                               { m_real->GSGetSamplers(StartSlot, NumSamplers, ppSamplers); }
-    void STDMETHODCALLTYPE OMGetRenderTargets(UINT NumViews, ID3D11RenderTargetView** ppRenderTargetViews, ID3D11DepthStencilView** ppDepthStencilView) override                                   { m_real->OMGetRenderTargets(NumViews, ppRenderTargetViews, ppDepthStencilView); }
-    void STDMETHODCALLTYPE OMGetRenderTargetsAndUnorderedAccessViews(UINT NumRTVs, ID3D11RenderTargetView** ppRenderTargetViews, ID3D11DepthStencilView** ppDepthStencilView, UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView** ppUnorderedAccessViews) override { m_real->OMGetRenderTargetsAndUnorderedAccessViews(NumRTVs, ppRenderTargetViews, ppDepthStencilView, UAVStartSlot, NumUAVs, ppUnorderedAccessViews); }
+    // Must hand back the proxies the game gave us, not m_real's views: games
+    // save/restore OM state, and a leaked real RTV rebinds as untrackable.
+    void STDMETHODCALLTYPE OMGetRenderTargets(UINT NumViews, ID3D11RenderTargetView** ppRenderTargetViews, ID3D11DepthStencilView** ppDepthStencilView) override;
+    void STDMETHODCALLTYPE OMGetRenderTargetsAndUnorderedAccessViews(UINT NumRTVs, ID3D11RenderTargetView** ppRenderTargetViews, ID3D11DepthStencilView** ppDepthStencilView, UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView** ppUnorderedAccessViews) override;
     void STDMETHODCALLTYPE OMGetBlendState(ID3D11BlendState** ppBlendState, FLOAT BlendFactor[4], UINT* pSampleMask) override                                                                      { m_real->OMGetBlendState(ppBlendState, BlendFactor, pSampleMask); }
     void STDMETHODCALLTYPE OMGetDepthStencilState(ID3D11DepthStencilState** ppDepthStencilState, UINT* pStencilRef) override                                                                       { m_real->OMGetDepthStencilState(ppDepthStencilState, pStencilRef); }
     void STDMETHODCALLTYPE SOGetTargets(UINT NumBuffers, ID3D11Buffer** ppSOTargets) override                                                                                                      { m_real->SOGetTargets(NumBuffers, ppSOTargets); }
@@ -204,7 +220,9 @@ public:
     void STDMETHODCALLTYPE UpdateSubresource1(ID3D11Resource* pDstResource, UINT DstSubresource, const D3D11_BOX* pDstBox, const void* pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch, UINT CopyFlags) override { if (m_real1) m_real1->UpdateSubresource1(pDstResource, DstSubresource, pDstBox, pSrcData, SrcRowPitch, SrcDepthPitch, CopyFlags); }
     void STDMETHODCALLTYPE DiscardResource(ID3D11Resource* pResource) override                                                                                                                    { if (m_real1) m_real1->DiscardResource(pResource); }
     void STDMETHODCALLTYPE DiscardView(ID3D11View* pResourceView) override                                                                                                                        { if (m_real1) m_real1->DiscardView(pResourceView); }
-    void STDMETHODCALLTYPE VSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->VSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
+    // Same clobber risk as VSSetConstantBuffers — a Device1+ game reaching the
+    // modified shader's slot through this entry point must not unbind us.
+    void STDMETHODCALLTYPE VSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->VSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); if (m_modVSShader && m_modVSCBIndex >= StartSlot && m_modVSCBIndex < StartSlot + NumBuffers) BindStereoShiftCB(m_activeEye == Eye::Right); }
     void STDMETHODCALLTYPE HSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->HSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
     void STDMETHODCALLTYPE DSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->DSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
     void STDMETHODCALLTYPE GSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers, const UINT* pFirstConstant, const UINT* pNumConstants) override         { if (m_real1) m_real1->GSSetConstantBuffers1(StartSlot, NumBuffers, ppConstantBuffers, pFirstConstant, pNumConstants); }
@@ -274,8 +292,19 @@ public:
     // us (e.g. D3D11CreateDevice + factory->CreateSwapChain), so we never
     // accumulate an unbounded recording. The 4b.8 factory hook will close
     // that gap; until then it's safer to skip recording than to leak.
-    void SetPresentHookActive(bool active) { m_presentHookActive = active; }
+    // Refuses to arm while gInfo.DuplicateDraws is set — one gate keeps the
+    // whole record-and-replay path dormant without touching ~40 state setters.
+    void SetPresentHookActive(bool active);
     bool IsPresentHookActive() const { return m_presentHookActive; }
+
+    // Diagnostic (Aug 2026): per-frame tally of work the game issued on THIS
+    // (immediate) context, logged periodically and reset each Present. Answers
+    // "is the recording empty because the game drew nothing, or because the
+    // draws went somewhere we don't see?" — cmdLists > 0 means deferred
+    // contexts are in play and the right eye can never be correct via replay.
+    // Counts game-issued calls only: replay closures invoke m_real directly
+    // rather than re-entering these overrides, so they don't inflate the tally.
+    void LogAndResetFrameDrawStats();
 
 private:
     // Stage 4b.4: private "Do" versions of state-setting methods that the
@@ -314,6 +343,113 @@ private:
     void DoClearDepthStencilView(
         ID3D11DepthStencilView* pDepthStencilView, UINT ClearFlags, FLOAT Depth, UINT8 Stencil);
 
+    // ---- Draw duplication (gInfo.DuplicateDraws) ------------------------
+    // Each *Set* call resolves BOTH eyes' real pointers once and parks them
+    // here, so switching eyes mid-draw is an array hand-off with no unwrapping.
+    enum StageIdx { ST_VS = 0, ST_PS, ST_GS, ST_HS, ST_DS, ST_CS, ST_COUNT };
+
+    // CS UAVs resolve their eye at set time, so a duplicated dispatch needs the
+    // game's wrapped pointers kept to rebind against the right eye.
+    struct UAVEyeSlots
+    {
+        ID3D11UnorderedAccessView* left[kMaxUAVs];
+        ID3D11UnorderedAccessView* right[kMaxUAVs];
+        UINT high;
+        bool anyStereo;
+    };
+    UAVEyeSlots m_csUAVSlots = {};
+    void TrackCSUAVs(UINT StartSlot, UINT NumUAVs, ID3D11UnorderedAccessView* const* pp);
+    void BindCSUAVs(bool right);
+    bool BeginRightEyeDispatch();
+    void EndRightEyeDispatch();
+
+    struct SRVEyeSlots
+    {
+        ID3D11ShaderResourceView* left[kMaxSRVs];
+        ID3D11ShaderResourceView* right[kMaxSRVs];
+        UINT high;       // highest slot ever bound + 1 — bounds every rebind
+        bool anyStereo;  // some slot in [0,high) resolves differently per eye
+    };
+    struct CBEyeSlots
+    {
+        ID3D11Buffer* left[kMaxCBs];
+        ID3D11Buffer* right[kMaxCBs];
+        UINT high;
+        bool anyStereo;
+    };
+
+    SRVEyeSlots m_srvSlots[ST_COUNT];
+    CBEyeSlots  m_cbSlots[ST_COUNT];
+
+    ID3D11RenderTargetView* m_rtvLeft[kMaxRTVs];
+    ID3D11RenderTargetView* m_rtvRight[kMaxRTVs];
+    UINT                    m_numRTVs;
+    ID3D11DepthStencilView* m_dsvLeft;
+    ID3D11DepthStencilView* m_dsvRight;
+    // Decides on its own whether a draw is duplicated — a pass writing a mono
+    // target issues once, as StereoCommandBuffer does with bStereoDraw.
+    bool                    m_omAnyStereo;
+    // Set while UAVs are bound through the OM. BindEye restores with a plain
+    // OMSetRenderTargets, which would unbind them, so we skip duplication.
+    bool                    m_omHasUAVs;
+    // Depth-stencil bound but mono: the right pass depth-tests against values
+    // the left pass wrote, which can reject its geometry.
+    bool                    m_omMonoDSV;
+
+    // Game-facing OM bindings, mirroring whatever is currently bound. Safe to
+    // return un-AddRef'd from storage because D3D holds a ref on bound views
+    // and every OMSet overwrites this.
+    ID3D11RenderTargetView* m_rtvGame[kMaxRTVs] = {};
+    ID3D11DepthStencilView* m_dsvGame           = nullptr;
+    UINT                    m_numRTVGame        = 0;
+    void RecordGameFacingOM(UINT NumViews, ID3D11RenderTargetView* const* ppRTVs,
+                            ID3D11DepthStencilView* pDSV);
+
+    void TrackSRVs(StageIdx stage, UINT StartSlot, UINT NumViews,
+                   ID3D11ShaderResourceView* const* ppSRVs);
+    void TrackCBs(StageIdx stage, UINT StartSlot, UINT NumBuffers,
+                  ID3D11Buffer* const* ppCBs);
+    void TrackOM(UINT NumViews, ID3D11RenderTargetView* const* ppRTVs,
+                 ID3D11DepthStencilView* pDSV);
+    void ResetEyeTracking();
+
+    // Rebind tracked slots that differ between eyes; called twice per
+    // duplicated draw, once to switch and once to switch back.
+    void BindEye(bool right);
+    void BindStageSRVs(StageIdx stage, bool right);
+    void BindStageCBs(StageIdx stage, bool right);
+
+    // Bracket a duplicated draw. Begin returns false when duplication is off,
+    // the targets are mono, or we are already inside the right-eye pass.
+    bool BeginRightEyeDraw();
+    void EndRightEyeDraw();
+
+    // OM-UAV binding, AddRef'd, so BindEye can re-issue it per eye — a plain
+    // OMSetRenderTargets would silently unbind the UAVs.
+    void ClearOmUavRefs();
+    bool  m_omUavBound = false;
+    UINT  m_omUavStart = 0;
+    UINT  m_omUavCount = 0;
+    ID3D11UnorderedAccessView* m_omUavGame[kMaxUAVs] = {};
+    UINT  m_omUavInit[kMaxUAVs] = {};
+    bool  m_omUavHasInit = false;
+    // Right siblings take the recorded initial counts exactly once per game
+    // bind; re-passing them on every eye switch would reset append counters.
+    bool  m_omUavRightInited = false;
+
+    // Frame summary tally: draws issued twice vs left single (mono targets).
+    unsigned m_drawsDuplicatedThisFrame = 0;
+    unsigned m_drawsMonoThisFrame       = 0;
+    unsigned m_drawsUavSkippedThisFrame = 0;
+    unsigned m_drawsUavDupThisFrame     = 0;
+    unsigned m_drawsMonoDsvThisFrame    = 0;
+    unsigned m_drawsNoRightRTVThisFrame = 0;
+    // Depth-only draws (no RTV bound), and draws with no right-eye target of
+    // any kind — the latter is the one that means content is actually lost.
+    unsigned m_dispatchesDuplicatedThisFrame = 0;
+    unsigned m_drawsDepthOnlyThisFrame     = 0;
+    unsigned m_drawsNoRightTargetThisFrame = 0;
+
     ID3D11DeviceContext* m_real;
     // Cached upgrades of m_real for Context1/2/3 dispatch (claimed in QI
     // with `this`; new-version method overrides route through these).
@@ -326,6 +462,42 @@ private:
     Eye                  m_activeEye;            // Stage 4a: which eye OMSet binds
     bool                 m_presentHookActive;    // Stage 4b.4 safety gate
 
+    // Diagnostic counters backing LogAndResetFrameDrawStats(). Not part of
+    // any rendering decision — purely for the wiz3D_proxy.log summary.
+    unsigned             m_drawsThisFrame     = 0;
+    unsigned             m_dispatchesThisFrame = 0;
+    unsigned             m_cmdListsThisFrame  = 0;
+    // Per-eye CB patch policy tally (see gInfo.DisableBlindCBScan):
+    //   targeted — analyzer named the exact matrix register(s) to shift
+    //   blind    — fell back to the whole-buffer heuristic scan
+    //   skipped  — analyzer positively cleared the buffer, left untouched
+    unsigned             m_cbTargetedThisFrame = 0;
+    unsigned             m_cbBlindThisFrame    = 0;
+    unsigned             m_cbSkippedThisFrame  = 0;
+    // Within the targeted patches: individual matrices actually shifted, vs
+    // rejected by the ortho / shadow-map guards in ShouldSkipProjectionMatrix.
+    unsigned             m_cbMatShiftedThisFrame  = 0;
+    unsigned             m_cbMatRejectedThisFrame = 0;
+    // Draw-level stereo coverage: why a draw's geometry could not be corrected.
+    unsigned             m_drawsVSUnparsedThisFrame     = 0;
+    unsigned             m_drawsVSNoMatrixThisFrame     = 0;
+    unsigned             m_drawsVSNeverShiftedThisFrame = 0;
+    unsigned             m_drawsVSStaleShiftThisFrame   = 0;
+    unsigned             m_drawsVSNoSiblingCBThisFrame  = 0;
+    // Draws per VS CRC for geometry that reached the right eye uncorrected.
+    std::map<DWORD, unsigned> m_uncorrectedVSDraws;
+    void TallyDrawCoverage();
+    void BeginDraw(UINT vertexCount);
+    // Draws per modified-shader CRC, so the ones the scene really uses are known.
+    std::map<DWORD, unsigned> m_modVSDraws;
+    // Stage 4f: dynamic vertex/index buffer write replays. `skipped` counts
+    // writes we declined to snapshot — either over the size cap, or mapped
+    // WRITE_NO_OVERWRITE, where a whole-buffer rewrite would corrupt the left
+    // eye's pending draws (see the map-type check in Map). Those draws still
+    // replay, but from stale geometry.
+    unsigned             m_dynBufReplaysThisFrame = 0;
+    unsigned             m_dynBufSkippedThisFrame = 0;
+
     // Stage 4e.2: VS binding snapshot for targeted CB stereo math. m_boundVS
     // is the game's vertex shader pointer most recently set via VSSetShader.
     // m_boundVSCBs[i] is the wrapped buffer pointer set at VS CB slot i via
@@ -334,9 +506,35 @@ private:
     // scan. Used inside Unmap to ask Device11Proxy::LookupShaderProjection
     // whether the bound VS has a known projection-matrix register in the CB
     // being mapped, so per-eye writes target only that register.
+public:
+    // Every live context, so the frame summary can show work happening on a
+    // device that never presents through a swap chain we wrapped.
+    static std::string DescribeAllContexts();
+private:
     static constexpr UINT kMaxVSCBSlots = 15;
     ID3D11VertexShader*  m_boundVS;
     ID3D11Buffer*        m_boundVSCBs[kMaxVSCBSlots];
+
+    // Same snapshot for the pixel stage. BaseProfile.xml keys its hand-written
+    // matrix declarations on <PixelShader CRC=...>, so the deferred-lighting
+    // fix needs to know which PS and which PS CB slot is being written.
+    static constexpr UINT kMaxPSCBSlots = 15;
+    ID3D11PixelShader*   m_boundPS;
+    ID3D11Buffer*        m_boundPSCBs[kMaxPSCBSlots];
+
+    // Self-shifting VS support. m_modVSShader is the modified variant of the
+    // currently bound shader (null when there isn't one, which is the signal that
+    // no per-eye CB is needed); the two CBs hold its shift constants and are
+    // rebuilt only when separation changes. Not AddRef'd — Device11Proxy owns it.
+    ID3D11VertexShader* m_modVSShader  = nullptr;
+    UINT                m_modVSCBIndex = 0;
+    ID3D11Buffer* m_stereoCBLeft  = nullptr;
+    ID3D11Buffer* m_stereoCBRight = nullptr;
+    float         m_stereoCBSep   = 0.f;
+    float         m_stereoCBConv  = 0.f;
+    bool EnsureStereoShiftCBs();
+    void BindStereoShiftCB(bool right);
+    void ReleaseStereoShiftCBs();
 
     // Stage 4b.1: per-frame command record. Stage 4b.8 + 4d flush + replay
     // before each Present. Only populated when m_presentHookActive is true.
@@ -356,6 +554,10 @@ private:
         D3D11_MAP       mapType;
         void*           mappedData;
         UINT            byteWidth;
+        // false ⇒ dynamic vertex/index buffer: replay the write verbatim, with
+        // no projection-matrix patching (shifting geometry would double-apply
+        // the stereo offset on top of the CB shift).
+        bool            isConstantBuffer;
     };
     std::vector<ActiveMap> m_activeMaps;
 };

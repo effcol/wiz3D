@@ -12,6 +12,7 @@ namespace wiz3d
 
 Buffer11Proxy::Buffer11Proxy(ID3D11Buffer* real, Device11Proxy* parent)
     : m_real(real)
+    , m_realRight(nullptr)
     , m_parent(parent)
     , m_refs(1)
     , m_vsBound(false)
@@ -20,6 +21,7 @@ Buffer11Proxy::Buffer11Proxy(ID3D11Buffer* real, Device11Proxy* parent)
 
 Buffer11Proxy::~Buffer11Proxy()
 {
+    if (m_realRight) { m_realRight->Release(); m_realRight = nullptr; }
     if (m_real) { m_real->Release(); m_real = nullptr; }
 }
 

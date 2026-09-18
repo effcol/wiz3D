@@ -180,6 +180,7 @@ bool AnalyzeShader11(const void* pBytecode, SIZE_T byteLength,
     shader_analyzer::ParseShader(reinterpret_cast<const unsigned*>(shex), shList);
     shader_analyzer::GetProjectionMatrices(pOutPos, out.projection, shList);
 
+    out.posRegister = pOutPos->Register;
     out.parsed = true;
     return true;
 }
