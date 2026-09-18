@@ -105,6 +105,32 @@
              Default: 0. -->
         <AnaglyphColour Value="0"/>
 
+        <!-- DisableComposite: 1 = diagnostic mode. Skip per-eye capture
+             and SBS composite; instead the Present hook does a straight
+             shadow → real backbuffer mono copy. Games render normally
+             (mono, no stereo), but every other part of the wrapper still
+             runs (device wrap, swap chain hook, shadow BB, NvAPI proxy).
+             Used to isolate whether crashes originate in the composite
+             path vs the wrapping plumbing. If a game crashes with this
+             ON, the bug is in the hook infrastructure not the composite.
+             Default: 0. DX9 only. -->
+        <DisableComposite Value="0"/>
+
+        <!-- SRSRGB: colour-space hint passed to SR-Lib for the SBS input
+             texture when OutputMode=8 (Simulated Reality weave).
+             1 = tell SR-Lib the texture is sRGB (default) — matches how
+                 DX9 game backbuffers actually store colour: gamma-encoded
+                 even when the D3D9 format bit is plain X8R8G8B8 rather
+                 than the *_sRGB variant. Empirically correct for Oil
+                 Rush and Hard Reset.
+             0 = tell SR-Lib the texture is linear / non-sRGB — try this
+                 if the weave output looks gamma-shifted (washed,
+                 darkened, or overly bright) versus the game's on-screen
+                 rendering.
+             DX9 only. -->
+        <SRSRGB Value="1"/>
+
+
         <!-- BlockEOSOverlay: 1 = block Epic Online Services overlay
              (EOSOVH-Win32-Shipping.dll) from loading into the game process;
              0 = allow it to load normally.

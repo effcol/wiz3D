@@ -15,6 +15,11 @@
 #include <windows.h>
 #include "../proxy_version.h"
 #include "proxy_factory.h"
+
+// Forward-declared instead of #included: device_vtable_hooks.h drags in
+// d3d9.h, which redeclares D3DPERF_* with different linkage than our
+// dllexport stubs further down this file.
+namespace NvDirectMode { void UninstallDeviceVtablePatches(); }
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,6 +40,8 @@ static int   g_outputMode     = 1;   // DX9 default = SBS (mode 8/SR also implem
 static int   g_useLayoutStable = 0;   // 0=off  1=IDirect3D9 vtable patch (task #61)  2=+IDirect3DDevice9 vtable patch (task #68)
 static int   g_anaglyphColour  = 0;   // 0=RC (default), 1=GM, 2=AB
 static int   g_anaglyphMethod  = 0;   // 0=Dubois (default), 1=Compromise, 2=Color, 3=HalfColor, 4=Optimised, 5=Grey, 6=True
+static int   g_disableComposite = 0;   // diagnostic — 1 = skip per-eye capture + SBS composite, do a straight shadow→tracked BB mono passthrough at Present. Isolates whether crashes originate in the composite path vs the vtable hooks themselves.
+static int   g_srSRGB           = 1;   // SR input color space. 1 = tell SR-Lib the SBS texture is sRGB (DX9 default — matches how Oil Rush + Hard Reset backbuffers actually contain colour: gamma-encoded even when the D3D9 format bit is a plain X8R8G8B8 rather than a _sRGB variant). 0 = tell SR-Lib the texture is linear. Flip to 0 if a game's colours look washed / darkened / gamma-shifted through the weave. Runtime effect: passed as the 2nd arg to SRInterfaceDX9::SetInputTexture.
 
 static void LogOpen(void)
 {
@@ -77,6 +84,8 @@ extern "C" int NvDM_OutputIsTopBottom() { return (g_outputMode == 0 || g_outputM
 extern "C" int NvDM_UseLayoutStableLevel() { return g_useLayoutStable; }
 extern "C" int NvDM_AnaglyphColour() { return g_anaglyphColour; }
 extern "C" int NvDM_AnaglyphMethod() { return g_anaglyphMethod; }
+extern "C" int NvDM_DisableComposite() { return g_disableComposite; }
+extern "C" int NvDM_SRSRGB()           { return g_srSRGB; }
 
 static int ReadConfigInt(const char* xml, const char* tag, int defaultValue)
 {
@@ -114,6 +123,8 @@ static void LoadConfig(HMODULE hProxy)
     g_outputMode      = ReadConfigInt(buf, "OutputMode",      g_outputMode);
     g_anaglyphColour  = ReadConfigInt(buf, "AnaglyphColour",  g_anaglyphColour);
     g_anaglyphMethod  = ReadConfigInt(buf, "AnaglyphMethod",  g_anaglyphMethod);
+    g_disableComposite = ReadConfigInt(buf, "DisableComposite", g_disableComposite);
+    g_srSRGB           = ReadConfigInt(buf, "SRSRGB",           g_srSRGB);
     free(buf);
 }
 
@@ -166,6 +177,50 @@ static LONG CALLBACK VectoredCrashHandler(EXCEPTION_POINTERS* pExInfo)
     else
     {
         Log("Faulting module: UNKNOWN\n");
+    }
+
+    // Register snapshot at fault — helpful cross-reference against the
+    // call stack below (EIP should match the crash addr; EBP/ESP anchor
+    // the frame; EAX/ECX often carry the this-pointer or first arg).
+    CONTEXT* ctx = pExInfo->ContextRecord;
+#ifdef _M_IX86
+    Log("Registers: EIP=%08lX EBP=%08lX ESP=%08lX EAX=%08lX EBX=%08lX ECX=%08lX EDX=%08lX\n",
+        ctx->Eip, ctx->Ebp, ctx->Esp, ctx->Eax, ctx->Ebx, ctx->Ecx, ctx->Edx);
+#else
+    Log("Registers: RIP=%016llX RBP=%016llX RSP=%016llX RAX=%016llX RBX=%016llX RCX=%016llX RDX=%016llX\n",
+        (unsigned long long)ctx->Rip, (unsigned long long)ctx->Rbp, (unsigned long long)ctx->Rsp,
+        (unsigned long long)ctx->Rax, (unsigned long long)ctx->Rbx, (unsigned long long)ctx->Rcx,
+        (unsigned long long)ctx->Rdx);
+#endif
+
+    // Call stack — resolve each return address to <module + offset> so we
+    // can figure out from the log alone which hook (if any) led to the
+    // fault. Frames [0..2] are the VEH plumbing (KiUserExceptionDispatcher
+    // + our handler) so start meaningful analysis at [3] or so.
+    {
+        void* stack[32];
+        USHORT frames = CaptureStackBackTrace(0, 32, stack, NULL);
+        Log("Call stack (%u frames):\n", (unsigned)frames);
+        for (USHORT i = 0; i < frames; i++)
+        {
+            void* addr = stack[i];
+            HMODULE hMod2 = NULL;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                    GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                    (LPCSTR)addr, &hMod2))
+            {
+                WCHAR mn[MAX_PATH];
+                GetModuleFileNameW(hMod2, mn, MAX_PATH);
+                const wchar_t* leaf = wcsrchr(mn, L'\\');
+                if (leaf) leaf++; else leaf = mn;
+                DWORD_PTR ofs = (BYTE*)addr - (BYTE*)hMod2;
+                Log("  [%02u] %ls + 0x%IX\n", (unsigned)i, leaf, ofs);
+            }
+            else
+            {
+                Log("  [%02u] %p (unknown module)\n", (unsigned)i, addr);
+            }
+        }
     }
 
     // Minidump for post-mortem
@@ -406,14 +461,58 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
             WCHAR proxyPath[MAX_PATH];
             GetModuleFileNameW(hModule, proxyPath, MAX_PATH);
             Log("Proxy DLL: %ls\n", proxyPath);
-            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  UseLayoutStableProxy=%d  LoggingEnabled=%d  VerboseLogging=%d\n",
-                g_outputMode, NvDM_OutputIsTopBottom() ? "Top-and-Bottom" : "Side-by-Side",
-                g_wrapDevices, g_swapEyes, g_useLayoutStable, g_loggingEnabled, g_verboseEnabled);
+            const char* modeName =
+                (g_outputMode == 0) ? "Half Top-and-Bottom" :
+                (g_outputMode == 1) ? "Half Side-by-Side"   :
+                (g_outputMode == 2) ? "Full Side-by-Side"   :
+                (g_outputMode == 3) ? "Full Top-and-Bottom" :
+                (g_outputMode == 4) ? "Row Interleaved"     :
+                (g_outputMode == 5) ? "Column Interleaved"  :
+                (g_outputMode == 6) ? "Checkerboard"        :
+                (g_outputMode == 7) ? "Anaglyph"            :
+                (g_outputMode == 8) ? "Simulated Reality weave" :
+                                       "Unknown";
+            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  UseLayoutStableProxy=%d  LoggingEnabled=%d  VerboseLogging=%d  DisableComposite=%d  SRSRGB=%d\n",
+                g_outputMode, modeName,
+                g_wrapDevices, g_swapEyes, g_useLayoutStable, g_loggingEnabled, g_verboseEnabled, g_disableComposite, g_srSRGB);
+            // Known hookers that fight over the D3D9 vtable. Log them so
+            // users see whether "disable Steam Overlay" actually took
+            // effect for a given game. If gameoverlayrenderer is loaded
+            // at DllMain-time we WILL clash with it on Present/GetBackBuffer
+            // vtable slots (documented recursion pattern), so this is the
+            // single most important line for triaging DX9 Direct-Mode
+            // crashes on Steam titles.
+            struct { const wchar_t* dll; const char* label; } known[] = {
+                { L"gameoverlayrenderer.dll",   "Steam Overlay (32-bit)" },
+                { L"gameoverlayrenderer64.dll", "Steam Overlay (64-bit)" },
+                { L"EOSOVH-Win32-Shipping.dll", "Epic Online Services Overlay" },
+                { L"RTSSHooks.dll",             "RivaTuner Statistics Server" },
+                { L"ReShade32.dll",             "ReShade" },
+                { L"ReShade64.dll",             "ReShade" },
+                { L"SpecialK32.dll",            "Special K" },
+                { L"SpecialK64.dll",            "Special K" },
+            };
+            for (size_t i = 0; i < sizeof(known)/sizeof(known[0]); ++i)
+            {
+                HMODULE h = GetModuleHandleW(known[i].dll);
+                if (h)
+                {
+                    WCHAR p[MAX_PATH]; p[0] = 0;
+                    GetModuleFileNameW(h, p, MAX_PATH);
+                    Log("Co-hooker detected: %s (%ls) — may conflict with our vtable patches on Present/GetBackBuffer\n",
+                        known[i].label, p);
+                }
+            }
         }
         break;
 
     case DLL_PROCESS_DETACH:
         Log("=== NvDirectMode d3d9 proxy unloading ===\n");
+        // Restore the D3D9 runtime's function bodies BEFORE removing the
+        // VEH — if a hook fires between now and process death, the
+        // trampoline memory is still alive but the detour targets are
+        // about to go away.
+        NvDirectMode::UninstallDeviceVtablePatches();
         if (g_hVEH)
         {
             RemoveVectoredExceptionHandler(g_hVEH);

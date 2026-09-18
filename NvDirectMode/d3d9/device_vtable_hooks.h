@@ -35,4 +35,10 @@ namespace NvDirectMode
     // patching fails — caller should fall back to wrapping with Device9Proxy.
     bool InstallDeviceVtablePatch(IDirect3DDevice9* realDevice, bool isEx,
                                    UINT logicalW, UINT logicalH);
+
+    // Tear down all MinHook hooks — restores each patched function's
+    // original prologue bytes. Safe to call on DLL_PROCESS_DETACH so that
+    // if this DLL is unloaded while d3d9.dll stays resident, we don't
+    // leave dangling jumps into freed memory.
+    void UninstallDeviceVtablePatches();
 }

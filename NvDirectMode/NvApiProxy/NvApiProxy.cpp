@@ -451,10 +451,27 @@ static bool ResolveWiz3DBridge()
               "[NvApiProxy] " name ": " fmt "\n", __VA_ARGS__);            \
           WriteLog(_buf);                                                  \
       } while (0)
+
+  // First N calls with args + count. Bounded budget — after N calls the
+  // trace goes silent. Right shape for high-frequency per-frame calls
+  // where we want to see the actual call PATTERN (e.g. does eye
+  // alternate LEFT/RIGHT? or stay stuck?) without spamming the log.
+  #define NVAPI_TRACE_FIRST_N(name, N, fmt, ...)                           \
+      do {                                                                 \
+          static volatile LONG _count = 0;                                  \
+          LONG _c = InterlockedIncrement(&_count);                         \
+          if (_c <= (N)) {                                                 \
+              char _buf[160];                                              \
+              _snprintf_s(_buf, sizeof(_buf), _TRUNCATE,                   \
+                  "[NvApiProxy] " name " #%ld: " fmt "\n", _c, __VA_ARGS__);\
+              WriteLog(_buf);                                              \
+          }                                                                \
+      } while (0)
 #else
   #define NVAPI_TRACE_FIRST(name)                       ((void)0)
   #define NVAPI_TRACE_PERIODIC(name, fmt, ...)          ((void)0)
   #define NVAPI_TRACE_EVERY(name, fmt, ...)             ((void)0)
+  #define NVAPI_TRACE_FIRST_N(name, N, fmt, ...)        ((void)0)
 #endif
 
 NVAPI_INTERFACE Spoof_Initialize(void) { NVAPI_TRACE_FIRST("Initialize"); return NVAPI_OK; }
@@ -687,9 +704,33 @@ NVAPI_INTERFACE Spoof_Stereo_CreateHandleFromIUnknown(void* pDevice, StereoHandl
 
 NVAPI_INTERFACE Spoof_Stereo_DestroyHandle(StereoHandle) { NVAPI_TRACE_FIRST("Stereo_DestroyHandle"); return NVAPI_OK; }
 
+// Session-cumulative per-event counters. Hoisted above the Spoof_*
+// functions that increment them so the ordering compiles. Read by
+// d3d9's Composite heartbeat via the Wiz3D_Get* exports below.
+static volatile LONG g_activateCount   = 0;
+static volatile LONG g_deactivateCount = 0;
+static volatile LONG g_saLeftCount     = 0;
+static volatile LONG g_saRightCount    = 0;
+static volatile LONG g_saMonoCount     = 0;
+
+extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetActivateCount()   { return (long)g_activateCount;   }
+extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetDeactivateCount() { return (long)g_deactivateCount; }
+extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetSALeftCount()     { return (long)g_saLeftCount;     }
+extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetSARightCount()    { return (long)g_saRightCount;    }
+extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetSAMonoCount()     { return (long)g_saMonoCount;     }
+
 NVAPI_INTERFACE Spoof_Stereo_Activate(StereoHandle)
 {
-    NVAPI_TRACE_FIRST("Stereo_Activate");
+    // TRACE_FIRST_N(16) — was TRACE_EVERY earlier for the #178
+    // toggle-freeze diagnostic. Hard Reset turned out to toggle
+    // Activate/Deactivate PER FRAME (paired 13k+ times/session,
+    // probably to bracket 3D scene vs 2D HUD render passes). Every-call
+    // logging did 26k+ synchronous fflushes on the game's render
+    // thread, tanked frame rate, and eventually took the process down
+    // via GPU TDR. Bounded to first-16 so we still see the initial
+    // pattern for diagnosis but stop flooding the log.
+    NVAPI_TRACE_FIRST_N("Stereo_Activate", 16, "was=%d", (int)g_Stereo.isActive);
+    _InterlockedIncrement(&g_activateCount);
     if (ResolveWiz3DBridge() && ShouldApplyGameSet(g_gameHasReadActive))
         g_Wiz3D.SetStereoActive(1);
     g_Stereo.isActive = 1;
@@ -697,7 +738,8 @@ NVAPI_INTERFACE Spoof_Stereo_Activate(StereoHandle)
 }
 NVAPI_INTERFACE Spoof_Stereo_Deactivate(StereoHandle)
 {
-    NVAPI_TRACE_FIRST("Stereo_Deactivate");
+    NVAPI_TRACE_FIRST_N("Stereo_Deactivate", 16, "was=%d", (int)g_Stereo.isActive);
+    _InterlockedIncrement(&g_deactivateCount);
     if (ResolveWiz3DBridge() && ShouldApplyGameSet(g_gameHasReadActive))
         g_Wiz3D.SetStereoActive(0);
     g_Stereo.isActive = 0;
@@ -729,7 +771,11 @@ NVAPI_INTERFACE Spoof_Stereo_IsActivated(StereoHandle, NvU8* p)
     }
     g_lastReportedActive = (int)*p;
 
-    NVAPI_TRACE_PERIODIC("Stereo_IsActivated", "%d", (int)*p);
+    // Bounded — was TRACE_PERIODIC(60) which for a game calling IsActivated
+    // per draw-call produced 40K+ synchronous fflushes on the render thread,
+    // enough to slow the game to a "pause". First 4 calls is enough to see
+    // the value pattern; the state itself isn't going to change often.
+    NVAPI_TRACE_FIRST_N("Stereo_IsActivated", 4, "%d", (int)*p);
     return NVAPI_OK;
 }
 
@@ -740,7 +786,7 @@ NVAPI_INTERFACE Spoof_Stereo_GetSeparation(StereoHandle, float* p)
         ? g_Wiz3D.GetSeparationPercent()
         : g_Stereo.separation;
     g_gameHasReadSeparation = true; // user-UI gate
-    NVAPI_TRACE_PERIODIC("Stereo_GetSeparation", "%.2f%%", *p);
+    NVAPI_TRACE_FIRST_N("Stereo_GetSeparation", 4, "%.2f%%", *p);
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_SetSeparation(StereoHandle, float v)
@@ -792,7 +838,7 @@ NVAPI_INTERFACE Spoof_Stereo_GetConvergence(StereoHandle, float* p)
         ? g_Wiz3D.GetConvergence()
         : g_Stereo.convergence;
     g_gameHasReadConvergence = true; // user-UI gate
-    NVAPI_TRACE_PERIODIC("Stereo_GetConvergence", "%.4f", *p);
+    NVAPI_TRACE_FIRST_N("Stereo_GetConvergence", 4, "%.4f", *p);
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_SetConvergence(StereoHandle, float v)
@@ -836,7 +882,10 @@ NVAPI_INTERFACE Spoof_Stereo_IncreaseConvergence(StereoHandle)
 
 NVAPI_INTERFACE Spoof_Stereo_GetEyeSeparation(StereoHandle, float* p)
 {
-    NVAPI_TRACE_FIRST("Stereo_GetEyeSeparation");
+    // Bounded — was TRACE_EVERY which for per-frame callers is a synchronous
+    // fflush every 16ms and shows up as game slowdown. First 4 calls is
+    // enough to confirm the value we hand back.
+    NVAPI_TRACE_FIRST_N("Stereo_GetEyeSeparation", 4, "returning %.4f", 0.064);
     if (!p) return NVAPI_ERROR;
     *p = 0.064f;
     return NVAPI_OK;
@@ -857,7 +906,18 @@ extern "C" __declspec(dllexport) void __cdecl Wiz3D_SetEyeChangeCallback(Wiz3D_E
 
 NVAPI_INTERFACE Spoof_Stereo_SetActiveEye(StereoHandle, NV_STEREO_ACTIVE_EYE eye)
 {
-    NVAPI_TRACE_FIRST("Stereo_SetActiveEye");
+    // First 32 calls with args — enough to see the CALL PATTERN. Diagnosing
+    // "does the game alternate LEFT/RIGHT per frame, or set it once and
+    // stay?" needs to see actual consecutive calls, not one-per-minute.
+    // A game rendering per-eye at 60 fps issues 120 SetActiveEye calls/sec,
+    // so 32 calls covers the first ~0.25s of stereo activity — plenty of
+    // signal, no runaway log growth.
+    NVAPI_TRACE_FIRST_N("Stereo_SetActiveEye", 32, "eye=%d", (int)eye);
+    // Tick the per-eye counter so the d3d9 side can spot the bracket
+    // structure (Activate→SA(L)→SA(R)→Deactivate = one 3D-scene bracket).
+    if      (eye == NVAPI_STEREO_EYE_LEFT)  _InterlockedIncrement(&g_saLeftCount);
+    else if (eye == NVAPI_STEREO_EYE_RIGHT) _InterlockedIncrement(&g_saRightCount);
+    else                                    _InterlockedIncrement(&g_saMonoCount);
     int oldEye = (int)g_Stereo.activeEye;
     g_Stereo.activeEye = eye;
     if (g_eyeChangeCallback && oldEye != (int)eye)
@@ -896,7 +956,7 @@ NVAPI_INTERFACE Spoof_Stereo_IsWindowedModeSupported(NvU8* p)
 
 NVAPI_INTERFACE Spoof_Stereo_SetSurfaceCreationMode(StereoHandle, NVAPI_STEREO_SURFACECREATEMODE m)
 {
-    NVAPI_TRACE_FIRST("Stereo_SetSurfaceCreationMode");
+    NVAPI_TRACE_FIRST_N("Stereo_SetSurfaceCreationMode", 16, "mode=%d", (int)m);
     g_Stereo.createMode = m;
     return NVAPI_OK;
 }
@@ -924,7 +984,15 @@ NVAPI_INTERFACE Spoof_Stereo_SetFrustumAdjustMode(StereoHandle, NvU32 mode)
 
 NVAPI_INTERFACE Spoof_Stereo_InitActivation(StereoHandle, NvU8 /*enable*/)        { NVAPI_TRACE_FIRST("Stereo_InitActivation");        return NVAPI_OK; }
 NVAPI_INTERFACE Spoof_Stereo_Trigger_Activation(StereoHandle)                     { NVAPI_TRACE_FIRST("Stereo_Trigger_Activation");    return NVAPI_OK; }
-NVAPI_INTERFACE Spoof_Stereo_ReverseStereoBlitControl(StereoHandle, NvU8 /*on*/)  { NVAPI_TRACE_FIRST("Stereo_ReverseStereoBlitControl"); return NVAPI_OK; }
+NVAPI_INTERFACE Spoof_Stereo_ReverseStereoBlitControl(StereoHandle, NvU8 on)
+{
+    // Log EVERY call with value — this NvAPI + NvAPI_D3D9_StretchRectEx is
+    // the classic "reverse blit" pattern for extracting the right-eye half
+    // of a stereo surface. If Oil Rush toggles this on-off around a
+    // StretchRect, we've found its per-eye mechanism.
+    NVAPI_TRACE_FIRST_N("Stereo_ReverseStereoBlitControl", 32, "on=%d", (int)on);
+    return NVAPI_OK;
+}
 NVAPI_INTERFACE Spoof_Stereo_SetNotificationMessage(StereoHandle, NvU64 hWnd, NvU64 msgId)
 {
     NVAPI_TRACE_FIRST("Stereo_SetNotificationMessage");
@@ -1083,6 +1151,116 @@ static bool IsStereoFunctionId(NvU32 id)
     }
 }
 
+// -------------------------------------------------------------------------
+// Full ID -> human name mapping. Two purposes:
+//   1. Every dispatch case in nvapi_QueryInterface has its ID here so we can
+//      log the friendly name even for IDs we hand to real NVAPI in passthrough
+//      mode (Oil Rush / Hard Reset need this — the differential between the
+//      two games' NvAPI call sets is the key diagnostic).
+//   2. Stereo-relevant NvAPI D3D extensions that we do NOT currently spoof
+//      are ALSO in the table (NvAPI_D3D9_StretchRectEx, NvAPI_D3D_SetStereoTexture,
+//      NvAPI_D3D9_GetSurfaceHandle, etc.). If a Direct-Mode game uses one of
+//      those in place of Stereo_SetActiveEye per-frame, its passthrough log
+//      line will surface it by name — that's our lead for the next hook.
+//
+// IDs come from: our own switch-table above, NVAPI 2026 SDK public headers,
+// and reverse-engineering databases for 3D-Vision-era private extensions.
+// Add new IDs freely — anything not in the table falls back to hex-only,
+// which is still useful.
+// -------------------------------------------------------------------------
+struct NvApiIdName { NvU32 id; const char* name; };
+static const NvApiIdName g_idNames[] = {
+    // core / init
+    { 0x0150E828, "NvAPI_Initialize" },
+    { 0xD22BDD7E, "NvAPI_Unload" },
+    { 0x6C2D048C, "NvAPI_GetErrorMessage" },
+    { 0x01053FA5, "NvAPI_GetInterfaceVersionString" },
+    // driver / GPU
+    { 0x2926AAAD, "NvAPI_SYS_GetDriverAndBranchVersion" },
+    { 0xF951A4D1, "NvAPI_GetDisplayDriverVersion" },
+    { 0xE5AC921F, "NvAPI_EnumPhysicalGPUs" },
+    { 0x48B3EA59, "NvAPI_EnumLogicalGPUs" },
+    { 0x34EF9506, "NvAPI_GetPhysicalGPUsFromDisplay" },
+    { 0x9ABDD40D, "NvAPI_EnumNvidiaDisplayHandle" },
+    { 0x20DE9260, "NvAPI_EnumNvidiaUnAttachedDisplayHandle" },
+    { 0x35C29134, "NvAPI_GetAssociatedNvidiaDisplayHandle" },
+    { 0xD995937E, "NvAPI_GetAssociatedDisplayOutputId" },
+    { 0xCEEE8E9F, "NvAPI_GPU_GetFullName" },
+    { 0xBAAABFCC, "NvAPI_GPU_GetSystemType" },
+    { 0xC33BAEB1, "NvAPI_GPU_GetGPUType" },
+    { 0x2DDFB66E, "NvAPI_GPU_GetPCIIdentifiers" },
+    { 0xC7026A87, "NvAPI_GPU_GetGpuCoreCount" },
+    { 0x7AAF7A04, "NvAPI_D3D11_SetDepthBoundsTest" },
+    // stereo — public
+    { 0x239C4545, "NvAPI_Stereo_Enable" },
+    { 0x2EC50C2B, "NvAPI_Stereo_Disable" },
+    { 0x348FF8E1, "NvAPI_Stereo_IsEnabled" },
+    { 0x296C434D, "NvAPI_Stereo_GetStereoSupport" },
+    { 0xAC7E37F4, "NvAPI_Stereo_CreateHandleFromIUnknown" },
+    { 0x3A153134, "NvAPI_Stereo_DestroyHandle" },
+    { 0xF6A1AD68, "NvAPI_Stereo_Activate" },
+    { 0x2D68DE96, "NvAPI_Stereo_Deactivate" },
+    { 0x1FB0BC30, "NvAPI_Stereo_IsActivated" },
+    { 0x451F2134, "NvAPI_Stereo_GetSeparation" },
+    { 0x5C069FA3, "NvAPI_Stereo_SetSeparation" },
+    { 0xDA044458, "NvAPI_Stereo_DecreaseSeparation" },
+    { 0xC9A8ECEC, "NvAPI_Stereo_IncreaseSeparation" },
+    { 0x4AB00934, "NvAPI_Stereo_GetConvergence" },
+    { 0x3DD6B54B, "NvAPI_Stereo_SetConvergence" },
+    { 0x4C87E317, "NvAPI_Stereo_DecreaseConvergence" },
+    { 0xA17DAABE, "NvAPI_Stereo_IncreaseConvergence" },
+    { 0xE6839B43, "NvAPI_Stereo_GetFrustumAdjustMode" },
+    { 0x7BE27FA2, "NvAPI_Stereo_SetFrustumAdjustMode" },
+    { 0xC7177702, "NvAPI_Stereo_InitActivation" },
+    { 0x0D6C6CD2, "NvAPI_Stereo_Trigger_Activation" },
+    { 0x3CD58F89, "NvAPI_Stereo_ReverseStereoBlitControl" },
+    { 0x6B9B409E, "NvAPI_Stereo_SetNotificationMessage" },
+    { 0x96EEA9F8, "NvAPI_Stereo_SetActiveEye" },
+    { 0x5E8F0BEC, "NvAPI_Stereo_SetDriverMode" },
+    { 0xCE653127, "NvAPI_Stereo_GetEyeSeparation" },
+    { 0x40C8ED5E, "NvAPI_Stereo_IsWindowedModeSupported" },
+    { 0xF5DCFCBA, "NvAPI_Stereo_SetSurfaceCreationMode" },
+    { 0x36F1C736, "NvAPI_Stereo_GetSurfaceCreationMode" },
+    { 0xED4416C5, "NvAPI_Stereo_Debug_WasLastDrawStereoized" },
+    { 0x44F0ECD1, "NvAPI_Stereo_SetDefaultProfile" },
+    { 0x624E21C2, "NvAPI_Stereo_GetDefaultProfile" },
+    { 0xBE7692EC, "NvAPI_Stereo_CreateConfigurationProfileRegistryKey" },
+    { 0xF117B834, "NvAPI_Stereo_DeleteConfigurationProfileRegistryKey" },
+    { 0x24409F48, "NvAPI_Stereo_SetConfigurationProfileValue" },
+    { 0x49BCEECF, "NvAPI_Stereo_DeleteConfigurationProfileValue" },
+    { 0x932CB140, "NvAPI_Stereo_CaptureJpegImage" },
+    { 0x8B7E99B5, "NvAPI_Stereo_CapturePngImage" },
+    // D3D9 stereo extensions we could add wrappers for on a second pass —
+    // names deliberately omitted here because the ID→name mapping for
+    // private NvAPI D3D9 extensions varies across NVAPI SDK generations
+    // and I don't want to mislabel. If any of the "UNKNOWN" IDs from the
+    // Oil Rush log turn out to match a documented ext (NvAPI_D3D9_StretchRectEx,
+    // NvAPI_D3D_SetStereoTexture, NvAPI_D3D9_GetSurfaceHandle,
+    // NvAPI_D3D9_AliasSurfaceAsTexture, etc.), add them here with the
+    // confirmed hex.
+    // observed-unknown-in-the-wild IDs from prior test runs (kept as
+    // Spoof_OkNoOp targets by the dispatch table)
+    { 0x33C7358C, "?private (Hard Reset pre-stereo probe #1)" },
+    { 0x36E39E6B, "?private (historical unknown)" },
+    { 0x593E8644, "?private (Hard Reset pre-stereo probe #2)" },
+    { 0x1EA54A3B, "?private (Max Payne 3 pre-stereo)" },
+    { 0x774AA982, "?private (MP3, GTA IV — stereo-gating unknown)" },
+    { 0x6A16D3A0, "?private (Civ V, Lost Planet 2 — UI-flatness hint?)" },
+    { 0x07F9B368, "?private (Oil Rush startup — LEAD FOR INVESTIGATION)" },
+    { 0x4B708B54, "?private (Max Payne 3 startup)" },
+    // sentinel
+    { 0x00000000, nullptr }
+};
+
+// Linear scan is fine — table is ~70 entries, called at most once per unique
+// ID per process (via the seen-ID dedup below).
+static const char* NameForNvApiId(NvU32 id)
+{
+    for (int i = 0; g_idNames[i].name != nullptr; ++i)
+        if (g_idNames[i].id == id) return g_idNames[i].name;
+    return nullptr;
+}
+
 // Catch-all per-ID logger. In passthrough mode every non-stereo call goes
 // straight to the real driver without ever hitting our named Spoof_* TRACE
 // macros, so without this we have no visibility into *what* the game is
@@ -1117,9 +1295,15 @@ static void LogQueryInterfaceId(NvU32 id, const char* tag)
 
     if (isNew)
     {
-        char buf[96];
-        _snprintf_s(buf, sizeof(buf), _TRUNCATE,
-                    "[NvApiProxy] QI %s id=0x%08X\n", tag, id);
+        const char* name = NameForNvApiId(id);
+        char buf[192];
+        if (name)
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                        "[NvApiProxy] QI %s %s (id=0x%08X)\n", tag, name, id);
+        else
+            _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                        "[NvApiProxy] QI %s UNKNOWN (id=0x%08X) -- add to g_idNames if identified\n",
+                        tag, id);
         WriteLog(buf);
     }
 }

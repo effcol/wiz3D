@@ -91,7 +91,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
@@ -100,7 +100,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <ModuleDefinitionFile>d3d9.def</ModuleDefinitionFile>
-      <AdditionalDependencies>delayimp.lib;$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;$(SRLib);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\lib\x86\Release\minhook.x32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore32.dll;SimulatedRealityDirectX32.dll;SimulatedRealityOpenGL32.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
@@ -108,7 +108,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN32;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
@@ -116,7 +116,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>d3d9.def</ModuleDefinitionFile>
-      <AdditionalDependencies>delayimp.lib;$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;$(SRLib);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\lib\x86\Debug\minhook.x32d.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore32.dll;SimulatedRealityDirectX32.dll;SimulatedRealityOpenGL32.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
@@ -126,7 +126,7 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN64;NDEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
     </ClCompile>
@@ -135,7 +135,7 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <ModuleDefinitionFile>d3d9.def</ModuleDefinitionFile>
-      <AdditionalDependencies>delayimp.lib;$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;$(SRLib);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\lib\x64\Release\minhook.x64.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore.dll;SimulatedRealityDirectX.dll;SimulatedRealityOpenGL.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
@@ -143,7 +143,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <AdditionalIncludeDirectories>$(ProjectDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions>WIN64;_DEBUG;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
     </ClCompile>
@@ -151,7 +151,7 @@
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>d3d9.def</ModuleDefinitionFile>
-      <AdditionalDependencies>delayimp.lib;$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>delayimp.lib;$(SRLib);$(ProjectDir)..\..\ThirdPartyLibs\MinHook_v1.3.4\lib\x64\Debug\minhook.x64d.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore.dll;SimulatedRealityDirectX.dll;SimulatedRealityOpenGL.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
