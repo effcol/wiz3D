@@ -496,6 +496,7 @@ namespace
                 typedef long (__cdecl *PFN_LGetter)();
                 static HMODULE hNv = nullptr;
                 static PFN_LGetter fnAct = nullptr, fnDeact = nullptr,
+                                    fnEn  = nullptr, fnDis  = nullptr,
                                     fnSAL = nullptr, fnSAR = nullptr, fnSAM = nullptr;
                 if (!hNv)
                 {
@@ -505,6 +506,8 @@ namespace
                     {
                         fnAct   = (PFN_LGetter)GetProcAddress(hNv, "Wiz3D_GetActivateCount");
                         fnDeact = (PFN_LGetter)GetProcAddress(hNv, "Wiz3D_GetDeactivateCount");
+                        fnEn    = (PFN_LGetter)GetProcAddress(hNv, "Wiz3D_GetEnableCount");
+                        fnDis   = (PFN_LGetter)GetProcAddress(hNv, "Wiz3D_GetDisableCount");
                         fnSAL   = (PFN_LGetter)GetProcAddress(hNv, "Wiz3D_GetSALeftCount");
                         fnSAR   = (PFN_LGetter)GetProcAddress(hNv, "Wiz3D_GetSARightCount");
                         fnSAM   = (PFN_LGetter)GetProcAddress(hNv, "Wiz3D_GetSAMonoCount");
@@ -512,13 +515,18 @@ namespace
                 }
                 long a  = fnAct   ? fnAct()   : -1;
                 long d  = fnDeact ? fnDeact() : -1;
+                long en = fnEn    ? fnEn()    : -1;
+                long di = fnDis   ? fnDis()   : -1;
                 long sl = fnSAL   ? fnSAL()   : -1;
                 long sr = fnSAR   ? fnSAR()   : -1;
                 long sm = fnSAM   ? fnSAM()   : -1;
 
-                static long s_prevA = 0, s_prevD = 0, s_prevSL = 0, s_prevSR = 0, s_prevSM = 0;
+                static long s_prevA = 0, s_prevD = 0, s_prevEn = 0, s_prevDi = 0,
+                            s_prevSL = 0, s_prevSR = 0, s_prevSM = 0;
                 long dA  = (a  >= 0) ? a  - s_prevA  : 0;
                 long dD  = (d  >= 0) ? d  - s_prevD  : 0;
+                long dEn = (en >= 0) ? en - s_prevEn : 0;
+                long dDi = (di >= 0) ? di - s_prevDi : 0;
                 long dSL = (sl >= 0) ? sl - s_prevSL : 0;
                 long dSR = (sr >= 0) ? sr - s_prevSR : 0;
                 long dSM = (sm >= 0) ? sm - s_prevSM : 0;
@@ -539,13 +547,14 @@ namespace
                 void* rt2   = (rtd >= 3) ? g_frameRTs[2] : nullptr;
                 void* rt3   = (rtd >= 4) ? g_frameRTs[3] : nullptr;
 
-                NvDM_Log("  d3d9 [stable-dev] Composite: heartbeat frame #%ld currentEye=%d leftCap=%ld rightCap=%ld  nvapi totals: A=%ld D=%ld SA(L)=%ld SA(R)=%ld SA(M)=%ld  last60fr: dA=%ld dD=%ld dL=%ld dR=%ld dM=%ld  SetRT=%ld Clear=%ld distinctRTs=%ld [%p,%p,%p,%p]\n",
+                NvDM_Log("  d3d9 [stable-dev] Composite: heartbeat frame #%ld currentEye=%d leftCap=%ld rightCap=%ld  nvapi totals: A=%ld D=%ld En=%ld Dis=%ld SA(L)=%ld SA(R)=%ld SA(M)=%ld  last60fr: dA=%ld dD=%ld dEn=%ld dDis=%ld dL=%ld dR=%ld dM=%ld  SetRT=%ld Clear=%ld distinctRTs=%ld [%p,%p,%p,%p]\n",
                          (long)n, currentEye,
                          (long)g_leftCaptureCount, (long)g_rightCaptureCount,
-                         a, d, sl, sr, sm,
-                         dA, dD, dSL, dSR, dSM,
+                         a, d, en, di, sl, sr, sm,
+                         dA, dD, dEn, dDi, dSL, dSR, dSM,
                          (long)rtc, (long)clc, (long)rtd, rt0, rt1, rt2, rt3);
-                s_prevA = a; s_prevD = d; s_prevSL = sl; s_prevSR = sr; s_prevSM = sm;
+                s_prevA = a; s_prevD = d; s_prevEn = en; s_prevDi = di;
+                s_prevSL = sl; s_prevSR = sr; s_prevSM = sm;
             }
             // Reset per-frame counters AFTER the heartbeat prints, so
             // next frame accumulates cleanly. Non-heartbeat frames still

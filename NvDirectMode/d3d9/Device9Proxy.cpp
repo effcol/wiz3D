@@ -823,13 +823,13 @@ ULONG STDMETHODCALLTYPE Device9Proxy::Release()
 // ---------------------------------------------------------------------------
 // IDirect3DDevice9 — pure forwarders
 // ---------------------------------------------------------------------------
-HRESULT Device9Proxy::TestCooperativeLevel()                                          { return m_real->TestCooperativeLevel(); }
-UINT    Device9Proxy::GetAvailableTextureMem()                                        { return m_real->GetAvailableTextureMem(); }
-HRESULT Device9Proxy::EvictManagedResources()                                         { return m_real->EvictManagedResources(); }
-HRESULT Device9Proxy::GetDirect3D(IDirect3D9** ppD3D9)                                { return m_real->GetDirect3D(ppD3D9); }
-HRESULT Device9Proxy::GetDeviceCaps(D3DCAPS9* pCaps)                                  { return m_real->GetDeviceCaps(pCaps); }
-HRESULT Device9Proxy::GetDisplayMode(UINT iSwapChain, D3DDISPLAYMODE* pMode)          { return m_real->GetDisplayMode(iSwapChain, pMode); }
-HRESULT Device9Proxy::GetCreationParameters(D3DDEVICE_CREATION_PARAMETERS* p)         { return m_real->GetCreationParameters(p); }
+HRESULT Device9Proxy::TestCooperativeLevel()                                          { HRESULT hr = m_real->TestCooperativeLevel(); D9_TRACE_R0("Dev9::TestCooperativeLevel", hr); return hr; }
+UINT    Device9Proxy::GetAvailableTextureMem()                                        { UINT n = m_real->GetAvailableTextureMem(); D9_TRACE_R("Dev9::GetAvailableTextureMem", n, "%s", ""); return n; }
+HRESULT Device9Proxy::EvictManagedResources()                                         { HRESULT hr = m_real->EvictManagedResources(); D9_TRACE_R0("Dev9::EvictManagedResources", hr); return hr; }
+HRESULT Device9Proxy::GetDirect3D(IDirect3D9** ppD3D9)                                { HRESULT hr = m_real->GetDirect3D(ppD3D9); D9_TRACE_R("Dev9::GetDirect3D", hr, "%s", ""); return hr; }
+HRESULT Device9Proxy::GetDeviceCaps(D3DCAPS9* pCaps)                                  { HRESULT hr = m_real->GetDeviceCaps(pCaps); D9_TRACE_R("Dev9::GetDeviceCaps", hr, "PS=%lx VS=%lx MaxTex=%u", pCaps?(unsigned long)pCaps->PixelShaderVersion:0, pCaps?(unsigned long)pCaps->VertexShaderVersion:0, pCaps?pCaps->MaxTextureWidth:0); return hr; }
+HRESULT Device9Proxy::GetDisplayMode(UINT iSwapChain, D3DDISPLAYMODE* pMode)          { HRESULT hr = m_real->GetDisplayMode(iSwapChain, pMode); D9_TRACE_R("Dev9::GetDisplayMode", hr, "SC=%u [%ux%u fmt=%d]", iSwapChain, pMode?pMode->Width:0, pMode?pMode->Height:0, pMode?(int)pMode->Format:-1); return hr; }
+HRESULT Device9Proxy::GetCreationParameters(D3DDEVICE_CREATION_PARAMETERS* p)         { HRESULT hr = m_real->GetCreationParameters(p); D9_TRACE_R("Dev9::GetCreationParameters", hr, "%s", ""); return hr; }
 HRESULT Device9Proxy::SetCursorProperties(UINT X, UINT Y, IDirect3DSurface9* pBmp)    { return m_real->SetCursorProperties(X, Y, pBmp); }
 void    Device9Proxy::SetCursorPosition(int X, int Y, DWORD Flags)                    { m_real->SetCursorPosition(X, Y, Flags); }
 BOOL    Device9Proxy::ShowCursor(BOOL bShow)                                          { return m_real->ShowCursor(bShow); }
@@ -838,10 +838,21 @@ HRESULT Device9Proxy::GetSwapChain(UINT iSwapChain, IDirect3DSwapChain9** pp)   
 UINT    Device9Proxy::GetNumberOfSwapChains()                                         { return m_real->GetNumberOfSwapChains(); }
 HRESULT Device9Proxy::Reset(D3DPRESENT_PARAMETERS* p)
 {
-    // Old back buffer dies in Reset; release our tracking ref before forwarding.
-    // SR weaver + intermediate texture also live in D3DPOOL_DEFAULT and must be
-    // released before Reset; lazy-recreate on next RunSRWeave.
+    // All D3DPOOL_DEFAULT resources MUST be released before Reset or the
+    // real driver returns D3DERR_INVALIDCALL. Ours include: the SR pipeline
+    // textures/surfaces, the shadow BB + per-eye capture surfaces + per-eye
+    // textures, and the composite VB. Vertex buffers in DEFAULT pool need
+    // release too — ReleaseShaderPipeline handles that alongside the
+    // Reset-safe shaders (releasing them is harmless; lazy-recreate on
+    // next RunShaderComposite / EnsureShaders).
+    //
+    // (Confirmed by RE5 Sep 20 test: prior to this release-all sweep, Reset
+    // returned D3DERR_INVALIDCALL even after we patched BackBufferFormat
+    // A8R8G8B8 → X8R8G8B8. The format wasn't the culprit; a live shadow
+    // surface was.)
     ReleaseSRPipeline();
+    ReleaseShaderPipeline();
+    ReleaseShadow();
     ReleaseBackBufferReference();
 
     D3DPRESENT_PARAMETERS modified;
@@ -887,6 +898,7 @@ HRESULT Device9Proxy::Reset(D3DPRESENT_PARAMETERS* p)
         }
     }
     HRESULT hr = m_real->Reset(p);
+    D9_TRACE_R("Dev9::Reset", hr, "BB=%ux%u fmt=%d SC=%u W=%d", p?p->BackBufferWidth:0, p?p->BackBufferHeight:0, p?(int)p->BackBufferFormat:-1, p?p->BackBufferCount:0, p?p->Windowed:-1);
     if (SUCCEEDED(hr))
     {
         if (logicalW > 0) SetLogicalBackBufferSize(logicalW, logicalH);
@@ -907,7 +919,9 @@ HRESULT Device9Proxy::Present(CONST RECT* sr, CONST RECT* dr, HWND h, CONST RGND
     // Stage 4: composite captured eyes into the real BB before forwarding,
     // so the Present writes a SBS / T-B / mono image to the visible surface.
     CompositeAndPresent();
-    return m_real->Present(sr, dr, h, d);
+    HRESULT hr = m_real->Present(sr, dr, h, d);
+    D9_TRACE_R("Dev9::Present", hr, "%s", "");
+    return hr;
 }
 HRESULT Device9Proxy::GetBackBuffer(UINT iSC, UINT iBB, D3DBACKBUFFER_TYPE T, IDirect3DSurface9** pp)
 {
@@ -1181,7 +1195,7 @@ HRESULT Device9Proxy::WaitForVBlank(UINT iSC)                                   
 HRESULT Device9Proxy::CheckResourceResidency(IDirect3DResource9** pRA, UINT32 N)                                                                    { return m_realEx->CheckResourceResidency(pRA, N); }
 HRESULT Device9Proxy::SetMaximumFrameLatency(UINT M)                                                                                                { return m_realEx->SetMaximumFrameLatency(M); }
 HRESULT Device9Proxy::GetMaximumFrameLatency(UINT* p)                                                                                               { return m_realEx->GetMaximumFrameLatency(p); }
-HRESULT Device9Proxy::CheckDeviceState(HWND h)                                                                                                      { return m_realEx->CheckDeviceState(h); }
+HRESULT Device9Proxy::CheckDeviceState(HWND h)                                                                                                      { HRESULT hr = m_realEx->CheckDeviceState(h); D9_TRACE_R("Dev9::CheckDeviceState", hr, "hWnd=%p", (void*)h); return hr; }
 HRESULT Device9Proxy::CreateRenderTargetEx(UINT W, UINT H, D3DFORMAT F, D3DMULTISAMPLE_TYPE M, DWORD MQ, BOOL L, IDirect3DSurface9** pp, HANDLE* sh, DWORD U)            { return m_realEx->CreateRenderTargetEx(W, H, F, M, MQ, L, pp, sh, U); }
 HRESULT Device9Proxy::CreateOffscreenPlainSurfaceEx(UINT W, UINT H, D3DFORMAT F, D3DPOOL P, IDirect3DSurface9** pp, HANDLE* sh, DWORD U)                                 { return m_realEx->CreateOffscreenPlainSurfaceEx(W, H, F, P, pp, sh, U); }
 HRESULT Device9Proxy::CreateDepthStencilSurfaceEx(UINT W, UINT H, D3DFORMAT F, D3DMULTISAMPLE_TYPE M, DWORD MQ, BOOL D, IDirect3DSurface9** pp, HANDLE* sh, DWORD U)     { return m_realEx->CreateDepthStencilSurfaceEx(W, H, F, M, MQ, D, pp, sh, U); }

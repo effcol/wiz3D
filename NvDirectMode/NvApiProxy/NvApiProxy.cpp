@@ -26,6 +26,9 @@
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#include <shlobj.h>       // SHGetFolderPathW for %APPDATA% locator
+#pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "advapi32.lib")   // Reg*ExW for NativeProfile registry mirror
 #include "..\..\Shared\version.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -258,6 +261,27 @@ static int g_disableStereoSpoof = 0;
 // 3Dmigoto's NoStereoDisable (NVAPI/DllMain.cpp).
 static int g_ignoreStereoDisable = 0;
 
+// PostStereoOffOnLoad: opt-in experiment. When NativeProfile.xml loads
+// StereoActive=0 for this game AND the game later registers a notification
+// hWnd via Stereo_SetNotificationMessage, post that message immediately so
+// the game receives a "state changed to off" signal AFTER its own settings
+// load completed. Purpose: some games (candidate: MP3 / RAGE engine) may
+// treat this notification as authoritative and update their OWN persistent
+// state file to match — propagating our cross-session persistence into the
+// game's engine state. If they don't respond, no harm. Off by default until
+// validated per-game. Config XML gate.
+static int g_postStereoOffOnLoad = 0;
+
+// TraceStereoValues: opt-in diagnostic. When on, every Stereo_Get* / query
+// function logs its returned value for the first ~8 calls, and every passthrough
+// call logs whether the real driver returned a function pointer or NULL
+// (NULL == NOT_SUPPORTED). Purpose: capture the full negotiation trace that
+// games like DIRT Rally / GRID / F1 do at startup, so we can identify which
+// value we're returning that the engine rejects (thereby not enabling their
+// in-engine depth-reprojection path). Chatty when on — leave off for normal
+// play. Config XML gate.
+static int g_traceStereoValues = 0;
+
 // ============================================================
 // Stereo_SetNotificationMessage state. NVAPI lets a game register
 // (HWND, messageId); the driver PostMessage()s that message whenever
@@ -313,9 +337,49 @@ static void LoadConfig(HMODULE hSelf)
     buf[n] = '\0';
     fclose(f);
 
-    g_disableStereoSpoof  = ReadConfigInt(buf, "DisableStereoSpoof", g_disableStereoSpoof);
-    g_ignoreStereoDisable = ReadConfigInt(buf, "IgnoreStereoDisable", g_ignoreStereoDisable);
+    g_disableStereoSpoof   = ReadConfigInt(buf, "DisableStereoSpoof",   g_disableStereoSpoof);
+    g_ignoreStereoDisable  = ReadConfigInt(buf, "IgnoreStereoDisable",  g_ignoreStereoDisable);
+    g_postStereoOffOnLoad  = ReadConfigInt(buf, "PostStereoOffOnLoad",  g_postStereoOffOnLoad);
+    g_traceStereoValues    = ReadConfigInt(buf, "TraceStereoValues",    g_traceStereoValues);
     free(buf);
+}
+
+// ============================================================
+// NativeProfile.xml — cross-session state for native-rendering stacks.
+// Implementation lives in ../native_profile.h (shared by NvApiProxy,
+// AmdQbProxy, S3DWrapperOGL). This TU is the NvDirectMode consumer.
+// ============================================================
+#include "..\native_profile.h"
+
+// Thin wrappers so the rest of NvApiProxy.cpp keeps its existing names.
+// State ownership: g_Stereo.isActive is the primary per-session variable
+// used by every NvAPI spoof function; wiz3D::NativeProfile::detail's mirror
+// tracks XML/registry state. Load pushes into g_Stereo.isActive; every
+// Activate/Deactivate/Enable/Disable path pushes back the other way via
+// NativeProfile_Save.
+static void NativeProfile_Load(void)
+{
+    static bool s_loadedOnce = false;
+    if (s_loadedOnce) return;
+    s_loadedOnce = true;
+    wiz3D::NativeProfile::Init("NvDirectMode");
+    int loaded = wiz3D::NativeProfile::Load();
+    g_Stereo.isActive = (NvU8)(loaded ? 1 : 0);
+    char msg[256];
+    _snprintf_s(msg, sizeof(msg), _TRUNCATE,
+                "[NvApiProxy] NativeProfile: loaded exe -> StereoActive=%d\n", loaded);
+    WriteLog(msg);
+}
+
+static void NativeProfile_Save(void)
+{
+    wiz3D::NativeProfile::SetStereoActive(g_Stereo.isActive != 0);
+}
+
+// Wrapper matching the old signature so DllMain's diagnostic log line stays.
+static bool NativeProfile_GetPath(WCHAR* outPath, size_t cch)
+{
+    return wiz3D::NativeProfile::GetPath(outPath, cch);
 }
 
 // ============================================================
@@ -474,11 +538,31 @@ static bool ResolveWiz3DBridge()
               WriteLog(_buf);                                              \
           }                                                                \
       } while (0)
+
+  // First N VALUE-logged calls, gated on g_traceStereoValues config flag.
+  // Zero cost when off. Purpose: capture the full negotiation trace between
+  // game and NvAPI at startup so we can identify which return value gates
+  // in-engine reprojection paths (DIRT / GRID / F1 investigation).
+  #define NVAPI_TRACE_VALUE_FIRST_N(name, N, fmt, ...)                      \
+      do {                                                                  \
+          if (g_traceStereoValues) {                                        \
+              static volatile LONG _vcount = 0;                             \
+              LONG _vc = InterlockedIncrement(&_vcount);                    \
+              if (_vc <= (N)) {                                             \
+                  char _vbuf[192];                                          \
+                  _snprintf_s(_vbuf, sizeof(_vbuf), _TRUNCATE,              \
+                      "[NvApiProxy] " name " #%ld VALUE: " fmt "\n",        \
+                      _vc, __VA_ARGS__);                                    \
+                  WriteLog(_vbuf);                                          \
+              }                                                             \
+          }                                                                 \
+      } while (0)
 #else
   #define NVAPI_TRACE_FIRST(name)                       ((void)0)
   #define NVAPI_TRACE_PERIODIC(name, fmt, ...)          ((void)0)
   #define NVAPI_TRACE_EVERY(name, fmt, ...)             ((void)0)
   #define NVAPI_TRACE_FIRST_N(name, N, fmt, ...)        ((void)0)
+  #define NVAPI_TRACE_VALUE_FIRST_N(name, N, fmt, ...)  ((void)0)
 #endif
 
 NVAPI_INTERFACE Spoof_Initialize(void) { NVAPI_TRACE_FIRST("Initialize"); return NVAPI_OK; }
@@ -507,6 +591,8 @@ NVAPI_INTERFACE Spoof_SYS_GetDriverAndBranchVersion(NvU32* pDrv, NvAPI_ShortStri
     if (!pDrv || !szBranch) return NVAPI_ERROR;
     *pDrv = kSpoofDrvVersion;
     strcpy_s(szBranch, NVAPI_SHORT_STRING_MAX, kSpoofBranchStr);
+    NVAPI_TRACE_VALUE_FIRST_N("SYS_GetDriverAndBranchVersion", 4,
+        "returned drv=%u branch=%s", (unsigned)*pDrv, szBranch);
     return NVAPI_OK;
 }
 
@@ -676,18 +762,50 @@ NVAPI_INTERFACE Spoof_D3D11_SetDepthBoundsTest(void* /*pDevice*/, NvU32 /*bEnabl
 // NVAPI_OK with sensible defaults so the game's init succeeds even on
 // non-NVIDIA hardware. The wiz3D bridge picks up the in-game stereo toggle
 // regardless of which sequence the game uses.
+//
+// Older-API counters (Stereo_Enable/Disable) hoisted early so
+// Spoof_Stereo_Enable/Disable below can increment them. The
+// Activate/Deactivate/SA counters are declared further down (they
+// were added post-hoc and stayed there).
+static volatile LONG g_enableCount  = 0;
+static volatile LONG g_disableCount = 0;
+
 NVAPI_INTERFACE Spoof_Stereo_Enable(void)
 {
-    NVAPI_TRACE_FIRST("Stereo_Enable");
+    NVAPI_TRACE_FIRST_N("Stereo_Enable", 16, "was=%d", (int)g_Stereo.isActive);
+    _InterlockedIncrement(&g_enableCount);
     if (ResolveWiz3DBridge()) g_Wiz3D.SetStereoActive(1);
+    NvU8 prev = g_Stereo.isActive;
     g_Stereo.isActive = 1;
+    if (prev != 1) NativeProfile_Save();
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_Disable(void)
 {
-    NVAPI_TRACE_FIRST("Stereo_Disable");
+    NVAPI_TRACE_FIRST_N("Stereo_Disable", 16, "was=%d", (int)g_Stereo.isActive);
+    _InterlockedIncrement(&g_disableCount);
+    // Older API pair (Stereo_Enable/Disable = driver-global) mirrors the
+    // handshake pattern of the newer pair (Stereo_Activate/Deactivate =
+    // per-context). MP3 and GTA IV era games use THIS pair as their
+    // "I'll manage my own stereo, don't auto-shim me" signal. Same
+    // heuristic applies: a Disable that fires BEFORE any Enable is the
+    // handshake — log + no-op. A Disable after at least one Enable is a
+    // real off-toggle — honour it.
+    //
+    // g_ignoreStereoDisable=1 (config XML override) also forces the
+    // ignore path here, matching the newer-pair behaviour.
+    if (g_ignoreStereoDisable || g_enableCount == 0)
+    {
+        WriteLog(g_ignoreStereoDisable
+            ? "[NvApiProxy] Stereo_Disable ignored (IgnoreStereoDisable=1)\n"
+            : "[NvApiProxy] Stereo_Disable ignored — no prior Enable seen "
+              "(game likely announces its own stereo renderer)\n");
+        return NVAPI_OK;
+    }
     if (ResolveWiz3DBridge()) g_Wiz3D.SetStereoActive(0);
+    NvU8 prev = g_Stereo.isActive;
     g_Stereo.isActive = 0;
+    if (prev != 0) NativeProfile_Save();
     return NVAPI_OK;
 }
 
@@ -696,6 +814,7 @@ NVAPI_INTERFACE Spoof_Stereo_IsEnabled(NvU8* p)
     NVAPI_TRACE_FIRST("Stereo_IsEnabled");
     if (!p) return NVAPI_ERROR;
     *p = g_disableStereoSpoof ? 0 : 1;
+    NVAPI_TRACE_VALUE_FIRST_N("Stereo_IsEnabled", 4, "returned=%d", (int)*p);
     return NVAPI_OK;
 }
 
@@ -714,14 +833,24 @@ NVAPI_INTERFACE Spoof_Stereo_DestroyHandle(StereoHandle) { NVAPI_TRACE_FIRST("St
 // Session-cumulative per-event counters. Hoisted above the Spoof_*
 // functions that increment them so the ordering compiles. Read by
 // d3d9's Composite heartbeat via the Wiz3D_Get* exports below.
+//   Activate/Deactivate — newer per-context API (Stereo_Activate/Deactivate)
+//   Enable/Disable      — older driver-global API (Stereo_Enable/Disable);
+//                         MP3 + GTA IV era games use this pair as their
+//                         "I'll manage my own stereo" handshake instead of
+//                         the newer one.
 static volatile LONG g_activateCount   = 0;
 static volatile LONG g_deactivateCount = 0;
+// g_enableCount / g_disableCount are declared earlier (above
+// Spoof_Stereo_Enable) — the older API pair fires from Spoof functions
+// that appear before this block, so those two had to be hoisted.
 static volatile LONG g_saLeftCount     = 0;
 static volatile LONG g_saRightCount    = 0;
 static volatile LONG g_saMonoCount     = 0;
 
 extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetActivateCount()   { return (long)g_activateCount;   }
 extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetDeactivateCount() { return (long)g_deactivateCount; }
+extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetEnableCount()     { return (long)g_enableCount;     }
+extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetDisableCount()    { return (long)g_disableCount;    }
 extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetSALeftCount()     { return (long)g_saLeftCount;     }
 extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetSARightCount()    { return (long)g_saRightCount;    }
 extern "C" __declspec(dllexport) long __cdecl Wiz3D_GetSAMonoCount()     { return (long)g_saMonoCount;     }
@@ -740,7 +869,9 @@ NVAPI_INTERFACE Spoof_Stereo_Activate(StereoHandle)
     _InterlockedIncrement(&g_activateCount);
     if (ResolveWiz3DBridge() && ShouldApplyGameSet(g_gameHasReadActive))
         g_Wiz3D.SetStereoActive(1);
+    NvU8 prev = g_Stereo.isActive;
     g_Stereo.isActive = 1;
+    if (prev != 1) NativeProfile_Save();
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_Deactivate(StereoHandle)
@@ -773,7 +904,9 @@ NVAPI_INTERFACE Spoof_Stereo_Deactivate(StereoHandle)
     }
     if (ResolveWiz3DBridge() && ShouldApplyGameSet(g_gameHasReadActive))
         g_Wiz3D.SetStereoActive(0);
+    NvU8 prev = g_Stereo.isActive;
     g_Stereo.isActive = 0;
+    if (prev != 0) NativeProfile_Save();
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_IsActivated(StereoHandle, NvU8* p)
@@ -982,6 +1115,7 @@ NVAPI_INTERFACE Spoof_Stereo_IsWindowedModeSupported(NvU8* p)
     NVAPI_TRACE_FIRST("Stereo_IsWindowedModeSupported");
     if (!p) return NVAPI_ERROR;
     *p = 1;
+    NVAPI_TRACE_VALUE_FIRST_N("Stereo_IsWindowedModeSupported", 8, "returned=%d", (int)*p);
     return NVAPI_OK;
 }
 
@@ -996,6 +1130,8 @@ NVAPI_INTERFACE Spoof_Stereo_GetSurfaceCreationMode(StereoHandle, NVAPI_STEREO_S
     NVAPI_TRACE_FIRST("Stereo_GetSurfaceCreationMode");
     if (!p) return NVAPI_ERROR;
     *p = g_Stereo.createMode;
+    NVAPI_TRACE_VALUE_FIRST_N("Stereo_GetSurfaceCreationMode", 8,
+        "returned=%d (0=AUTO 1=FORCESTEREO 2=FORCEMONO)", (int)*p);
     return NVAPI_OK;
 }
 
@@ -1004,6 +1140,8 @@ NVAPI_INTERFACE Spoof_Stereo_GetFrustumAdjustMode(StereoHandle, NvU32* p)
     NVAPI_TRACE_FIRST("Stereo_GetFrustumAdjustMode");
     if (!p) return NVAPI_ERROR;
     *p = g_Stereo.frustumAdjust;
+    NVAPI_TRACE_VALUE_FIRST_N("Stereo_GetFrustumAdjustMode", 8,
+        "returned=%u (0=NO_ADJUST 1=STRETCH 2=CLEAR_EDGES)", (unsigned)*p);
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_SetFrustumAdjustMode(StereoHandle, NvU32 mode)
@@ -1022,6 +1160,11 @@ NVAPI_INTERFACE Spoof_Stereo_ReverseStereoBlitControl(StereoHandle, NvU8 on)
     // of a stereo surface. If Oil Rush toggles this on-off around a
     // StretchRect, we've found its per-eye mechanism.
     NVAPI_TRACE_FIRST_N("Stereo_ReverseStereoBlitControl", 32, "on=%d", (int)on);
+    // Also value-log under TraceStereoValues so the toggle pattern surfaces
+    // in the DIRT / GRID / F1 investigation trace.
+    NVAPI_TRACE_VALUE_FIRST_N("Stereo_ReverseStereoBlitControl", 32,
+        "on=%d (READ semantic: when on, StretchRect(stereo→dest) produces 2W×H SBS)",
+        (int)on);
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_SetNotificationMessage(StereoHandle, NvU64 hWnd, NvU64 msgId)
@@ -1030,6 +1173,25 @@ NVAPI_INTERFACE Spoof_Stereo_SetNotificationMessage(StereoHandle, NvU64 hWnd, Nv
     // NVAPI passes HWND + UINT widened to NvU64 for x64 ABI compat.
     g_notifyHwnd = (HWND)(uintptr_t)hWnd;
     g_notifyMsg  = (UINT)msgId;
+
+    // PostStereoOffOnLoad experiment: if NativeProfile loaded StereoActive=0
+    // for this game, post a "state changed to off" notification RIGHT NOW,
+    // right after the game finished its NvAPI init handshake (which happens
+    // AFTER settings load per NVIDIA's canonical init sequence). Some engines
+    // treat this notification as authoritative and write back to their own
+    // persistent state file to sync. Opt-in (default 0) and one-shot per
+    // process so we don't spam. Guarded so we only post when: flag on, first
+    // time this session, initial state was off.
+    static volatile LONG s_posted = 0;
+    if (g_postStereoOffOnLoad && g_Stereo.isActive == 0 && g_notifyHwnd &&
+        InterlockedCompareExchange(&s_posted, 1, 0) == 0)
+    {
+        // WPARAM = 0 (state = deactivated), LPARAM = 0. Matches the format
+        // used by the existing Stereo_IsActivated auto-notify path.
+        PostMessage(g_notifyHwnd, g_notifyMsg, (WPARAM)0, 0);
+        g_lastReportedActive = 0;
+        WriteLog("[NvApiProxy] PostStereoOffOnLoad: posted 'state=off' notification to game (opt-in experiment)\n");
+    }
     return NVAPI_OK;
 }
 
@@ -1047,6 +1209,7 @@ NVAPI_INTERFACE Spoof_Stereo_Debug_WasLastDrawStereoized(StereoHandle, NvU8* p)
     NVAPI_TRACE_FIRST("Stereo_Debug_WasLastDrawStereoized");
     if (!p) return NVAPI_ERROR;
     *p = 1;
+    NVAPI_TRACE_VALUE_FIRST_N("Stereo_Debug_WasLastDrawStereoized", 8, "returned=%d", (int)*p);
     return NVAPI_OK;
 }
 
@@ -1061,6 +1224,17 @@ NVAPI_INTERFACE Spoof_Stereo_Debug_WasLastDrawStereoized(StereoHandle, NvU8* p)
 NVAPI_INTERFACE Spoof_Stereo_CreateConfigurationProfileRegistryKey(NvU32 /*regKeyType*/)
 {
     NVAPI_TRACE_FIRST("Stereo_CreateConfigurationProfileRegistryKey");
+    // Games that call this expect a real per-app key to exist afterwards
+    // (some HelixMod fixes read it directly). Create the wiz3D-namespaced
+    // key and seed it with our current state. NativeProfile.xml remains
+    // the source of truth; this registry mirror stays in lock-step via
+    // NativeProfile_WriteRegistryMirror at every state save.
+    //
+    // We ignore the regKeyType arg (DEFAULT / DX9 / DX10 / DX11) because
+    // our namespaced key is one per exe, not one per D3D API — the API a
+    // wrapped game uses is already implicit in which of our proxy DLLs
+    // is loaded.
+    wiz3D::NativeProfile::Flush();  // writes XML + registry mirror
     return NVAPI_OK;
 }
 NVAPI_INTERFACE Spoof_Stereo_DeleteConfigurationProfileRegistryKey(NvU32 /*regKeyType*/)
@@ -1279,6 +1453,12 @@ static const NvApiIdName g_idNames[] = {
     { 0x6A16D3A0, "?private (Civ V, Lost Planet 2 — UI-flatness hint?)" },
     { 0x07F9B368, "?private (Oil Rush startup — LEAD FOR INVESTIGATION)" },
     { 0x4B708B54, "?private (Max Payne 3 startup)" },
+    // display-config queries seen in EGO-engine game traces (DIRT 3 CE,
+    // DIRT 4, DIRT Showdown, GRID 2, GRID Autosport). Identified 2026-09-20
+    // via public NvAPI reverse-engineering. Neither is a stereo API —
+    // they're display-config probes games do BEFORE stereo negotiation.
+    { 0x1E9D8A31, "NvAPI_DISP_GetGDIPrimaryDisplayId" },
+    { 0xDC6DC8D3, "NvAPI_Mosaic_GetDisplayViewportsByResolution" },
     // sentinel
     { 0x00000000, nullptr }
 };
@@ -1349,8 +1529,28 @@ extern "C" __declspec(dllexport) void* __cdecl nvapi_QueryInterface(NvU32 id)
 
     if (g_bPassthrough && !forceSpoof)
     {
+        void* realFn = g_pfnRealQI(id);
         LogQueryInterfaceId(id, "passthrough");
-        return g_pfnRealQI(id);
+        // TraceStereoValues: also log whether the real driver actually
+        // implements this ID. NULL = real driver returned NOT_SUPPORTED,
+        // which for stereo-adjacent IDs is often the game's reason to
+        // bail on its in-engine reprojection / stereo-enable path.
+        if (g_traceStereoValues)
+        {
+            static volatile LONG s_qiValueCount = 0;
+            LONG c = InterlockedIncrement(&s_qiValueCount);
+            if (c <= 128) // bounded — first ~128 unique QI passthroughs
+            {
+                const char* name = NameForNvApiId(id);
+                char buf[192];
+                _snprintf_s(buf, sizeof(buf), _TRUNCATE,
+                    "[NvApiProxy] QI passthrough VALUE: id=0x%08X (%s) -> %s\n",
+                    id, name ? name : "UNKNOWN",
+                    realFn ? "impl-present" : "NOT_SUPPORTED (real driver returned NULL)");
+                WriteLog(buf);
+            }
+        }
+        return realFn;
     }
 
     switch (id)
@@ -1509,14 +1709,52 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID)
         g_hSelf = hModule;
         DisableThreadLibraryCalls(hModule);
         LoadConfig(hModule);
-        char attachLine[160];
+
+        // Init the NativeProfile subsystem (captures exe basename via
+        // GetModuleFileNameW internally), then load any previously-persisted
+        // StereoActive value for this game.
+        NativeProfile_Load();
+
+        // Log the NativeProfile.xml path so power users know where to look
+        // to inspect / hand-edit per-game state. XML is the source of truth;
+        // registry mirror at HKCU\Software\wiz3D\NativeProfile\<exe> stays
+        // in lock-step.
+        {
+            WCHAR xmlPath[MAX_PATH] = {0};
+            if (NativeProfile_GetPath(xmlPath, MAX_PATH))
+            {
+                char pathHint[MAX_PATH + 128];
+                _snprintf_s(pathHint, sizeof(pathHint), _TRUNCATE,
+                            "[NvApiProxy] NativeProfile path (edit to override per-game state): %ls\n",
+                            xmlPath);
+                WriteLog(pathHint);
+            }
+        }
+
+        // Fetch exe basename for the log line (NativeProfile owns the copy).
+        char exeName[MAX_PATH] = {0};
+        {
+            WCHAR exePathW[MAX_PATH] = {0};
+            if (GetModuleFileNameW(NULL, exePathW, MAX_PATH))
+            {
+                WCHAR* leaf = wcsrchr(exePathW, L'\\');
+                leaf = leaf ? leaf + 1 : exePathW;
+                WideCharToMultiByte(CP_UTF8, 0, leaf, -1, exeName, MAX_PATH, NULL, NULL);
+            }
+        }
+
+        char attachLine[256];
         _snprintf_s(attachLine, sizeof(attachLine), _TRUNCATE,
-                    "[NvApiProxy] DLL_PROCESS_ATTACH (wiz3D " DISPLAYED_VERSION ") DisableStereoSpoof=%d IgnoreStereoDisable=%d\n",
-                    g_disableStereoSpoof, g_ignoreStereoDisable);
+                    "[NvApiProxy] DLL_PROCESS_ATTACH (wiz3D " DISPLAYED_VERSION ") DisableStereoSpoof=%d IgnoreStereoDisable=%d PostStereoOffOnLoad=%d TraceStereoValues=%d StereoActive=%d exe=%s\n",
+                    g_disableStereoSpoof, g_ignoreStereoDisable, g_postStereoOffOnLoad, g_traceStereoValues,
+                    (int)g_Stereo.isActive, exeName);
         WriteLog(attachLine);
     }
     else if (reason == DLL_PROCESS_DETACH)
     {
+        // Save one more time at shutdown in case state changed since last spoof-call.
+        NativeProfile_Save();
+
         if (g_hRealNvapi)
         {
             FreeLibrary(g_hRealNvapi);

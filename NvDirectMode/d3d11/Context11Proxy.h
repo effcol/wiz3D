@@ -14,6 +14,25 @@
 namespace NvDirectMode
 {
 
+// Per-frame draw-call counter. Incremented on every Draw* and Dispatch*
+// interception in Context11Proxy; read + reset from SwapChainProxy::Present.
+// Purpose: distinguish Auto-Mode variants for stereo-capable engines —
+// a game that renders each frame twice for stereo (RAGE / MP3 candidate)
+// shows ~2x the draws-per-frame count when its 3D option is enabled.
+//
+// Sibling counter for ExecuteCommandList: deferred-context titles (RAGE +
+// most modern engines) record their draws into deferred contexts we DON'T
+// wrap yet, then play them back via ExecuteCommandList on the immediate
+// context (which IS us). We can't see individual draws from a deferred
+// context, but we CAN count how many command lists get executed per frame.
+// A dual-pass game would still show 2x command-list executions when 3D on.
+extern volatile LONG g_drawsThisFrame;
+extern volatile LONG g_cmdListsThisFrame;
+inline void CountDraw()       { InterlockedIncrement(&g_drawsThisFrame); }
+inline void CountCmdList()    { InterlockedIncrement(&g_cmdListsThisFrame); }
+LONG GetAndResetDrawsThisFrame();
+LONG GetAndResetCmdListsThisFrame();
+
 class Device11Proxy;
 
 class Context11Proxy : public ID3D11DeviceContext
@@ -44,16 +63,16 @@ public:
     void STDMETHODCALLTYPE PSSetShader(ID3D11PixelShader* pPixelShader, ID3D11ClassInstance* const* ppClassInstances, UINT NumClassInstances) override                                             { m_real->PSSetShader(pPixelShader, ppClassInstances, NumClassInstances); }
     void STDMETHODCALLTYPE PSSetSamplers(UINT StartSlot, UINT NumSamplers, ID3D11SamplerState* const* ppSamplers) override                                                                         { m_real->PSSetSamplers(StartSlot, NumSamplers, ppSamplers); }
     void STDMETHODCALLTYPE VSSetShader(ID3D11VertexShader* pVertexShader, ID3D11ClassInstance* const* ppClassInstances, UINT NumClassInstances) override                                           { m_real->VSSetShader(pVertexShader, ppClassInstances, NumClassInstances); }
-    void STDMETHODCALLTYPE DrawIndexed(UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation) override                                                                                  { m_real->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation); }
-    void STDMETHODCALLTYPE Draw(UINT VertexCount, UINT StartVertexLocation) override                                                                                                               { m_real->Draw(VertexCount, StartVertexLocation); }
+    void STDMETHODCALLTYPE DrawIndexed(UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation) override                                                                                  { CountDraw(); m_real->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation); }
+    void STDMETHODCALLTYPE Draw(UINT VertexCount, UINT StartVertexLocation) override                                                                                                               { CountDraw(); m_real->Draw(VertexCount, StartVertexLocation); }
     HRESULT STDMETHODCALLTYPE Map(ID3D11Resource* pResource, UINT Subresource, D3D11_MAP MapType, UINT MapFlags, D3D11_MAPPED_SUBRESOURCE* pMappedResource) override                               { return m_real->Map(pResource, Subresource, MapType, MapFlags, pMappedResource); }
     void STDMETHODCALLTYPE Unmap(ID3D11Resource* pResource, UINT Subresource) override                                                                                                             { m_real->Unmap(pResource, Subresource); }
     void STDMETHODCALLTYPE PSSetConstantBuffers(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers) override                                                                  { m_real->PSSetConstantBuffers(StartSlot, NumBuffers, ppConstantBuffers); }
     void STDMETHODCALLTYPE IASetInputLayout(ID3D11InputLayout* pInputLayout) override                                                                                                              { m_real->IASetInputLayout(pInputLayout); }
     void STDMETHODCALLTYPE IASetVertexBuffers(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppVertexBuffers, const UINT* pStrides, const UINT* pOffsets) override                          { m_real->IASetVertexBuffers(StartSlot, NumBuffers, ppVertexBuffers, pStrides, pOffsets); }
     void STDMETHODCALLTYPE IASetIndexBuffer(ID3D11Buffer* pIndexBuffer, DXGI_FORMAT Format, UINT Offset) override                                                                                  { m_real->IASetIndexBuffer(pIndexBuffer, Format, Offset); }
-    void STDMETHODCALLTYPE DrawIndexedInstanced(UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation) override              { m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation); }
-    void STDMETHODCALLTYPE DrawInstanced(UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation) override                                           { m_real->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation); }
+    void STDMETHODCALLTYPE DrawIndexedInstanced(UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation) override              { CountDraw(); m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation); }
+    void STDMETHODCALLTYPE DrawInstanced(UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation) override                                           { CountDraw(); m_real->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation); }
     void STDMETHODCALLTYPE GSSetConstantBuffers(UINT StartSlot, UINT NumBuffers, ID3D11Buffer* const* ppConstantBuffers) override                                                                  { m_real->GSSetConstantBuffers(StartSlot, NumBuffers, ppConstantBuffers); }
     void STDMETHODCALLTYPE GSSetShader(ID3D11GeometryShader* pShader, ID3D11ClassInstance* const* ppClassInstances, UINT NumClassInstances) override                                               { m_real->GSSetShader(pShader, ppClassInstances, NumClassInstances); }
     void STDMETHODCALLTYPE IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY Topology) override                                                                                                      { m_real->IASetPrimitiveTopology(Topology); }
@@ -70,11 +89,11 @@ public:
     void STDMETHODCALLTYPE OMSetBlendState(ID3D11BlendState* pBlendState, const FLOAT BlendFactor[4], UINT SampleMask) override                                                                    { m_real->OMSetBlendState(pBlendState, BlendFactor, SampleMask); }
     void STDMETHODCALLTYPE OMSetDepthStencilState(ID3D11DepthStencilState* pDepthStencilState, UINT StencilRef) override                                                                           { m_real->OMSetDepthStencilState(pDepthStencilState, StencilRef); }
     void STDMETHODCALLTYPE SOSetTargets(UINT NumBuffers, ID3D11Buffer* const* ppSOTargets, const UINT* pOffsets) override                                                                          { m_real->SOSetTargets(NumBuffers, ppSOTargets, pOffsets); }
-    void STDMETHODCALLTYPE DrawAuto() override                                                                                                                                                     { m_real->DrawAuto(); }
-    void STDMETHODCALLTYPE DrawIndexedInstancedIndirect(ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs) override                                                                      { m_real->DrawIndexedInstancedIndirect(pBufferForArgs, AlignedByteOffsetForArgs); }
-    void STDMETHODCALLTYPE DrawInstancedIndirect(ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs) override                                                                             { m_real->DrawInstancedIndirect(pBufferForArgs, AlignedByteOffsetForArgs); }
-    void STDMETHODCALLTYPE Dispatch(UINT ThreadGroupCountX, UINT ThreadGroupCountY, UINT ThreadGroupCountZ) override                                                                               { m_real->Dispatch(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ); }
-    void STDMETHODCALLTYPE DispatchIndirect(ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs) override                                                                                  { m_real->DispatchIndirect(pBufferForArgs, AlignedByteOffsetForArgs); }
+    void STDMETHODCALLTYPE DrawAuto() override                                                                                                                                                     { CountDraw(); m_real->DrawAuto(); }
+    void STDMETHODCALLTYPE DrawIndexedInstancedIndirect(ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs) override                                                                      { CountDraw(); m_real->DrawIndexedInstancedIndirect(pBufferForArgs, AlignedByteOffsetForArgs); }
+    void STDMETHODCALLTYPE DrawInstancedIndirect(ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs) override                                                                             { CountDraw(); m_real->DrawInstancedIndirect(pBufferForArgs, AlignedByteOffsetForArgs); }
+    void STDMETHODCALLTYPE Dispatch(UINT ThreadGroupCountX, UINT ThreadGroupCountY, UINT ThreadGroupCountZ) override                                                                               { CountDraw(); m_real->Dispatch(ThreadGroupCountX, ThreadGroupCountY, ThreadGroupCountZ); }
+    void STDMETHODCALLTYPE DispatchIndirect(ID3D11Buffer* pBufferForArgs, UINT AlignedByteOffsetForArgs) override                                                                                  { CountDraw(); m_real->DispatchIndirect(pBufferForArgs, AlignedByteOffsetForArgs); }
     void STDMETHODCALLTYPE RSSetState(ID3D11RasterizerState* pRasterizerState) override                                                                                                            { m_real->RSSetState(pRasterizerState); }
     void STDMETHODCALLTYPE RSSetViewports(UINT NumViewports, const D3D11_VIEWPORT* pViewports) override;
     void STDMETHODCALLTYPE RSSetScissorRects(UINT NumRects, const D3D11_RECT* pRects) override                                                                                                     { m_real->RSSetScissorRects(NumRects, pRects); }
@@ -91,7 +110,7 @@ public:
     void STDMETHODCALLTYPE SetResourceMinLOD(ID3D11Resource* pResource, FLOAT MinLOD) override                                                                                                     { m_real->SetResourceMinLOD(pResource, MinLOD); }
     FLOAT STDMETHODCALLTYPE GetResourceMinLOD(ID3D11Resource* pResource) override                                                                                                                  { return m_real->GetResourceMinLOD(pResource); }
     void STDMETHODCALLTYPE ResolveSubresource(ID3D11Resource* pDstResource, UINT DstSubresource, ID3D11Resource* pSrcResource, UINT SrcSubresource, DXGI_FORMAT Format) override                   { m_real->ResolveSubresource(pDstResource, DstSubresource, pSrcResource, SrcSubresource, Format); }
-    void STDMETHODCALLTYPE ExecuteCommandList(ID3D11CommandList* pCommandList, BOOL RestoreContextState) override                                                                                  { m_real->ExecuteCommandList(pCommandList, RestoreContextState); }
+    void STDMETHODCALLTYPE ExecuteCommandList(ID3D11CommandList* pCommandList, BOOL RestoreContextState) override                                                                                  { CountCmdList(); m_real->ExecuteCommandList(pCommandList, RestoreContextState); }
     void STDMETHODCALLTYPE HSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView* const* ppShaderResourceViews) override                                                    { m_real->HSSetShaderResources(StartSlot, NumViews, ppShaderResourceViews); }
     void STDMETHODCALLTYPE HSSetShader(ID3D11HullShader* pHullShader, ID3D11ClassInstance* const* ppClassInstances, UINT NumClassInstances) override                                               { m_real->HSSetShader(pHullShader, ppClassInstances, NumClassInstances); }
     void STDMETHODCALLTYPE HSSetSamplers(UINT StartSlot, UINT NumSamplers, ID3D11SamplerState* const* ppSamplers) override                                                                         { m_real->HSSetSamplers(StartSlot, NumSamplers, ppSamplers); }

@@ -141,6 +141,54 @@
              DX9 only. -->
         <SRSRGB Value="1"/>
 
+        <!-- TraceD9Methods: 1 = MT Framework ERR09 diagnostic. Logs the
+             first ~200 calls per IDirect3D9 / IDirect3DDevice9 method with
+             args and return HRESULT to nvdirectmode_proxy.log. Use to find
+             which capability probe a game rejects before printing its own
+             "unsupported function" dialog (Resident Evil 5, Dragon's Dogma,
+             DMC4SE etc.). Zero cost when off. DX9 only.
+             Default: 0. -->
+        <TraceD9Methods Value="0"/>
+
+        <!-- TraceLoadedModules: 1 = NvAPI-loading diagnostic. On DllMain
+             attach and again on entry to Direct3DCreate9 / Direct3DCreate9Ex,
+             the proxy enumerates every DLL loaded in the game process and
+             logs each full path (highlighting nvapi/d3d9/dxgi lines). Use to
+             answer "did the game load OUR nvapi.dll, System32's, or none at
+             all?" without needing external tools like listdlls or Procmon.
+             Zero cost when off. DX9 only.
+             Default: 0. -->
+        <TraceLoadedModules Value="0"/>
+
+        <!-- PostStereoOffOnLoad: 1 = experimental. When NativeProfile.xml has
+             StereoActive=0 for this game AND the game registers a stereo
+             notification hWnd via Stereo_SetNotificationMessage, post a
+             "state changed to off" message immediately so the game can sync
+             its OWN persistent state to our off-preference. Purpose: some
+             engines (candidate: MP3 / RAGE) treat this notification as
+             authoritative and write back to their own settings file, which
+             would propagate our cross-session persistence into the game's
+             engine state (so MP3's 3D-Vision menu option stays off across
+             restarts instead of MP3 re-enabling it from settings.rpf every
+             boot). If the game ignores it, no harm — no observable change.
+             Opt-in until validated per-game. Off by default.
+             Default: 0. -->
+        <PostStereoOffOnLoad Value="0"/>
+
+        <!-- TraceStereoValues: 1 = diagnostic. When on, every Stereo_Get*
+             function value-logs its returned value for the first ~8 calls
+             (Stereo_IsEnabled, Stereo_GetSurfaceCreationMode, Stereo_GetFrustum
+             AdjustMode, Stereo_IsWindowedModeSupported, Stereo_Debug_WasLast
+             DrawStereoized, SYS_GetDriverAndBranchVersion, Stereo_ReverseStereo
+             BlitControl), AND every "UNKNOWN id" QI passthrough logs whether
+             the real driver returned a function pointer (impl-present) or
+             NULL (NOT_SUPPORTED). Purpose: capture the full negotiation trace
+             DIRT / GRID / F1 do at startup so we can identify which return
+             value the engine rejects (preventing in-engine depth-reprojection).
+             Chatty when on; leave off for normal play.
+             Default: 0. -->
+        <TraceStereoValues Value="0"/>
+
 
         <!-- BlockEOSOverlay: 1 = block Epic Online Services overlay
              (EOSOVH-Win32-Shipping.dll) from loading into the game process;
@@ -200,23 +248,31 @@
              proxy). Default: 0. -->
         <DisableStereoSpoof Value="0"/>
 
-        <!-- IgnoreStereoDisable: how Stereo_Deactivate is treated.
+        <!-- IgnoreStereoDisable: how the game's "turn off stereo"
+             NvAPI calls are treated. Covers BOTH pairs:
+                 Stereo_Activate/Deactivate (newer per-context API)
+                 Stereo_Enable/Disable      (older driver-global API,
+                                             used by MP3, GTA IV era)
 
              DEFAULT (0) = smart auto-detect.
-             * A Deactivate fired BEFORE the game's first Activate is the
+             * A Deactivate fired BEFORE the game's first Activate — OR
+               a Disable fired BEFORE the game's first Enable — is the
                "I'll manage my own stereo" handshake pattern (CryEngine
-               games — Crysis 2/3 — and some UE3 titles use this to tell
-               NVIDIA "don't run Automatic Mode on top of me"). We log
-               and ignore it, keeping wiz3D ready to route the per-eye
-               output the game IS about to render.
-             * A Deactivate fired AFTER at least one Activate is a real
-               user-driven toggle-off (in-game stereo menu, hotkey).
-               We honour it — wiz3D reports stereo off, game renders
-               mono, everything works as expected.
+               games — Crysis 2/3 — and some UE3/RAGE titles use this
+               to tell NVIDIA "don't run Automatic Mode on top of me").
+               We log and ignore it, keeping wiz3D ready to route the
+               per-eye output the game IS about to render.
+             * A Deactivate/Disable fired AFTER the game has at least
+               one Activate/Enable is a real user-driven toggle-off
+               (in-game stereo menu, hotkey). We honour it — wiz3D
+               reports stereo off, game renders mono, everything works
+               as expected.
 
              This automatically fixes the CryEngine-style class of game
-             without breaking in-game menu toggles for games that
-             correctly route their own on/off through NvAPI.
+             AND the MP3/GTA-IV-style class of game (older-API version
+             of the same handshake) without breaking in-game menu
+             toggles for games that correctly route their own on/off
+             through NvAPI.
 
              1 = HARD OVERRIDE. Ignore every Stereo_Deactivate call
              unconditionally, regardless of prior state. Only needed if

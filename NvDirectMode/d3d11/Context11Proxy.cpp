@@ -10,6 +10,15 @@
 namespace NvDirectMode
 {
 
+// Per-frame draw-call + command-list counter storage. Declared in
+// Context11Proxy.h, bumped by CountDraw / CountCmdList on interception,
+// drained by SwapChainProxy at Present time.
+volatile LONG g_drawsThisFrame   = 0;
+volatile LONG g_cmdListsThisFrame = 0;
+
+LONG GetAndResetDrawsThisFrame()    { return InterlockedExchange(&g_drawsThisFrame,   0); }
+LONG GetAndResetCmdListsThisFrame() { return InterlockedExchange(&g_cmdListsThisFrame, 0); }
+
 Context11Proxy::Context11Proxy(ID3D11DeviceContext* real, Device11Proxy* parent)
     : m_real(real)
     , m_parent(parent)

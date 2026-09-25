@@ -42,6 +42,8 @@ static int   g_anaglyphColour  = 0;   // 0=RC (default), 1=GM, 2=AB, 3=TriOviz
 static int   g_anaglyphMethod  = 0;   // 0=Dubois (default), 1=Compromise, 2=Color, 3=HalfColor, 4=Optimised, 5=Grey, 6=True
 static int   g_disableComposite = 0;   // diagnostic — 1 = skip per-eye capture + SBS composite, do a straight shadow→tracked BB mono passthrough at Present. Isolates whether crashes originate in the composite path vs the vtable hooks themselves.
 static int   g_srSRGB           = 1;   // SR input color space. 1 = tell SR-Lib the SBS texture is sRGB (DX9 default — matches how Oil Rush + Hard Reset backbuffers actually contain colour: gamma-encoded even when the D3D9 format bit is a plain X8R8G8B8 rather than a _sRGB variant). 0 = tell SR-Lib the texture is linear. Flip to 0 if a game's colours look washed / darkened / gamma-shifted through the weave. Runtime effect: passed as the 2nd arg to SRInterfaceDX9::SetInputTexture.
+static int   g_traceD9Methods   = 0;   // MT Framework ERR09 diagnostic — when 1, log first ~200 calls per IDirect3D9 / IDirect3DDevice9 method with args + return HRESULT. Off by default (chatty).
+static int   g_traceLoadedModules = 0; // NvAPI-loading diagnostic — when 1, enumerate every DLL loaded in the game process at DllMain + after Direct3DCreate9, logging full path. Answers "did the game load OUR nvapi.dll, System32's, or none?" without needing external tools like listdlls / Procmon. Off by default.
 
 static void LogOpen(void)
 {
@@ -82,6 +84,7 @@ extern "C" int NvDM_SwapEyes()       { return g_swapEyes; }
 extern "C" int NvDM_OutputMode()     { return g_outputMode; }
 extern "C" int NvDM_OutputIsTopBottom() { return (g_outputMode == 0 || g_outputMode == 3) ? 1 : 0; }
 extern "C" int NvDM_UseLayoutStableLevel() { return g_useLayoutStable; }
+extern "C" int NvDM_TraceD9Methods() { return g_traceD9Methods; }
 extern "C" int NvDM_AnaglyphColour() { return g_anaglyphColour; }
 extern "C" int NvDM_AnaglyphMethod() { return g_anaglyphMethod; }
 extern "C" int NvDM_DisableComposite() { return g_disableComposite; }
@@ -125,7 +128,51 @@ static void LoadConfig(HMODULE hProxy)
     g_anaglyphMethod  = ReadConfigInt(buf, "AnaglyphMethod",  g_anaglyphMethod);
     g_disableComposite = ReadConfigInt(buf, "DisableComposite", g_disableComposite);
     g_srSRGB           = ReadConfigInt(buf, "SRSRGB",           g_srSRGB);
+    g_traceD9Methods   = ReadConfigInt(buf, "TraceD9Methods",   g_traceD9Methods);
+    g_traceLoadedModules = ReadConfigInt(buf, "TraceLoadedModules", g_traceLoadedModules);
     free(buf);
+}
+
+// ---------------------------------------------------------------------------
+// Loaded-modules enumeration diagnostic. Answers "which nvapi.dll (if any)
+// did the game actually load?" — critical when the wrapper spoof appears to
+// be doing nothing. Called at DllMain and after first Direct3DCreate9 so we
+// see both the initial static-import snapshot and any late LoadLibrary calls
+// during graphics init. Gated on TraceLoadedModules config flag.
+// ---------------------------------------------------------------------------
+static void DumpLoadedModules(const char* stage)
+{
+    if (!g_traceLoadedModules) return;
+    HANDLE hProc = GetCurrentProcess();
+    HMODULE mods[1024];
+    DWORD cbNeeded = 0;
+    if (!EnumProcessModulesEx(hProc, mods, sizeof(mods), &cbNeeded, LIST_MODULES_ALL))
+    {
+        Log("[modules] EnumProcessModulesEx failed (stage=%s, err=%lu)\n", stage, GetLastError());
+        return;
+    }
+    DWORD count = cbNeeded / sizeof(HMODULE);
+    if (count > 1024) count = 1024;
+    Log("[modules] === stage=%s: %lu modules loaded ===\n", stage, count);
+    for (DWORD i = 0; i < count; ++i)
+    {
+        WCHAR path[MAX_PATH] = {0};
+        if (GetModuleFileNameExW(hProc, mods[i], path, MAX_PATH))
+        {
+            // Highlight nvapi, d3d9, dxgi to keep the log easy to scan.
+            const WCHAR* leaf = wcsrchr(path, L'\\');
+            leaf = leaf ? leaf + 1 : path;
+            const bool highlight =
+                (_wcsicmp(leaf, L"nvapi.dll")   == 0) ||
+                (_wcsicmp(leaf, L"nvapi64.dll") == 0) ||
+                (_wcsicmp(leaf, L"d3d9.dll")    == 0) ||
+                (_wcsicmp(leaf, L"dxgi.dll")    == 0) ||
+                (_wcsicmp(leaf, L"d3d11.dll")   == 0) ||
+                (_wcsicmp(leaf, L"d3d10.dll")   == 0);
+            Log("[modules]   %s%ls\n", highlight ? ">> " : "   ", path);
+        }
+    }
+    Log("[modules] === end stage=%s ===\n", stage);
 }
 
 // ---------------------------------------------------------------------------
@@ -318,6 +365,7 @@ static BOOL LoadRealD3D9(void)
 extern "C" __declspec(dllexport) void* WINAPI Direct3DCreate9(UINT SDKVersion)
 {
     Log("Direct3DCreate9(SDKVersion=%u) called\n", SDKVersion);
+    DumpLoadedModules("Direct3DCreate9-entry");
     if (!LoadRealD3D9() || !g_pfnRealCreate9) return NULL;
     void* real = g_pfnRealCreate9(SDKVersion);
     if (!real) { Log("  real Direct3DCreate9 returned NULL\n"); return NULL; }
@@ -348,6 +396,7 @@ extern "C" __declspec(dllexport) void* WINAPI Direct3DCreate9(UINT SDKVersion)
 extern "C" __declspec(dllexport) HRESULT WINAPI Direct3DCreate9Ex(UINT SDKVersion, void** ppD3D)
 {
     Log("Direct3DCreate9Ex(SDKVersion=%u) called\n", SDKVersion);
+    DumpLoadedModules("Direct3DCreate9Ex-entry");
     if (!ppD3D) return E_FAIL;
     if (!LoadRealD3D9() || !g_pfnRealCreate9Ex) return E_FAIL;
     void* real = nullptr;
@@ -472,9 +521,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
                 (g_outputMode == 7) ? "Anaglyph"            :
                 (g_outputMode == 8) ? "Simulated Reality weave" :
                                        "Unknown";
-            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  UseLayoutStableProxy=%d  LoggingEnabled=%d  VerboseLogging=%d  DisableComposite=%d  SRSRGB=%d\n",
+            Log("Config:    OutputMode=%d (%s)  WrapDevices=%d  SwapEyes=%d  UseLayoutStableProxy=%d  LoggingEnabled=%d  VerboseLogging=%d  DisableComposite=%d  SRSRGB=%d  TraceD9Methods=%d  TraceLoadedModules=%d\n",
                 g_outputMode, modeName,
-                g_wrapDevices, g_swapEyes, g_useLayoutStable, g_loggingEnabled, g_verboseEnabled, g_disableComposite, g_srSRGB);
+                g_wrapDevices, g_swapEyes, g_useLayoutStable, g_loggingEnabled, g_verboseEnabled, g_disableComposite, g_srSRGB, g_traceD9Methods, g_traceLoadedModules);
+            DumpLoadedModules("DllMain-attach");
             // Known hookers that fight over the D3D9 vtable. Log them so
             // users see whether "disable Steam Overlay" actually took
             // effect for a given game. If gameoverlayrenderer is loaded

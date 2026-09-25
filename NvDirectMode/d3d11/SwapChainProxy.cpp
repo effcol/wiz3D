@@ -1,5 +1,6 @@
 #include "SwapChainProxy.h"
 #include "Device11Proxy.h"
+#include "Context11Proxy.h"    // GetAndResetDrawsThisFrame() for Present-time draw counter
 #include "eye_state.h"
 #include "log.h"
 #include "../anaglyph_matrices.h"
@@ -578,9 +579,37 @@ HRESULT STDMETHODCALLTYPE SwapChainProxy::QueryInterface(REFIID riid, void** ppv
     return E_NOINTERFACE;
 }
 
+// Per-Present draw-count heartbeat. Reads and resets the per-frame counter
+// bumped by Context11Proxy's draw/dispatch interceptors, then logs once every
+// N frames along with a running max. Two-view Auto-Mode games (RAGE / MP3)
+// should visibly double their draws-per-frame when the in-game 3D option is
+// enabled — that's the signal we're hunting.
+static void HeartbeatDrawCount()
+{
+    LONG drawsFrame   = GetAndResetDrawsThisFrame();
+    LONG cmdListFrame = GetAndResetCmdListsThisFrame();
+    static volatile LONG s_frameIdx   = 0;
+    static volatile LONG s_maxDraws   = 0;
+    static volatile LONG s_maxCmdList = 0;
+    LONG f = InterlockedIncrement(&s_frameIdx);
+    // Track running max across the session for each counter.
+    LONG cur = s_maxDraws;
+    while (drawsFrame > cur && _InterlockedCompareExchange(&s_maxDraws, drawsFrame, cur) != cur)
+        cur = s_maxDraws;
+    cur = s_maxCmdList;
+    while (cmdListFrame > cur && _InterlockedCompareExchange(&s_maxCmdList, cmdListFrame, cur) != cur)
+        cur = s_maxCmdList;
+    if ((f % 60) == 0)
+    {
+        NvDM_Log("  DrawCountHB: frame#%ld  draws/frame=%ld (max=%ld)  cmdLists/frame=%ld (max=%ld)\n",
+                 f, drawsFrame, s_maxDraws, cmdListFrame, s_maxCmdList);
+    }
+}
+
 HRESULT STDMETHODCALLTYPE SwapChainProxy::Present(UINT SyncInterval, UINT Flags)
 {
     NVDM_TRACE_FIRST_N(4, "  SwapChainProxy::Present(SyncInterval=%u, Flags=0x%X)\n", SyncInterval, Flags);
+    HeartbeatDrawCount();
     CaptureAndPresentBlit();
     return m_real->Present(SyncInterval, Flags);
 }
@@ -590,6 +619,7 @@ HRESULT STDMETHODCALLTYPE SwapChainProxy::Present1(UINT SyncInterval, UINT Flags
 {
     NVDM_TRACE_FIRST_N(4, "  SwapChainProxy::Present1(SyncInterval=%u, Flags=0x%X)\n", SyncInterval, Flags);
     if (!m_real1) return E_NOINTERFACE;
+    HeartbeatDrawCount();
     CaptureAndPresentBlit();
     return m_real1->Present1(SyncInterval, Flags, pPresentParameters);
 }
