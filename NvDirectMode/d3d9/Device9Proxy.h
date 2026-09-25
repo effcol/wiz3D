@@ -202,6 +202,16 @@ private:
     IDirect3DSurface9*   m_shadowBB;            // shadow at logical size
     IDirect3DSurface9*   m_leftEyeSurf;
     IDirect3DSurface9*   m_rightEyeSurf;
+    // Format override for the shadow. D3DFMT_UNKNOWN means "match the real BB
+    // format" (normal case). Set to a specific format when we intercepted a
+    // Reset that requested a format the real driver rejected in fullscreen
+    // (canonical case: MT Framework games asking for A8R8G8B8 with Stereo=ON
+    // while the desktop mode is X8R8G8B8). Real BB stays at whatever the real
+    // driver accepts; the game sees a shadow with its requested format, so
+    // alpha writes / engine-side compositing that depends on the requested
+    // format still work. Present-time composite drops alpha when copying to
+    // the real BB — display doesn't consume it anyway.
+    D3DFORMAT            m_shadowFormatOverride;
 
     // OutputMode 4-7 shader pipeline (Line/Col Interleaved, Checkerboard,
     // Anaglyph). DX9 doesn't have shader infrastructure on the eye-capture

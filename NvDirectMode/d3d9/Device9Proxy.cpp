@@ -75,6 +75,7 @@ Device9Proxy::Device9Proxy(IDirect3DDevice9* real, bool isEx)
     , m_shadowBB(nullptr)
     , m_leftEyeSurf(nullptr)
     , m_rightEyeSurf(nullptr)
+    , m_shadowFormatOverride(D3DFMT_UNKNOWN)
     , m_leftEyeTex(nullptr)
     , m_rightEyeTex(nullptr)
     , m_compositeVS(nullptr)
@@ -149,21 +150,39 @@ void Device9Proxy::EnsureShadow()
     m_logicalWidth = desc.Width;
     m_logicalHeight = desc.Height;
 
-    // Shadow has same format/MS as the real BB so StretchRect can copy
-    // between them without conversion.
-    HRESULT hr = m_real->CreateRenderTarget(desc.Width, desc.Height, desc.Format,
+    // Shadow format usually matches the real BB (so StretchRect at Present
+    // needs no conversion). If a game requested a format the real driver
+    // rejected in fullscreen (e.g. MT Framework A8R8G8B8 with Stereo=ON while
+    // desktop is X8R8G8B8), we intercepted Reset, patched real params to a
+    // driver-friendly format, and remembered the game's requested format
+    // here. Give the game a shadow at THAT format so writes to alpha /
+    // format-dependent effects still work; present-time composite converts.
+    D3DFORMAT shadowFmt = (m_shadowFormatOverride != D3DFMT_UNKNOWN)
+                          ? m_shadowFormatOverride
+                          : desc.Format;
+
+    HRESULT hr = m_real->CreateRenderTarget(desc.Width, desc.Height, shadowFmt,
                                              desc.MultiSampleType, desc.MultiSampleQuality,
                                              FALSE, &m_shadowBB, NULL);
     if (FAILED(hr) || !m_shadowBB)
     {
-        LOG_VERBOSE("  d3d9 EnsureShadow: CreateRenderTarget(%ux%u) FAILED hr=0x%08lX\n",
-                    desc.Width, desc.Height, hr);
+        LOG_VERBOSE("  d3d9 EnsureShadow: CreateRenderTarget(%ux%u fmt=%d) FAILED hr=0x%08lX (override=%d, realFmt=%d)\n",
+                    desc.Width, desc.Height, (int)shadowFmt, hr,
+                    (int)m_shadowFormatOverride, (int)desc.Format);
         m_shadowBB = nullptr;
         return;
     }
-    LOG_VERBOSE("  d3d9 EnsureShadow: shadow=%p (%ux%u, fmt=%d) for realBB=%p\n",
-                m_shadowBB, desc.Width, desc.Height, (int)desc.Format,
-                (void*)m_pTrackedBackBuffer);
+    if (m_shadowFormatOverride != D3DFMT_UNKNOWN && shadowFmt != desc.Format)
+    {
+        LOG_VERBOSE("  d3d9 EnsureShadow: shadow=%p (%ux%u, gameFmt=%d, realBBFmt=%d) — game-requested format restored via override\n",
+                    m_shadowBB, desc.Width, desc.Height, (int)shadowFmt, (int)desc.Format);
+    }
+    else
+    {
+        LOG_VERBOSE("  d3d9 EnsureShadow: shadow=%p (%ux%u, fmt=%d) for realBB=%p\n",
+                    m_shadowBB, desc.Width, desc.Height, (int)desc.Format,
+                    (void*)m_pTrackedBackBuffer);
+    }
 }
 
 void Device9Proxy::CaptureEye(int eyeBeingLeft)
@@ -832,12 +851,53 @@ HRESULT Device9Proxy::Reset(D3DPRESENT_PARAMETERS* p)
         modified = *p;
         ResolveAndDoubleSwapchainParams(&modified, modified.hDeviceWindow, &logicalW, &logicalH);
         p = &modified;
+
+        // MT Framework Stereo=ON path (RE5, DDA, DMC4, Lost Planet 2):
+        // engine calls Reset with BackBufferFormat=A8R8G8B8 and Windowed=FALSE.
+        // Modern drivers refuse this combo when the desktop mode is X8R8G8B8
+        // (cross-format fullscreen swap-chain matching), returning
+        // D3DERR_INVALIDCALL. Game catches the failure and prints its
+        // "ERR09: Unsupported function" dialog. Not our bug — vanilla RE5
+        // hits the same wall — but wrapper is where we can rescue it.
+        //
+        // Fix: patch the params to X8R8G8B8 so the REAL swap-chain still
+        // creates. Remember the game's requested A8R8G8B8 as the shadow
+        // format override, so when the game later calls GetBackBuffer(0)
+        // it sees a surface with its requested alpha format. Present-time
+        // composite drops alpha when copying to the real BB — display
+        // doesn't consume it anyway.
+        //
+        // This preserves whatever engine-side compositing the game does
+        // with alpha (post-processing, HUD blending, or — the interesting
+        // case — anything stereo-related). Bare workaround with fmt
+        // downgrade would discard that signal permanently.
+        if (modified.BackBufferFormat == D3DFMT_A8R8G8B8 && !modified.Windowed)
+        {
+            LOG_VERBOSE("  d3d9 Reset: intercept — game wants BB fmt=A8R8G8B8 fullscreen "
+                        "(usually rejected by modern drivers). Patching real fmt to X8R8G8B8, "
+                        "keeping game shadow at A8R8G8B8 via shadowFormatOverride.\n");
+            m_shadowFormatOverride = D3DFMT_A8R8G8B8;
+            modified.BackBufferFormat = D3DFMT_X8R8G8B8;
+        }
+        else
+        {
+            // Any other Reset clears the override — game changed its mind
+            // or moved off the pathological combo.
+            m_shadowFormatOverride = D3DFMT_UNKNOWN;
+        }
     }
     HRESULT hr = m_real->Reset(p);
     if (SUCCEEDED(hr))
     {
         if (logicalW > 0) SetLogicalBackBufferSize(logicalW, logicalH);
         StashBackBufferReference();
+    }
+    else if (m_shadowFormatOverride != D3DFMT_UNKNOWN)
+    {
+        // Real Reset failed even after our fmt patch — surrender the override
+        // so subsequent EnsureShadow calls stay consistent with the real BB.
+        LOG_VERBOSE("  d3d9 Reset: patched Reset STILL failed (hr=0x%08lX) — clearing shadow-format override\n", hr);
+        m_shadowFormatOverride = D3DFMT_UNKNOWN;
     }
     return hr;
 }
