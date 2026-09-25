@@ -1,3 +1,8 @@
+// d3d10_1.h before d3d10.h — the Win11 SDK errors out with C1189 if any
+// downstream header (SR-Lib's d3d11_1.h chain) pulls d3d10_1.h after d3d10.h.
+// Including it first is harmless: d3d10_1.h just adds the 10.1 types on top.
+#include <d3d10_1.h>
+
 #include "SwapChainProxy.h"
 #include "Device10Proxy.h"
 #include "eye_state.h"
@@ -9,10 +14,20 @@
 // delay-load the SR runtime DLLs (see SR.hpp header comment for the list).
 //
 // NOTE: SR-Lib does not yet have a DX10 interface (SRInterfaceDX10 /
-// CreateSRInterfaceDX10). This file mirrors the DX11 SR-Lib pattern as
-// a prototype — it will not compile until SR-Lib adds DX10 support.
-// The d3d10 project is excluded from the solution build in the meantime.
+// CreateSRInterfaceDX10). The DX10 SR weave path is stubbed out below —
+// per-eye routing + non-SR output modes still work. Restore real methods
+// once SR-Lib adds an SRInterfaceDX10 mirroring the DX11 one.
 #include "SR.hpp"
+namespace SimulatedReality
+{
+class SRInterfaceDX10
+{
+public:
+    void Delete() {}
+    void SetInputTexture(ID3D10ShaderResourceView*) {}
+    void Weave() {}
+};
+}
 
 #include <ctype.h>
 #include <stdlib.h>
@@ -665,22 +680,12 @@ bool SwapChainProxy::EnsureSRWeaver()
         return false; 
     }
 
-    // SR-Lib: single-call init — creates SRContext + weaver internally.
-    // NOTE: CreateSRInterfaceDX10 does not exist yet in SR-Lib — this is
-    // a prototype mirroring the DX11 pattern. Signature assumed to match
-    // DX11 (device, HWND, out-pointer).
-    HRESULT hr = SimulatedReality::CreateSRInterfaceDX10(dev, hWnd, &m_srInterfaceDX10);
-    if (FAILED(hr) || !m_srInterfaceDX10)
-    {
-        LOG_VERBOSE("  d3d10 EnsureSRWeaver: CreateSRInterfaceDX10 failed (hr=0x%08lX hWnd=%p dev=%p)\n",
-                    hr, (void*)hWnd, (void*)dev);
-        m_srFailed = true;
-        return false;
-    }
-
-    LOG_VERBOSE("  d3d10 EnsureSRWeaver: ready (hWnd=%p srInterface=%p)\n",
-                (void*)hWnd, (void*)m_srInterfaceDX10);
-    return true;
+    // SR-Lib DX10 interface not yet implemented (CreateSRInterfaceDX10 doesn't
+    // exist in SR-Lib). SR weave is unavailable on the DX10 path; base per-eye
+    // routing + non-SR output modes still work. Silently disable and move on.
+    (void)dev; (void)hWnd;
+    m_srFailed = true;
+    return false;
 }
 
 bool SwapChainProxy::RunSRWeave()
