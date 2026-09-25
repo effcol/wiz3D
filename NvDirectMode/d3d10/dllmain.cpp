@@ -94,7 +94,7 @@ static void LoadConfig(HMODULE hProxy)
     fseek(f, 0, SEEK_END);
     long sz = ftell(f);
     fseek(f, 0, SEEK_SET);
-    if (sz <= 0 || sz > 16 * 1024) { fclose(f); return; }
+    if (sz <= 0 || sz > 256 * 1024) { fclose(f); return; } // was 16 KB — silently skipped configs >16 KB, hiding user edits
     char* buf = (char*)malloc((size_t)sz + 1);
     if (!buf) { fclose(f); return; }
     size_t n = fread(buf, 1, (size_t)sz, f);

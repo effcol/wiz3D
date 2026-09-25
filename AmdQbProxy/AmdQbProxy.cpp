@@ -151,9 +151,10 @@ static void LoadConfig()
 
     // Read up to 16 KB into a heap buffer. The released wiz3D configs run to
     // tens of KB; the old fixed 4 KB stack buffer silently truncated them, so
-    // any tag past the cut reverted to its default. 16 KB matches NvDirectMode.
+    // any tag past the cut reverted to its default. 256 KB matches NvDirectMode
+    // (bumped from 16 KB when 3DVision_Config.xml grew past that mid-2026).
     DWORD fileSize = GetFileSize(hFile, nullptr);
-    if (fileSize == INVALID_FILE_SIZE || fileSize == 0 || fileSize > 16 * 1024)
+    if (fileSize == INVALID_FILE_SIZE || fileSize == 0 || fileSize > 256 * 1024)
     {
         CloseHandle(hFile);
         return;
