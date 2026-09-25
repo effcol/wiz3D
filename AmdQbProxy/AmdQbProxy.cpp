@@ -42,6 +42,9 @@
 // Local interfaces header — omits the AmdDxExtCreate/AmdDxExtCreate11 function
 // declarations from the AMD SDK so our extern "C" exports don't cause C2732.
 #include "AmdQbInterfaces.h"
+#include "..\NvDirectMode\native_profile.h"   // cross-session StereoActive persistence
+                                              // (shared with NvApiProxy; NvDirectMode
+                                              // dir is just where the header lives)
 
 #include <MinHook.h>
 
@@ -804,6 +807,7 @@ extern "C" {
 __declspec(dllexport) void AmdQbProxy_SetStereoActive(bool active)
 {
     g_bStereoActive = active;
+    wiz3D::NativeProfile::SetStereoActive(active);  // persist cross-session
     char buf[128];
     wsprintfA(buf, "[AmdQbProxy] External SetStereoActive -> %d\n", (int)active);
     WriteLog(buf);
@@ -2531,6 +2535,7 @@ public:
     HRESULT EnableQuadBufferStereo(BOOL enable) override
     {
         g_bStereoActive = (enable != FALSE);
+        wiz3D::NativeProfile::SetStereoActive(g_bStereoActive);   // persist cross-session
         if (g_bStereoActive)
         {
             WriteLog("[AmdQbProxy] EnableQuadBufferStereo(TRUE) - installing Present hook\n");
@@ -2738,6 +2743,22 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         DisableThreadLibraryCalls(hModule);
         LoadConfig();
         MH_Initialize();   // still needed for the IDXGIFactory::CreateSwapChain hook
+
+        // Cross-session stereo state (mirrors NvApiProxy pattern; %APPDATA%\
+        // wiz3D\NativeProfile.xml is the source of truth, HKCU\Software\wiz3D\
+        // NativeProfile\<exe> is the registry mirror). Load the previous
+        // per-game value; the actual QuadBufferStereo enable call from the
+        // game will still override it at runtime, but if the game respects
+        // its own persisted setting (many HD3D games have a hardware_settings
+        // config), our loaded state seeds g_bStereoActive to match.
+        wiz3D::NativeProfile::Init("HD3D");
+        {
+            int loaded = wiz3D::NativeProfile::Load();
+            g_bStereoActive = (loaded != 0);
+            char msg[192];
+            wsprintfA(msg, "[AmdQbProxy] NativeProfile: loaded exe -> StereoActive=%d\n", loaded);
+            WriteLog(msg);
+        }
         WriteLog("[AmdQbProxy] DLL_PROCESS_ATTACH: atidxx loaded OK (wiz3D " DISPLAYED_VERSION ")\n");
         break;
 
