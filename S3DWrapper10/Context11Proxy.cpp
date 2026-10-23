@@ -114,6 +114,8 @@ Context11Proxy::~Context11Proxy()
     ReleaseUavTwins(~0u);
     for (auto& kv : m_clipSpaceGS) if (kv.second) kv.second->Release();
     for (auto& kv : m_clipSpaceRayGS) if (kv.second) kv.second->Release();
+    for (auto& kv : m_lightVolumeGS) if (kv.second) kv.second->Release();
+    if (m_lightVolumePsCB) m_lightVolumePsCB->Release();
     for (auto& kv : m_ringStaging) if (kv.second) kv.second->Release();
     for (RingReadback& r : m_ringReadbacks) r.b->Release();
     for (auto& kv : m_clipSpaceDepth)

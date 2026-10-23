@@ -565,7 +565,7 @@ private:
     unsigned             m_overlayRestoredThisFrame  = 0;
     unsigned             m_plainRestoredThisFrame    = 0;
     unsigned             m_learnedWithheldThisFrame  = 0;
-    struct PsCameraMatrix { bool inverse; bool transposed; };
+    struct PsCameraMatrix { bool inverse; bool transposed; bool viewport = false; };
     std::map<unsigned long long, PsCameraMatrix> m_psCameraMatrices;
     // Why a CB write had no targets: no VS bound, VS unparsed, VS without matrices, buffer at no VS slot, at a VS slot
     // without a matrix; and the bindings dropped by state resets.
@@ -684,6 +684,14 @@ private:
     bool          m_clipSpaceRays = false;
     unsigned      m_clipSpaceRayDrawsThisFrame = 0;
     ID3D11GeometryShader* ClipSpaceRayShader(const ShaderAnalysis11Result* info);
+    // TiledLightVolumes: a light volume's view-space outputs moved into the right camera's view, and a private copy of the
+    // pixel stage's cb0 with the tile rays' x offset moved by the eye shift.
+    std::map<DWORD, ID3D11GeometryShader*> m_lightVolumeGS;
+    ID3D11Buffer* m_lightVolumePsCB = nullptr;
+    UINT          m_lightVolumePsCBSize = 0;
+    unsigned      m_lightVolumeDrawsThisFrame = 0, m_lightVolumeRefusedThisFrame = 0;
+    bool          m_lightVolumeBound = false;
+    ID3D11GeometryShader* LightVolumeShader(const ShaderAnalysis11Result* info, int kind);
     // ClipSpaceSprites 1: a copy of the right depth buffer and its shader view, per right DSV, for sprites without a z.
     struct ClipSpaceDepth { ID3D11Texture2D* tex; ID3D11ShaderResourceView* srv; UINT w, h; unsigned frame; };
     std::map<ID3D11DepthStencilView*, ClipSpaceDepth> m_clipSpaceDepth;
@@ -818,6 +826,11 @@ public:
     void                      UnbindClipSpaceShift();
     bool                      BindClipSpaceRayShift();
     unsigned                  ClipSpaceRayCount() { const unsigned n = m_clipSpaceRayDrawsThisFrame; m_clipSpaceRayDrawsThisFrame = 0; return n; }
+    // <TiledLightVolumes>: kind 1 point, 2 spot, 3 box; rayReg = the pixel shader's cb0 register of x/z = px * .x + .z.
+    bool                      BindLightVolumeShift(int kind, UINT rayReg);
+    void                      UnbindLightVolumeShift();
+    void                      LightVolumeCounts(unsigned& shifted, unsigned& refused)
+    { shifted = m_lightVolumeDrawsThisFrame; refused = m_lightVolumeRefusedThisFrame; m_lightVolumeDrawsThisFrame = m_lightVolumeRefusedThisFrame = 0; }
     void                      ClipSpaceCounts(unsigned& shifted, unsigned& noCamera)
     { shifted = m_clipSpaceDrawsThisFrame; noCamera = m_clipSpaceNoCameraThisFrame; m_clipSpaceDrawsThisFrame = m_clipSpaceNoCameraThisFrame = 0; }
     unsigned                  SpriteTwinCount() { const unsigned n = m_spriteTwinDrawsThisFrame; m_spriteTwinDrawsThisFrame = 0; return n; }

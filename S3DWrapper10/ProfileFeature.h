@@ -162,6 +162,10 @@ std::unique_ptr<ProfileFeature> MakePrivateBackBufferRefs(const ProfileEntry* en
 std::unique_ptr<ProfileFeature> MakeRecycleRightCopies(const ProfileEntry* entry);
 std::unique_ptr<ProfileFeature> MakeDecalMatrices(const ProfileEntry* entry);
 std::unique_ptr<ProfileFeature> MakeFogVolumeLookups(const ProfileEntry* entry);
+std::unique_ptr<ProfileFeature> MakeTypelessBackBuffer(const ProfileEntry* entry);
+std::unique_ptr<ProfileFeature> MakeViewportMatrices(const ProfileEntry* entry);
+std::unique_ptr<ProfileFeature> MakeCodeMatrixRows(const ProfileEntry* entry);
+std::unique_ptr<ProfileFeature> MakeTiledLightVolumes(const ProfileEntry* entry);
 
 // The game's profile has the element and it is not Value="0" (for switches the core asks outside a context).
 bool ProfileSwitchOn(const char* element);
@@ -176,10 +180,18 @@ bool ComputeOutputsPerEyeOn();   // UAV textures doubled like render targets
 bool IndirectArgsPerEyeOn();     // structure-count destinations given a right sibling
 bool CameraInversesOn();         // any camera's unprojection matched and patched with its own focal
 bool CodeMatricesOn();           // matrices of shaders without reflection found from their code
+bool CodeMatrixRowsOn();         // those matrices are classified as the dp4 rows they are read as, not in both orientations
 bool Factory2SwapChainsOn();     // Factory2 swap chains wrapped on any factory, not only CreateDXGIFactory2's
 bool BatchRightEyeOn();          // the right eye's draws recorded and replayed once per pass; on unless Value="0"
 bool PrivateBackBufferRefsOn();  // our holds on the back buffer left out of the count the game reads
 bool RecycleRightCopiesOn();     // a freed texture's right copy serves the next texture created with its desc
+bool TypelessBackBufferOn();     // the stereo back-buffer stand-ins are typeless, so _SRGB views of a UNORM swap chain work
+bool ViewportMatricesOn();       // camera matrices with the viewport folded in are declared camera matrices, shifted in pixels
+// ViewportMatrices (FeatureViewportMatrices.cpp): the kind (1 world to pixel, 2 pixel to world, 0 neither), and the shift's
+// focal in pixels and w basis norm (false once the shape is lost).
+int  ClassifyViewportMatrix(const float* f, float scene, bool rowsOnly, bool& transposed, DWORD crc, UINT slot, DWORD reg);
+bool ViewportFocal(const float* f, bool transposed, bool inverse, float scene, float& focal, float& wn);
+void CountViewportPatch(bool inverse, bool ok);
 float UiProjectionReferenceNear();   // UiProjectionParallax SceneNear, 0 = the frame's own scene camera
 
 // Stereo state the core owns, for features to read or feed.

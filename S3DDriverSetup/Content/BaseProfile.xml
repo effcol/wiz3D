@@ -1350,6 +1350,28 @@
 			</Preset>
 		</Presets>
 	</Profile>
+	<Profile Name="Trine 4: The Nightmare Prince">
+		<File Name="trine4_game.exe" />
+		<!-- Frozenbyte's engine as Trine 5: the same switches -->
+		<TypelessBackBuffer Value="1"/>
+		<DetectInverseMatrix Value="1"/>
+		<CodeMatrices Value="1"/>
+		<ViewportMatrices Value="1"/>
+		<CodeMatrixRows Value="1"/>
+	</Profile>
+	<Profile Name="Trine 5: A Clockwork Conspiracy">
+		<File Name="trine5.exe" />
+		<!-- Flip-model swap chain the game makes an _SRGB view of: typeless back-buffer stand-ins -->
+		<TypelessBackBuffer Value="1"/>
+		<!-- Shaders ship without reflection; lighting, shadows and particles project to and from pixels with the camera -->
+		<DetectInverseMatrix Value="1"/>
+		<CodeMatrices Value="1"/>
+		<ViewportMatrices Value="1"/>
+		<!-- The occlusion culling's camera-relative matrix also looks like a camera read as columns -->
+		<CodeMatrixRows Value="1"/>
+		<!-- Lights are assigned to screen tiles by drawing their volumes against the tiles' pixel rays -->
+		<TiledLightVolumes Rays="41" Point="EC5C566D" Spot="701059FB" Box="39851524"/>
+	</Profile>
 	<Profile Name="Tomb Rider Legend">
 		<File Name="trl.exe" />
 		<Mono>

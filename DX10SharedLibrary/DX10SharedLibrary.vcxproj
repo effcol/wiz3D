@@ -228,6 +228,10 @@
     <ClCompile Include="..\S3DWrapper10\FeatureRecycleRightCopies.cpp" />
     <ClCompile Include="..\S3DWrapper10\FeatureDecalMatrices.cpp" />
     <ClCompile Include="..\S3DWrapper10\FeatureFogVolumeLookups.cpp" />
+    <ClCompile Include="..\S3DWrapper10\FeatureTypelessBackBuffer.cpp" />
+    <ClCompile Include="..\S3DWrapper10\FeatureViewportMatrices.cpp" />
+    <ClCompile Include="..\S3DWrapper10\FeatureCodeMatrixRows.cpp" />
+    <ClCompile Include="..\S3DWrapper10\FeatureTiledLightVolumes.cpp" />
     <ClCompile Include="..\S3DWrapper10\FogLookup11.cpp" />
     <ClCompile Include="..\S3DWrapper10\DeferredContext11.cpp" />
     <ClCompile Include="..\S3DWrapper10\RightRecorder11.cpp" />

@@ -399,7 +399,12 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
     td.Height           = m_bbHeight;
     td.MipLevels        = 1;
     td.ArraySize        = 1;
-    td.Format           = m_bbFormat;
+    // <TypelessBackBuffer>: a flip-model back buffer takes an _SRGB view of its UNORM format and a plain texture does not,
+    // so the stand-ins are made typeless; views without a desc and GetDesc keep the swap chain's format (Texture2D11Proxy).
+    const DXGI_FORMAT typeless = m_bbFormat == DXGI_FORMAT_R8G8B8A8_UNORM ? DXGI_FORMAT_R8G8B8A8_TYPELESS
+                               : m_bbFormat == DXGI_FORMAT_B8G8R8A8_UNORM ? DXGI_FORMAT_B8G8R8A8_TYPELESS : DXGI_FORMAT_UNKNOWN;
+    const bool asTypeless = TypelessBackBufferOn() && typeless != DXGI_FORMAT_UNKNOWN;
+    td.Format           = asTypeless ? typeless : m_bbFormat;
     td.SampleDesc.Count = 1;
     td.Usage            = D3D11_USAGE_DEFAULT;
     // RT so both eyes draw into them, SRV so the output pass samples them, UAV when the game asked the swap chain for
@@ -417,8 +422,12 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
         return FAILED(hrL) ? hrL : hrR;
     }
 
-    HRESULT hrSL = dev->CreateShaderResourceView(m_leftBB,  nullptr, &m_leftSRV);
-    HRESULT hrSR = dev->CreateShaderResourceView(m_rightBB, nullptr, &m_rightSRV);
+    D3D11_SHADER_RESOURCE_VIEW_DESC sv = {};
+    sv.Format = m_bbFormat;
+    sv.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    sv.Texture2D.MipLevels = 1;
+    HRESULT hrSL = dev->CreateShaderResourceView(m_leftBB,  asTypeless ? &sv : nullptr, &m_leftSRV);
+    HRESULT hrSR = dev->CreateShaderResourceView(m_rightBB, asTypeless ? &sv : nullptr, &m_rightSRV);
     if (FAILED(hrSL) || FAILED(hrSR))
     {
         DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: CreateSRV failed hrSL=0x%08lX hrSR=0x%08lX\n", hrSL, hrSR);
@@ -446,6 +455,12 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
     m_rightBB->AddRef();
     m_wrappedBB = new Texture2D11Proxy(m_leftBB, m_rightBB, m_parent);
     m_wrappedBB->MarkBackBuffer();
+    if (asTypeless)
+    {
+        m_wrappedBB->SetViewFormat(m_bbFormat);
+        DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: stand-ins typeless (fmt %d) for the swap chain's fmt %d\n",
+               (int)typeless, (int)m_bbFormat);
+    }
     m_wrappedBB->MakeRefInternal();   // PrivateBackBufferRefs: ours is DXGI's own reference, not one the game counts
     // Views on the pair resolve to this proxy like any other texture's (the overlay rule asks by the real left).
     if (m_parent) m_parent->RegisterRealToProxy(m_leftBB, m_wrappedBB);

@@ -277,6 +277,10 @@ ProfileFeatures CreateProfileFeatures()
         { "RecycleRightCopies",   &MakeRecycleRightCopies, false },
         { "DecalMatrices",        &MakeDecalMatrices,      false },
         { "FogVolumeLookups",     &MakeFogVolumeLookups,   false },
+        { "TypelessBackBuffer",   &MakeTypelessBackBuffer, false },
+        { "ViewportMatrices",     &MakeViewportMatrices,   false },
+        { "CodeMatrixRows",       &MakeCodeMatrixRows,     false },
+        { "TiledLightVolumes",    &MakeTiledLightVolumes,  false },
     };
     static std::once_flag s_checked;
     std::vector<std::string> problems;

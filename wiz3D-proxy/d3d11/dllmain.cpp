@@ -15,6 +15,7 @@
 #include "../proxy_version.h"
 #include <stdio.h>
 #include <stdarg.h>
+#include <intrin.h>   // _ReturnAddress
 
 // ---------------------------------------------------------------------------
 // Log to wiz3D_proxy.log (append) shared with the d3d10 / d3d9 / dxgi proxies.
@@ -188,6 +189,25 @@ static void MaybeWrapSwapChain(void** ppSwapChain, void* pWrappedDevice)
 typedef HRESULT(WINAPI* PFN_D3D11CreateDevice)(
     void*, int, HMODULE, UINT, const void*, UINT, UINT,
     void**, void*, void**);
+typedef HRESULT(WINAPI* PFN_D3D11CreateDeviceAndSwapChain)(
+    void*, int, HMODULE, UINT, const void*, UINT, UINT,
+    const void*, void**, void**, void*, void**);
+
+// An overlay hooking the real D3D11CreateDevice may call this export again as its original; re-entered, the device comes
+// from the real D3D11CreateDeviceAndSwapChain without a swap chain, unwrapped (the outer call wraps it).
+static thread_local int t_createDeviceDepth = 0;
+
+static void LogCaller(const char* what, void* ret, int depth)
+{
+    HMODULE m = nullptr;
+    WCHAR path[MAX_PATH] = L"?";
+    if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCWSTR)ret, &m) && m)
+        GetModuleFileNameW(m, path, MAX_PATH);
+    Log("  %s re-entered (depth %d) from %ls+0x%llX\n", what, depth, path,
+        (unsigned long long)((char*)ret - (char*)m));
+}
+
 extern "C" __declspec(dllexport) HRESULT WINAPI D3D11CreateDevice(
     void* pAdapter, int DriverType, HMODULE Software, UINT Flags,
     const void* pFeatureLevels, UINT FeatureLevels, UINT SDKVersion,
@@ -195,19 +215,29 @@ extern "C" __declspec(dllexport) HRESULT WINAPI D3D11CreateDevice(
 {
     Log("D3D11CreateDevice called (DriverType=%d, Flags=0x%X, SDKVersion=%u)\n",
         DriverType, Flags, SDKVersion);
+    if (t_createDeviceDepth > 0)
+    {
+        LogCaller("D3D11CreateDevice", _ReturnAddress(), t_createDeviceDepth + 1);
+        auto pc = (PFN_D3D11CreateDeviceAndSwapChain)GetReal(
+            &g_pfn_D3D11CreateDeviceAndSwapChain, "D3D11CreateDeviceAndSwapChain");
+        if (!pc) return E_FAIL;
+        HRESULT inner = pc(pAdapter, DriverType, Software, Flags, pFeatureLevels, FeatureLevels, SDKVersion,
+                           nullptr, nullptr, ppDevice, pFeatureLevel, ppImmediateContext);
+        Log("  re-entered D3D11CreateDevice -> real D3D11CreateDeviceAndSwapChain (no swap chain) 0x%08lX\n", inner);
+        return inner;
+    }
     auto p = (PFN_D3D11CreateDevice)GetReal(&g_pfn_D3D11CreateDevice, "D3D11CreateDevice");
     if (!p) return E_FAIL;
+    ++t_createDeviceDepth;
     HRESULT hr = p(pAdapter, DriverType, Software, Flags, pFeatureLevels,
                    FeatureLevels, SDKVersion, ppDevice, pFeatureLevel, ppImmediateContext);
+    --t_createDeviceDepth;
     Log("  D3D11CreateDevice returned 0x%08lX, *ppDevice=%p\n",
         hr, ppDevice ? *ppDevice : nullptr);
     if (SUCCEEDED(hr)) MaybeWrapDeviceAndContext(ppDevice, ppImmediateContext);
     return hr;
 }
 
-typedef HRESULT(WINAPI* PFN_D3D11CreateDeviceAndSwapChain)(
-    void*, int, HMODULE, UINT, const void*, UINT, UINT,
-    const void*, void**, void**, void*, void**);
 extern "C" __declspec(dllexport) HRESULT WINAPI D3D11CreateDeviceAndSwapChain(
     void* pAdapter, int DriverType, HMODULE Software, UINT Flags,
     const void* pFeatureLevels, UINT FeatureLevels, UINT SDKVersion,
