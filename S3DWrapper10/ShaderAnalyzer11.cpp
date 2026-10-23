@@ -468,7 +468,7 @@ void AddOnce(std::vector<std::pair<int, UINT>>& v, int slot, UINT off)
 // A shader without RDEF: float4x4s read as four nearby dp4 of one vector with cbN[k..k + 3], or a dp4 picking its row at
 // run time (cbN[r + k]); 3x4 views read as mul/mad of cbN[k..k + 2] by one vector's x, y and z.
 void CodeMatrices(const shader_analyzer::TShaderList& shList, std::vector<std::pair<int, UINT>>& mats,
-                  std::vector<std::pair<int, UINT>>& views)
+                  std::vector<std::pair<int, UINT>>& views, std::vector<std::pair<int, UINT>>* pixels = nullptr)
 {
     using shader_analyzer::ShaderOperand;
     // A cb register a dp4 reads beside a vector, with the vector's selector.
@@ -554,6 +554,8 @@ void CodeMatrices(const shader_analyzer::TShaderList& shList, std::vector<std::p
                 r.mode == u.mode && r.sel == u.sel && r.slot == u.slot && r.reg >= u.reg && r.reg <= u.reg + 3)
                 have |= 1u << (r.reg - u.reg);
         if (have == 0xF) AddOnce(mats, u.slot, u.reg * 16u);
+        // Rows x, y and w alone: a pixel position (x * w, y * w, w) to divide.
+        else if (pixels && have == 0xB) AddOnce(*pixels, u.slot, u.reg * 16u);
     }
     for (const auto& u : columns)
     {
@@ -720,6 +722,13 @@ void CodeMatrixReads(const void* pBytecode, SIZE_T byteLength, std::vector<std::
     shader_analyzer::TShaderList shList;
     shader_analyzer::ParseShader(reinterpret_cast<const unsigned*>(code), shList);
     CodeMatrices(shList, mats, views);
+}
+
+void CodePixelMatrices(const void* pBytecode, SIZE_T byteLength, std::vector<std::pair<int, UINT>>& out)
+{
+    shader_analyzer::TShaderList shList;
+    std::vector<std::pair<int, UINT>> mats, views;
+    if (pBytecode && ParseCode(pBytecode, byteLength, shList)) CodeMatrices(shList, mats, views, &out);
 }
 
 void CodeScreenMatrices(const void* pBytecode, SIZE_T byteLength, std::vector<std::pair<int, UINT>>& out)

@@ -87,6 +87,8 @@ struct EyeShiftMatrix
     // eye offset (ViewMatrices).
     int   viewComponent = -1;
     float viewSign = 0.f;
+    // The viewport is folded in (ViewportMatrices): world to pixel, or pixel to world with matrixIsInverse.
+    bool  viewport = false;
 };
 
 // A tracked binding holds a reference, as the runtime does for a bound object (new one taken before the old dropped).

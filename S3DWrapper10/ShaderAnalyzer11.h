@@ -48,6 +48,11 @@ struct ShaderAnalysis11Result
     // Pixel and compute shaders without RDEF: 3x4 affines read as mul/mad columns cbN[k..k + 2] of one vector's x, y, z
     // (cb slot, byte offset of the first register), matched at the draw against the camera's view (ViewMatrices).
     std::vector<std::pair<int, UINT>> viewMatrices;
+    // ViewportMatrices, without RDEF: rows k, k + 1 and k + 3 of a float4x4 read as dp4 of one vector, a pixel position
+    // (x * w, y * w, w) to divide (cb slot, byte offset of row k); also in readMatrices.
+    std::vector<std::pair<int, UINT>> pixelMatrices;
+    // readMatrices came from the code (CodeMatrices): each is read as dp4 rows, its registers the output's rows.
+    bool matricesFromCode = false;
     // HudDepth: the w the game gives a HUD element under 3D Vision (MP3's ApparentDepth).
     int                   apparentDepthCB     = -1;
     UINT                  apparentDepthOffset = 0;
@@ -121,6 +126,8 @@ const BYTE* FindDxbcChunk(const void* blob, SIZE_T blobLen, DWORD tag, DWORD& ou
 // that may be the camera's view (ShaderAnalysis11Result::viewMatrices).
 void CodeMatrixReads(const void* pBytecode, SIZE_T byteLength, std::vector<std::pair<int, UINT>>& mats,
                      std::vector<std::pair<int, UINT>>& views);
+// Float4x4s a shader without RDEF reads as rows k, k + 1 and k + 3 only: a pixel position (ShaderAnalysis11Result::pixelMatrices).
+void CodePixelMatrices(const void* pBytecode, SIZE_T byteLength, std::vector<std::pair<int, UINT>>& out);
 // Matrices a shader without RDEF reads as (x*W, y*W, W, 1): (cb slot, byte offset).
 void CodeScreenMatrices(const void* pBytecode, SIZE_T byteLength, std::vector<std::pair<int, UINT>>& out);
 // Every constant register the code reads: (cb slot, register), ~0u where it indexes the slot at run time.

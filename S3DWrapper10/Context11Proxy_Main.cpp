@@ -740,8 +740,8 @@ bool Context11Proxy::BeginRightEyeDraw()
             {
                 if (gInfo.PatchConstantsAtDraw) PatchBoundCBsForDraw();
                 // Under VertexCameraMatrices the vertex stage's declared camera matrices outside its position chain (last
-                // frame's camera for per-object velocity), then the pixel stage's.
-                if (gInfo.DetectInverseMatrix && VertexCameraMatrices()) PatchCameraMatrices(ST_VS);
+                // frame's camera for per-object velocity), under ViewportMatrices its pixel matrices; then the pixel stage's.
+                if (gInfo.DetectInverseMatrix && (VertexCameraMatrices() || ViewportMatricesOn())) PatchCameraMatrices(ST_VS);
                 if (gInfo.DetectInverseMatrix) PatchCameraMatrices(ST_PS);
             }
         }
@@ -1088,6 +1088,28 @@ void ApplyTargetedEyeShiftToCB(unsigned char* data, size_t byteCount,
         if (base + kMat4Bytes > byteCount) continue;
         float* f = reinterpret_cast<float*>(data + base);
         const bool transposed = (m.matrixIsTransposed != 0);
+        // ViewportMatrices: x * w gains s * (b * w + m41), s the viewport scale, so b and m41 take the focal in pixels; w
+        // scaled by wn takes m41 scaled too. An unprojection takes the exact inverse of that.
+        if (m.viewport)
+        {
+            float focal = 0.f, wn = 0.f;
+            const bool ok = ViewportFocal(f, transposed, m.matrixIsInverse != 0, s_camP00 > 0.f ? s_camP00 : s_sceneP00, focal, wn);
+            CountViewportPatch(m.matrixIsInverse != 0, ok);
+            if (!ok) { if (outRejected) ++*outRejected; continue; }
+            if (m.matrixIsInverse)
+            {
+                s_mat.PatchInverse(f, transposed, eyeShift, fullColumn ? conv * wn : 0.f, focal);
+                if (outInvPatched) ++*outInvPatched;
+            }
+            else
+            {
+                const float b = eyeShift * focal, m41 = fullColumn ? -eyeShift * conv * focal * wn : 0.f;
+                if (transposed) { f[0] += b * f[12]; f[1] += b * f[13]; f[2] += b * f[14]; f[3] += b * f[15] + m41; }
+                else            { f[0] += b * f[3];  f[4] += b * f[7];  f[8] += b * f[11]; f[12] += b * f[15] + m41; }
+            }
+            if (outShifted) ++*outShifted;
+            continue;
+        }
         // Only shadow passes read it as a position matrix: a light's view, the same for both eyes.
         if (lightBuf && !m.matrixIsInverse && lightBuf->LightOnlyMatrix(m.matrixRegister)) { ++s_lightOnlyKept; continue; }
 
@@ -1439,8 +1461,11 @@ bool Context11Proxy::ClassifyDeclaredMatrix(const ShaderAnalysis11Result* info, 
         wiz3d::CanonicalizeMat4(f, known->second.transposed, cand);
         if (!wiz3d::LooksLikeUnprojection(cand)) { m_psCameraMatrices.erase(known); known = m_psCameraMatrices.end(); }
     }
+    // CodeMatrixRows: a matrix found from the code is read as dp4 rows, so only that orientation is tried (an axis-aligned
+    // camera-relative one passes CameraFamily as columns too).
+    const bool rowsOnly = info->matricesFromCode && CodeMatrixRowsOn();
     if (known == m_psCameraMatrices.end())
-        for (int o = 0; o < 2 && known == m_psCameraMatrices.end(); ++o)
+        for (int o = rowsOnly ? 1 : 0; o < 2 && known == m_psCameraMatrices.end(); ++o)
         {
             float cand[16];
             wiz3d::CanonicalizeMat4(f, o == 1, cand);
@@ -1449,6 +1474,14 @@ bool Context11Proxy::ClassifyDeclaredMatrix(const ShaderAnalysis11Result* info, 
             if (inverse || s_mat.MatchForward(cand) || CameraFamily(f, o == 1))
                 known = m_psCameraMatrices.insert(std::make_pair(key, PsCameraMatrix{ inverse, o == 1 })).first;
         }
+    // ViewportMatrices: the scene camera with the viewport folded in, world to pixel or pixel to world.
+    if (known == m_psCameraMatrices.end() && ViewportMatricesOn())
+    {
+        bool transposed = false;
+        const int kind = ClassifyViewportMatrix(f, s_camP00 > 0.f ? s_camP00 : s_sceneP00, rowsOnly, transposed, info->crc32,
+                                                slot, reg);
+        if (kind) known = m_psCameraMatrices.insert(std::make_pair(key, PsCameraMatrix{ kind == 2, transposed, true })).first;
+    }
     if (known == m_psCameraMatrices.end()) return false;
     float cand[16];
     wiz3d::CanonicalizeMat4(f, known->second.transposed, cand);
@@ -1457,6 +1490,7 @@ bool Context11Proxy::ClassifyDeclaredMatrix(const ShaderAnalysis11Result* info, 
     out.matrixIsTransposed = known->second.transposed ? TRUE : FALSE;
     out.matrixIsInverse    = known->second.inverse ? TRUE : FALSE;
     out.matrixFromLearned  = FALSE;
+    out.viewport           = known->second.viewport;
     return true;
 }
 
@@ -1622,8 +1656,10 @@ void Context11Proxy::SyncBoundConstants(bool right, bool plainOnly, bool fromDis
                     EyeShiftMatrix em = { reg, pmd.matrixIsTransposed, FALSE, FALSE };
                     job->targets.push_back(em);
                 }
-            // Declared camera matrices: the pixel and compute stages always, the vertex stage under VertexCameraMatrices.
-            if (!gInfo.DetectInverseMatrix || (st != ST_PS && st != ST_CS && !VertexCameraMatrices())) continue;
+            // Declared camera matrices: the pixel and compute stages always, the vertex stage under VertexCameraMatrices
+            // (its pixel matrices under ViewportMatrices).
+            const bool geometryStage = st != ST_PS && st != ST_CS;
+            if (!gInfo.DetectInverseMatrix || (geometryStage && !VertexCameraMatrices() && info->pixelMatrices.empty())) continue;
             for (const auto& m : info->readMatrices)
             {
                 if (m.first != (int)slot || (m.second & 15)) continue;
@@ -1636,7 +1672,10 @@ void Context11Proxy::SyncBoundConstants(bool right, bool plainOnly, bool fromDis
                 EyeShiftMatrix em;
                 const float* f = reinterpret_cast<const float*>(bytes + moff);
                 if (ClassifyDeclaredMatrix(info, slot, reg, f, em))
-                { if (!BareProjectionKept((StageIdx)st, info, slot, f, em)) job->targets.push_back(em); }
+                {
+                    if (geometryStage && !VertexCameraMatrices() && !em.viewport) continue;
+                    if (!BareProjectionKept((StageIdx)st, info, slot, f, em)) job->targets.push_back(em);
+                }
                 else if (FrameTraceActive())
                 {
                     float xn, wn, miss = -1.f;
@@ -1820,6 +1859,13 @@ bool CameraFamily(const float* f, bool transposed)
     return fabsf(xn / wn - scene) <= 0.002f * scene;
 }
 
+// ViewportMatrices: the shader reads a pixel position from a matrix in this slot (empty list when the switch is off).
+static bool PixelMatrixAt(const ShaderAnalysis11Result* info, UINT slot)
+{
+    for (const auto& m : info->pixelMatrices) if (m.first == (int)slot) return true;
+    return false;
+}
+
 void Context11Proxy::PatchCameraMatrices(StageIdx stage)
 {
     const ShaderAnalysis11Result* ps = m_boundInfo[stage == ST_CS ? 2 : stage == ST_VS ? 0 : 1];
@@ -1836,8 +1882,10 @@ void Context11Proxy::PatchCameraMatrices(StageIdx stage)
     {
         Buffer11Proxy* b = s.proxy[slot];
         if (!b || !b->GetRealRight() || b->Shadow().empty() || b->IsRing()) continue;
-        // A vertex buffer holding the position chain's matrix is the draw patch's.
-        if (stage == ST_VS && ps->projection.matrixData.cb.count(slot)) continue;
+        // A vertex buffer holding the position chain's matrix is the draw patch's, unless the shader reads a pixel
+        // matrix there too (ViewportMatrices).
+        const bool chain = stage == ST_VS && ps->projection.matrixData.cb.count(slot);
+        if (chain && !PixelMatrixAt(ps, slot)) continue;
         bool reads = false;
         for (const auto& m : ps->readMatrices) reads |= (m.first == (int)slot);
         if (!reads || !b->InverseDrawCheckDue(eyeShift, conv)) continue;
@@ -1853,11 +1901,11 @@ void Context11Proxy::PatchCameraMatrices(StageIdx stage)
         const StageIdx other = st == 0 ? ST_VS : st == 1 ? ST_PS : ST_CS;
         const ShaderAnalysis11Result* info = m_boundInfo[st];
         if (!info || (other == ST_CS) != (stage == ST_CS)) continue;
-        if (other == ST_VS && !VertexCameraMatrices()) continue;
+        if (other == ST_VS && !VertexCameraMatrices() && info->pixelMatrices.empty()) continue;
         for (UINT oslot = 0; oslot < m_cbSlots[other].high && oslot < kMaxCBs; ++oslot)
         {
         if (m_cbSlots[other].proxy[oslot] != b) continue;
-        if (other == ST_VS && info->projection.matrixData.cb.count(oslot)) continue;
+        if (other == ST_VS && info->projection.matrixData.cb.count(oslot) && !PixelMatrixAt(info, oslot)) continue;
         for (const auto& m : info->readMatrices)
         {
             if (m.first != (int)oslot || (m.second & 15)) continue;
@@ -1871,13 +1919,34 @@ void Context11Proxy::PatchCameraMatrices(StageIdx stage)
             const float* f = reinterpret_cast<const float*>(bytes.data() + off);
             EyeShiftMatrix em;
             if (!ClassifyDeclaredMatrix(info, oslot, reg, f, em)) continue;
+            // Without VertexCameraMatrices a vertex shader's declared matrix counts only with the viewport folded in.
+            if (other == ST_VS && !VertexCameraMatrices() && !em.viewport) continue;
             if (BareProjectionKept(other, info, oslot, f, em)) continue;
             targets.push_back(em);
         }
         }
         }
-        // A vertex buffer kept from the plain restore for its declared matrix, none of which is the camera's, is restored.
-        if (targets.empty()) { if (stage == ST_VS && b->RightForwardShifted()) RestoreRightCB(b); continue; }
+        // ViewportMatrices: the whole sibling is rebuilt, so the bound vertex shader's position chain in it is shifted again.
+        if (!targets.empty() && stage != ST_CS && ViewportMatricesOn() && m_boundInfo[0])
+            for (UINT k = 0; k < m_cbSlots[ST_VS].high && k < kMaxVSCBSlots; ++k)
+            {
+                if (m_cbSlots[ST_VS].proxy[k] != b) continue;
+                auto vit = m_boundInfo[0]->projection.matrixData.cb.find(k);
+                if (vit == m_boundInfo[0]->projection.matrixData.cb.end()) continue;
+                const DWORD vsBase = m_cbSlots[ST_VS].num[k] ? m_cbSlots[ST_VS].first[k] : 0;
+                for (const auto& pmd : vit->second)
+                {
+                    if (pmd.incorrectProjection) continue;
+                    bool dup = false;
+                    for (const auto& t : targets) dup |= (t.matrixRegister == pmd.matrixRegister + vsBase);
+                    if (dup) continue;
+                    EyeShiftMatrix em = { pmd.matrixRegister + vsBase, pmd.matrixIsTransposed, FALSE, FALSE };
+                    targets.push_back(em);
+                }
+            }
+        // A vertex buffer kept from the plain restore for its declared matrix, none of which is the camera's, is restored
+        // (never the position chain's own buffer, which ViewportMatrices lets through).
+        if (targets.empty()) { if (stage == ST_VS && b->RightForwardShifted() && !chain) RestoreRightCB(b); continue; }
         // The whole sibling is rebuilt from the game's bytes: a geometry shift a write put there (a buffer shared with
         // the vertex stage) is re-applied from the buffer's remembered targets, under their guards.
         if (b->RightForwardShifted())

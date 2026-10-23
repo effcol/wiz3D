@@ -848,6 +848,18 @@
     <ClCompile Include="..\S3DWrapper10\FeatureFogVolumeLookups.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\S3DWrapper10\FeatureTypelessBackBuffer.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\S3DWrapper10\FeatureViewportMatrices.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\S3DWrapper10\FeatureCodeMatrixRows.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\S3DWrapper10\FeatureTiledLightVolumes.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="..\S3DWrapper10\FogLookup11.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

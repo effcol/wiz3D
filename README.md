@@ -185,6 +185,8 @@ DirectX 11 titles use the full 0.4.0 Stereo-Injector COM-wrap pipeline. DirectX 
 | Tempest 4000 | `Stereo-Injector/DX10-11/32-bit` | ✕ | ✅ Working |  |
 | Tom Clancy's H.A.W.X | `Stereo-Injector/DX10-11/32-bit` | ✓ | Untested |  |
 | Tom Clancy's Splinter Cell: Blacklist | `Stereo-Injector/DX9/32-bit` | ✕ | ✅ Mostly Working | DX9 only. Needs shader fix. |
+| Trine 4: The Nightmare Prince | `Stereo-Injector/DX10-11/64-bit` | ✕ | ✅ Mostly Working | Fireplaces can flash in the right eye. |
+| Trine 5: A Clockwork Conspiracy | `Stereo-Injector/DX10-11/64-bit` | ✕ | ✅ Mostly Working | Raindrops hitting the ground make a puff of smoke in the right eye instead of ripples. |
 | What Remains of Edith Finch | `Stereo-Injector/DX10-11/64-bit` | ✕ | ✅ Working |  |
 | World in Conflict | `Stereo-Injector/DX10-11/32-bit` | ✓ | Untested |  |
 

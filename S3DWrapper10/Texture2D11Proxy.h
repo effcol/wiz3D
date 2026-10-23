@@ -52,7 +52,12 @@ public:
     UINT    STDMETHODCALLTYPE GetEvictionPriority() override                                                       { return m_realLeft->GetEvictionPriority(); }
 
     // ID3D11Texture2D
-    void    STDMETHODCALLTYPE GetDesc(D3D11_TEXTURE2D_DESC* pDesc) override                                        { m_realLeft->GetDesc(pDesc); }
+    void    STDMETHODCALLTYPE GetDesc(D3D11_TEXTURE2D_DESC* pDesc) override
+    { m_realLeft->GetDesc(pDesc); if (pDesc && m_viewFormat != DXGI_FORMAT_UNKNOWN) pDesc->Format = m_viewFormat; }
+
+    // <TypelessBackBuffer>: the swap chain's format a typeless stand-in back buffer reports, and its views default to.
+    void             SetViewFormat(DXGI_FORMAT f) { m_viewFormat = f; }
+    DXGI_FORMAT      ViewFormat() const           { return m_viewFormat; }
 
     // wiz3D accessors used by View11 proxies and Stage 4's per-eye routing.
     bool             IsStereo()      const { return m_realRight != nullptr; }
@@ -92,6 +97,7 @@ private:
     LONG             m_internalRefs = 0;   // of m_refs, the ones AddRef/Release leave out
     bool             m_backBuffer = false;
     bool             m_rightWritten = false;
+    DXGI_FORMAT      m_viewFormat = DXGI_FORMAT_UNKNOWN;
     mutable signed char m_sampledOnly = -1;
 };
 

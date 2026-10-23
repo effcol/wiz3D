@@ -505,4 +505,130 @@ bool Context11Proxy::BindClipSpaceRayShift()
     return true;
 }
 
+// TiledLightVolumes: view-space positions move by k.x along x (point o1, spot o1 and o3); a box's plane offsets on the axes
+// o1, o2 and their cross (o1.w, o2.w, o3.x) lose axis.x * k.x.
+ID3D11GeometryShader* Context11Proxy::LightVolumeShader(const ShaderAnalysis11Result* info, int kind)
+{
+    auto it = m_lightVolumeGS.find(info->crc32);
+    if (it != m_lightVolumeGS.end()) return it->second;
+    ID3D11GeometryShader*& gs = m_lightVolumeGS[info->crc32];
+    gs = nullptr;
+    std::string src = "cbuffer wiz3D_clip : register(b0) { float4 wiz3D_k; float4 wiz3D_size; };\nstruct V {\n";
+    int pos = -1, at[4] = { -1, -1, -1, -1 };   // float4 outputs by register
+    for (size_t i = 0; i < info->outputs.size(); ++i)
+    {
+        const ShaderAnalysis11Result::OutputElement& e = info->outputs[i];
+        if (e.sysValue == 1) pos = (int)i;
+        else if (e.sysValue != 0) return nullptr;
+        if (e.reg < 4 && e.type == 3 && (e.mask & 15) == 15) at[e.reg] = (int)i;
+        unsigned n = 0;
+        for (unsigned m = e.mask; m; m >>= 1) n += m & 1;
+        if (!n) n = 4;
+        char line[192];
+        _snprintf_s(line, sizeof line, _TRUNCATE, "    %s%u m%u : %s%u;\n",
+                    e.type == 1 ? "uint" : e.type == 2 ? "int" : "float", n, (unsigned)i, e.name.c_str(), e.index);
+        src += line;
+    }
+    char edit[512] = "";
+    if (kind == 1 && at[1] >= 0)
+        _snprintf_s(edit, sizeof edit, _TRUNCATE, "        v.m%d.x += wiz3D_k.x;\n", at[1]);
+    else if (kind == 2 && at[1] >= 0 && at[3] >= 0)
+        _snprintf_s(edit, sizeof edit, _TRUNCATE, "        v.m%d.x += wiz3D_k.x;\n        v.m%d.x += wiz3D_k.x;\n", at[1], at[3]);
+    else if (kind == 3 && at[1] >= 0 && at[2] >= 0 && at[3] >= 0)
+        _snprintf_s(edit, sizeof edit, _TRUNCATE,
+                    "        float3 n = cross(v.m%d.xyz, v.m%d.xyz);\n"
+                    "        v.m%d.w -= v.m%d.x * wiz3D_k.x;\n        v.m%d.w -= v.m%d.x * wiz3D_k.x;\n"
+                    "        v.m%d.x -= n.x * wiz3D_k.x;\n", at[1], at[2], at[1], at[1], at[2], at[2], at[3]);
+    if (pos < 0 || !edit[0] || !m_parent)
+    {
+        FeatureLog("  TiledLightVolumes: vs %08lX kind %d: position %d, float4 outputs o1 %d o2 %d o3 %d; no volume shader\n",
+                   info->crc32, kind, pos, at[1], at[2], at[3]);
+        return nullptr;
+    }
+    src += "};\n[maxvertexcount(3)]\nvoid main(triangle V i[3], inout TriangleStream<V> o)\n{\n"
+           "    [unroll] for (int k = 0; k < 3; ++k)\n    {\n        V v = i[k];\n";
+    src += edit;
+    src += "        o.Append(v);\n    }\n}\n";
+    const char* target = m_parent->GetReal()->GetFeatureLevel() >= D3D_FEATURE_LEVEL_11_0 ? "gs_5_0" : "gs_4_0";
+    ID3DBlob* code = nullptr; ID3DBlob* err = nullptr;
+    HRESULT hr = D3DCompile(src.c_str(), src.size(), "wiz3D_lights", nullptr, nullptr, "main", target,
+                            D3DCOMPILE_OPTIMIZATION_LEVEL3, 0, &code, &err);
+    if (SUCCEEDED(hr) && code)
+        hr = m_parent->GetReal()->CreateGeometryShader(code->GetBufferPointer(), code->GetBufferSize(), nullptr, &gs);
+    FeatureLog("  TiledLightVolumes: vs %08lX kind %d, %u outputs -> volume geometry shader (%s) hr=0x%08lX%s%s\n",
+               info->crc32, kind, (unsigned)info->outputs.size(), target, (unsigned long)hr, err ? ": " : "",
+               err ? (const char*)err->GetBufferPointer() : "");
+    if (FAILED(hr)) gs = nullptr;
+    if (code) code->Release();
+    if (err) err->Release();
+    return gs;
+}
+
+// A right draw of a light volume into the tiles: the right camera sits eyeShift * conv along the view's x and its rays
+// are off-axis by eyeShift (x_right = x - eyeShift * conv, x/z = ndc / p00 - eyeShift), the sign the rays' own x scale.
+bool Context11Proxy::BindLightVolumeShift(int kind, UINT rayReg)
+{
+    const ShaderAnalysis11Result* info = m_boundInfo[0];
+    if (m_clipSpaceBound || !info || !info->parsed || !m_parent) { ++m_lightVolumeRefusedThisFrame; return false; }
+    if (m_boundGS || m_boundHS || m_boundDS ||
+        (m_topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST && m_topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP))
+    { ++m_lightVolumeRefusedThisFrame; return false; }
+    const CBEyeSlots& s = m_cbSlots[ST_PS];
+    Buffer11Proxy* b = s.high ? s.proxy[0] : nullptr;
+    const size_t base = s.num[0] ? (size_t)s.first[0] * 16 : 0;
+    if (!b || b->IsRing() || b->Shadow().size() < base + ((size_t)rayReg + 1) * 16) { ++m_lightVolumeRefusedThisFrame; return false; }
+    ID3D11GeometryShader* gs = LightVolumeShader(info, kind);
+    if (!gs) { ++m_lightVolumeRefusedThisFrame; return false; }
+    size_t size = ((b->Shadow().size() - base) + 15) & ~(size_t)15;
+    if (size > 65536) size = 65536;
+    if (!m_lightVolumePsCB || m_lightVolumePsCBSize != (UINT)size)
+    {
+        if (m_lightVolumePsCB) { m_lightVolumePsCB->Release(); m_lightVolumePsCB = nullptr; }
+        D3D11_BUFFER_DESC bd = {};
+        bd.ByteWidth = (UINT)size; bd.Usage = D3D11_USAGE_DYNAMIC;
+        bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER; bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(m_parent->GetReal()->CreateBuffer(&bd, nullptr, &m_lightVolumePsCB))) { m_lightVolumePsCB = nullptr; return false; }
+        m_lightVolumePsCBSize = (UINT)size;
+    }
+    if (!m_clipSpaceCB)
+    {
+        D3D11_BUFFER_DESC bd = {};
+        bd.ByteWidth = 32; bd.Usage = D3D11_USAGE_DYNAMIC; bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+        bd.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+        if (FAILED(m_parent->GetReal()->CreateBuffer(&bd, nullptr, &m_clipSpaceCB))) { m_clipSpaceCB = nullptr; return false; }
+    }
+    const unsigned char* game = b->Shadow().data() + base;
+    const float* ray = reinterpret_cast<const float*>(game + (size_t)rayReg * 16);
+    const float sign = ray[0] < 0.f ? -1.f : 1.f;
+    const float eyeShift = wiz3D_GetEffectiveEyeShift() * ProfileShaderMultiplier(m_parent, m_boundVS) * EyeShiftSign();
+    const float conv = ResolveShaderConvergence(m_parent, m_boundVS);
+    D3D11_MAPPED_SUBRESOURCE m = {};
+    if (FAILED(m_real->Map(m_lightVolumePsCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)) || !m.pData) return false;
+    const size_t copy = b->Shadow().size() - base < m_lightVolumePsCBSize ? b->Shadow().size() - base : m_lightVolumePsCBSize;
+    memcpy(m.pData, game, copy);
+    reinterpret_cast<float*>(static_cast<unsigned char*>(m.pData) + (size_t)rayReg * 16)[2] -= sign * eyeShift;
+    m_real->Unmap(m_lightVolumePsCB, 0);
+    const float k[8] = { -sign * eyeShift * conv, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f, 0.f };
+    if (FAILED(m_real->Map(m_clipSpaceCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &m)) || !m.pData) return false;
+    memcpy(m.pData, k, sizeof k);
+    m_real->Unmap(m_clipSpaceCB, 0);
+    m_real->PSSetConstantBuffers(0, 1, &m_lightVolumePsCB);
+    m_real->GSSetShader(gs, nullptr, 0);
+    m_real->GSSetConstantBuffers(0, 1, &m_clipSpaceCB);
+    m_lightVolumeBound = true;
+    ++m_lightVolumeDrawsThisFrame;
+    return true;
+}
+
+void Context11Proxy::UnbindLightVolumeShift()
+{
+    if (!m_lightVolumeBound) return;
+    m_lightVolumeBound = false;
+    m_real->GSSetShader(nullptr, nullptr, 0);
+    ID3D11Buffer* none = nullptr;
+    m_real->GSSetConstantBuffers(0, 1, &none);
+    const CBEyeSlots& s = m_cbSlots[ST_PS];
+    BindRightCB(ST_PS, 0, s.right[0] ? s.right[0] : s.left[0]);
+}
+
 } // namespace wiz3d

@@ -546,11 +546,18 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
     // CodeMatrices, reflection stripped: a vertex shader's matrices from the code that builds its outputs, a pixel or
     // compute shader's from four dp4 of one vector (Andromeda's lighting unprojection).
     const bool fromCode = !rdef.Present() && CodeMatricesOn();
+    info.matricesFromCode = fromCode;
     if (!strcmp(tag, "Vertex") && fromCode) info.readMatrices = info.dp4OutputMatrices;
     if ((!strcmp(tag, "Pixel") || !strcmp(tag, "Compute")) && fromCode)
     {
         info.readMatrices.clear();
         CodeMatrixReads(pBytecode, byteLength, info.readMatrices, info.viewMatrices);
+    }
+    // ViewportMatrices: a pixel position read from rows x, y and w (texel fetches at a projected point), at every stage.
+    if (fromCode && ViewportMatricesOn() && (!strcmp(tag, "Vertex") || !strcmp(tag, "Pixel") || !strcmp(tag, "Compute")))
+    {
+        CodePixelMatrices(pBytecode, byteLength, info.pixelMatrices);
+        info.readMatrices.insert(info.readMatrices.end(), info.pixelMatrices.begin(), info.pixelMatrices.end());
     }
     static std::atomic<size_t> s_keptBytes(0);
     const size_t kKeepBudget = sizeof(void*) == 8 ? (1024u << 20) : (64u << 20);   // Andromeda's set outgrew 256 MB
@@ -786,7 +793,24 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateRenderTargetView(
     ID3D11Resource*   realRight  = texProxy ? static_cast<ID3D11Resource*>(texProxy->GetRealRight())
                                             : nullptr;
 
+    // <TypelessBackBuffer>: a view without a desc on the typeless stand-in back buffer takes the swap chain's format.
+    D3D11_RENDER_TARGET_VIEW_DESC typed = {};
+    if (!pDesc && texProxy && texProxy->ViewFormat() != DXGI_FORMAT_UNKNOWN)
+    {
+        typed.Format = texProxy->ViewFormat();
+        typed.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+        pDesc = &typed;
+    }
     HRESULT hr = m_real->CreateRenderTargetView(realToUse, pDesc, ppRTView);
+    if (FAILED(hr) && gInfo.CollectDebugInformation)
+    {
+        D3D11_TEXTURE2D_DESC td = {};
+        if (texProxy) texProxy->GetReal()->GetDesc(&td);
+        DDILog("  Device11Proxy::CreateRenderTargetView FAILED hr=0x%08lX res=%p back buffer=%d view(fmt=%d dim=%d)"
+               " tex2(%ux%u fmt=%d bind=0x%X)\n", hr, pResource, (int)IsBackBufferResource(pResource),
+               pDesc ? (int)pDesc->Format : -1, pDesc ? (int)pDesc->ViewDimension : -1, td.Width, td.Height, (int)td.Format,
+               td.BindFlags);
+    }
     if (SUCCEEDED(hr) && ppRTView && *ppRTView)
     {
         // BB-RTV tracking still operates on the unwrapped game pointer so
@@ -1234,7 +1258,24 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateShaderResourceView(
                                  : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetRealRight())
                                              : nullptr;
 
+    D3D11_SHADER_RESOURCE_VIEW_DESC typed = {};
+    if (!pDesc && tex2Proxy && tex2Proxy->ViewFormat() != DXGI_FORMAT_UNKNOWN)
+    {
+        typed.Format = tex2Proxy->ViewFormat();
+        typed.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+        typed.Texture2D.MipLevels = 1;
+        pDesc = &typed;
+    }
     HRESULT hr = m_real->CreateShaderResourceView(realLeftRes, pDesc, ppSRView);
+    if (FAILED(hr) && gInfo.CollectDebugInformation)
+    {
+        D3D11_TEXTURE2D_DESC td = {};
+        if (tex2Proxy) tex2Proxy->GetReal()->GetDesc(&td);
+        DDILog("  Device11Proxy::CreateShaderResourceView FAILED hr=0x%08lX res=%p back buffer=%d view(fmt=%d dim=%d)"
+               " tex2(%ux%u fmt=%d bind=0x%X)\n", hr, pResource, (int)IsBackBufferResource(pResource),
+               pDesc ? (int)pDesc->Format : -1, pDesc ? (int)pDesc->ViewDimension : -1, td.Width, td.Height, (int)td.Format,
+               td.BindFlags);
+    }
     if (FAILED(hr) || !ppSRView || !*ppSRView) return hr;
 
     ID3D11ShaderResourceView* realRightSRV = nullptr;
@@ -1271,6 +1312,13 @@ HRESULT STDMETHODCALLTYPE Device11Proxy::CreateUnorderedAccessView(
                                  : bufProxy  ? static_cast<ID3D11Resource*>(bufProxy->GetRealRight())
                                              : nullptr;
 
+    D3D11_UNORDERED_ACCESS_VIEW_DESC typed = {};
+    if (!pDesc && tex2Proxy && tex2Proxy->ViewFormat() != DXGI_FORMAT_UNKNOWN)
+    {
+        typed.Format = tex2Proxy->ViewFormat();
+        typed.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+        pDesc = &typed;
+    }
     HRESULT hr = m_real->CreateUnorderedAccessView(realLeftRes, pDesc, ppUAView);
     if (FAILED(hr))
     {
