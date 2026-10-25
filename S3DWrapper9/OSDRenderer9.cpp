@@ -515,6 +515,33 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
     if (m_initFailed) return;
     if (!m_initDone && !Init(device)) return;
 
+    // 0.4.2 DIAG: log the first 20 Render calls so we can see whether the
+    // caller is alternating between left and right RTs each frame. Writes
+    // straight to wiz3D_Logs/wiz3D_proxy.log without going through zlog so
+    // it's visible in FINAL_RELEASE builds too. Remove when the right-eye
+    // regression is pinned down.
+    static int s_dbgRenders = 0;
+    if (s_dbgRenders < 20) {
+        IDirect3DSurface9* curRT = nullptr;
+        device->GetRenderTarget(0, &curRT);
+        wchar_t logPath[MAX_PATH] = {};
+        if (GetModuleFileNameW(nullptr, logPath, MAX_PATH)) {
+            if (wchar_t* bs = wcsrchr(logPath, L'\\')) {
+                *(bs + 1) = L'\0';
+                lstrcatW(logPath, L"wiz3D_Logs\\wiz3D_proxy.log");
+                FILE* fp = nullptr;
+                _wfopen_s(&fp, logPath, L"a");
+                if (fp) {
+                    fprintf(fp, "[OSD9DIAG] Render #%d  RT=%p  bb=%ux%u\n",
+                            s_dbgRenders, (void*)curRT, bbW, bbH);
+                    fclose(fp);
+                }
+            }
+        }
+        if (curRT) curRT->Release();
+        s_dbgRenders++;
+    }
+
     // Re-create textures if a Reset() dropped them (OnDeviceLost).
     for (int i = 0; i < (int)Slot::_Count; ++i) {
         if (!m_slots[i].tex) {
@@ -581,7 +608,7 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
             // ShaderHunter cycle/capture/exit keys live on the hunter OSD
             // line 2 while hunt mode is active; only the entry hotkey needs
             // to appear in the global menu (user 2026-10-21 feedback).
-            L"Ctrl + F2",            L"ShaderHunter: enter / exit hunt mode",
+            L"Numpad 0",             L"ShaderHunter: enter / exit hunt mode",
             L"Ctrl + F5",            L"Reload BaseProfile.xml (live)",
         };
         int row = 72;
