@@ -85,8 +85,16 @@ void KeyboardHook::KeyboardProcedure()
 	DWORD modifier  = (key_ALT | key_CTRL | key_SHIFT | key_WIN) << 8;
 
 	ProcessWizardKeys(modifier);
-	for(i=0; i< MAX_EVENTS; i++)		 
+	for(i=0; i< MAX_EVENTS; i++)
 	{
+		// 0.4.2: skip entries whose keycode has been zeroed out in the
+		// shipped table (e.g. SwapEyes was de-bound). Guards against
+		// GetAsyncKeyState(0) returning undefined / stale state on some
+		// drivers, which could otherwise match a disabled hotkey when a
+		// modifier (Ctrl/Shift/Alt) is held and leak side effects like
+		// the swap-eyes toggle.
+		if (HotKeyList[i].code == 0)
+			continue;
 		DWORD keyVKCode = HotKeyList[i].code & 0xFF;
 		SHORT keyState = GetAsyncKeyState(keyVKCode);
 		DWORD code = keyState != 0 ? modifier | keyVKCode : 0;
