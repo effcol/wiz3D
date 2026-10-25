@@ -2088,6 +2088,37 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 		const UINT bbW = pSwapChain->m_BackBufferSize.cx;
 		const UINT bbH = pSwapChain->m_BackBufferSize.cy;
 
+		// 0.4.2 DIAG: once per frame, log bStereoOn + the LEFT and RIGHT
+		// stereo surface pointers so we can confirm SetStereoRenderTarget
+		// is actually swapping the device target. Pair with [OSD9DIAG]
+		// lines in OSDRenderer9::Render to see the full picture.
+		static int   s_biEyeFrame = 0;
+		static FILE* s_biEyeFp    = nullptr;
+		if (s_biEyeFrame < 20) {
+			if (!s_biEyeFp) {
+				wchar_t p[MAX_PATH] = {};
+				if (GetModuleFileNameW(nullptr, p, MAX_PATH)) {
+					if (wchar_t* bs = wcsrchr(p, L'\\')) {
+						*(bs + 1) = L'\0';
+						lstrcatW(p, L"wiz3D_Logs");
+						CreateDirectoryW(p, nullptr);
+						lstrcatW(p, L"\\wiz3D_proxy.log");
+						s_biEyeFp = _wfopen(p, L"a");
+					}
+				}
+			}
+			if (s_biEyeFp) {
+				IDirect3DSurface9* rt0 = nullptr;
+				m_Direct3DDevice.GetRenderTarget(0, &rt0);
+				fprintf(s_biEyeFp,
+				        "[BIEYE] frame=%d  bStereoOn=%d  currentRT=%p  bb=%ux%u\n",
+				        s_biEyeFrame, (int)bStereoOn, (void*)rt0, bbW, bbH);
+				fflush(s_biEyeFp);
+				if (rt0) rt0->Release();
+			}
+			s_biEyeFrame++;
+		}
+
 		if (!m_pOSD)
 			m_pOSD = new wiz3d::OSDRenderer9();
 		if (m_pOSD && m_pOSD->Init(m_Direct3DDevice))

@@ -515,30 +515,35 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
     if (m_initFailed) return;
     if (!m_initDone && !Init(device)) return;
 
-    // 0.4.2 DIAG: log the first 20 Render calls so we can see whether the
-    // caller is alternating between left and right RTs each frame. Writes
-    // straight to wiz3D_Logs/wiz3D_proxy.log without going through zlog so
-    // it's visible in FINAL_RELEASE builds too. Remove when the right-eye
-    // regression is pinned down.
-    static int s_dbgRenders = 0;
-    if (s_dbgRenders < 20) {
-        IDirect3DSurface9* curRT = nullptr;
-        device->GetRenderTarget(0, &curRT);
-        wchar_t logPath[MAX_PATH] = {};
-        if (GetModuleFileNameW(nullptr, logPath, MAX_PATH)) {
-            if (wchar_t* bs = wcsrchr(logPath, L'\\')) {
-                *(bs + 1) = L'\0';
-                lstrcatW(logPath, L"wiz3D_Logs\\wiz3D_proxy.log");
-                FILE* fp = nullptr;
-                _wfopen_s(&fp, logPath, L"a");
-                if (fp) {
-                    fprintf(fp, "[OSD9DIAG] Render #%d  RT=%p  bb=%ux%u\n",
-                            s_dbgRenders, (void*)curRT, bbW, bbH);
-                    fclose(fp);
+    // 0.4.2 DIAG: log the first 40 Render calls so we can see whether the
+    // caller is alternating between left and right RTs each frame.
+    // Persistent file handle (mirrors ShaderHunter9::HLog) because the
+    // previous per-call _wfopen_s pattern wasn't producing output -- most
+    // likely a share-mode fight against zlog's own handle on the same
+    // path. Keeping the handle open side-steps that.
+    static int   s_dbgRenders = 0;
+    static FILE* s_dbgFp      = nullptr;
+    if (s_dbgRenders < 40) {
+        if (!s_dbgFp) {
+            wchar_t logPath[MAX_PATH] = {};
+            if (GetModuleFileNameW(nullptr, logPath, MAX_PATH)) {
+                if (wchar_t* bs = wcsrchr(logPath, L'\\')) {
+                    *(bs + 1) = L'\0';
+                    lstrcatW(logPath, L"wiz3D_Logs");
+                    CreateDirectoryW(logPath, nullptr);
+                    lstrcatW(logPath, L"\\wiz3D_proxy.log");
+                    s_dbgFp = _wfopen(logPath, L"a");
                 }
             }
         }
-        if (curRT) curRT->Release();
+        if (s_dbgFp) {
+            IDirect3DSurface9* curRT = nullptr;
+            device->GetRenderTarget(0, &curRT);
+            fprintf(s_dbgFp, "[OSD9DIAG] Render #%d  RT=%p  bb=%ux%u\n",
+                    s_dbgRenders, (void*)curRT, bbW, bbH);
+            fflush(s_dbgFp);
+            if (curRT) curRT->Release();
+        }
         s_dbgRenders++;
     }
 
@@ -604,7 +609,6 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
             L"PrtScn",               L"Stereo screenshot",
             L"Shift + F1",           L"Toggle this hotkey list",
             L"Ctrl + F1",            L"Toggle OSD strip + FPS",
-            L"Shift + Numpad *",     L"Open the wizard overlay",
             // ShaderHunter cycle/capture/exit keys live on the hunter OSD
             // line 2 while hunt mode is active; only the entry hotkey needs
             // to appear in the global menu (user 2026-10-21 feedback).

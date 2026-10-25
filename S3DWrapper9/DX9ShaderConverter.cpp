@@ -215,21 +215,25 @@ HRESULT	DX9ShaderConverter<T, Q>::CreateStereoShader(CONST DWORD *pMonoFunction,
 template <typename T, typename Q>
 void DX9ShaderConverter<T, Q>::WriteShaderTextToFile(TCHAR* fileName, char* shaderText, DWORD Size, bool complieShader)
 {
-#ifndef FINAL_RELEASE
+	// 0.4.2: ungated. Was wrapped in #ifndef FINAL_RELEASE which compiled
+	// the body out of shipping builds. The callers (VS/PS dump sites in
+	// ConvertShader) were also gated by #ifdef ZLOG_ALLOW_TRACING; both
+	// gates are now removed so DumpVS=1 / DumpPS=1 / WIZ3D_FORCE_DUMP=1
+	// actually writes files in release builds too.
 	FILE * fp;
 
-	if (m_CurrentShaderData.shaderGlobalIndex == 0) 
+	if (m_CurrentShaderData.shaderGlobalIndex == 0)
 		fp = _tfopen( fileName, _T("w") );
-	else 
+	else
 		fp = _tfopen( fileName, _T("a") );
 
-	if(!shaderText) 
+	if(!shaderText)
 	{
-		if ( fp ) 
+		if ( fp )
 			fclose( fp );
 		return;
 	}
-	if ( fp ) 
+	if ( fp )
 	{
 		fprintf( fp, ";*******************************************************************************\n"
 			"; Shader #%d\n\n", m_CurrentShaderData.shaderGlobalIndex);
@@ -254,8 +258,6 @@ void DX9ShaderConverter<T, Q>::WriteShaderTextToFile(TCHAR* fileName, char* shad
 
 		fclose( fp );
 	}
-
-#endif
 }
 
 template <typename T, typename Q>
