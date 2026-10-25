@@ -40,6 +40,9 @@ if exist "OutputMethods" rmdir /s /q "OutputMethods"
 echo Removing shader cache...
 if exist "DX9ShaderDataCache" rmdir /s /q "DX9ShaderDataCache"
 
+echo Removing wiz3D_Shaders folder (per-game shader dumps + Hunter captures)...
+if exist "wiz3D_Shaders" rmdir /s /q "wiz3D_Shaders"
+
 echo Removing wiz3D_Logs folder (per-game logs + shader dumps)...
 if exist "wiz3D_Logs" rmdir /s /q "wiz3D_Logs"
 

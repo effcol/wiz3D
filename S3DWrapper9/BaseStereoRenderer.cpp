@@ -2075,26 +2075,31 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 
 	// Modern OSD + laser-sight: run unconditionally, independent of the
 	// legacy font path. The modern OSD renders XYZRHW quads with its own
-	// FVF/state so it doesn't need m_pTextState or CFont. We render to
-	// the LEFT eye's RT; the SBS composite copies this to both eyes at
-	// Present. When the legacy loop above ran, LEFT RT is already the
-	// current target (loop iterates RIGHT -> LEFT); when it didn't (no
-	// m_pFont triggers), set LEFT explicitly here.
+	// FVF/state so it doesn't need m_pTextState or CFont. In stereo
+	// output modes the LEFT and RIGHT backbuffers are separate RTs that
+	// get composited side-by-side at Present (no copy between them), so
+	// we render each overlay once per eye. In mono the current RT is
+	// whatever is active and one render is enough.
+	// Rendering both eyes at the same screen-space position puts the
+	// overlay at the screen plane with zero stereo shift, which is what
+	// we want for a HUD-style status / FPS / hotkey card / Hunter strip.
 	{
 		const bool bStereoOn = RenderToRight() && RenderInStereo();
-		if (bStereoOn)
-			SetStereoRenderTarget<VIEWINDEX_LEFT>();
-
 		const UINT bbW = pSwapChain->m_BackBufferSize.cx;
 		const UINT bbH = pSwapChain->m_BackBufferSize.cy;
 
 		if (!m_pOSD)
 			m_pOSD = new wiz3d::OSDRenderer9();
-		if (m_pOSD)
+		if (m_pOSD && m_pOSD->Init(m_Direct3DDevice))
 		{
-			m_pOSD->TickFrame();
-			if (m_pOSD->Init(m_Direct3DDevice))
+			m_pOSD->TickFrame();   // FPS EMA + status fade timer -- once per frame
+			if (bStereoOn)
+			{
+				SetStereoRenderTarget<VIEWINDEX_RIGHT>();
 				m_pOSD->Render(m_Direct3DDevice, bbW, bbH);
+			}
+			SetStereoRenderTarget<VIEWINDEX_LEFT>();
+			m_pOSD->Render(m_Direct3DDevice, bbW, bbH);
 		}
 
 		// Laser-sight crosshair (replaces the dead resources.zip path).
@@ -2102,7 +2107,15 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 		if (!m_pLaserSight)
 			m_pLaserSight = new wiz3d::LaserSightRenderer9();
 		if (m_pLaserSight && m_pLaserSight->Init(m_Direct3DDevice))
+		{
+			if (bStereoOn)
+			{
+				SetStereoRenderTarget<VIEWINDEX_RIGHT>();
+				m_pLaserSight->Render(m_Direct3DDevice, bbW, bbH);
+			}
+			SetStereoRenderTarget<VIEWINDEX_LEFT>();
 			m_pLaserSight->Render(m_Direct3DDevice, bbW, bbH);
+		}
 	}
 }
 
