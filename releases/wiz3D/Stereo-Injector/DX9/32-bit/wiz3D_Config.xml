@@ -327,7 +327,7 @@
 		<LaserSightXCoordinate Value="0.5"/>
 		<LaserSightYCoordinate Value="0.5"/>
 
-		<ShowWizardAtStartup Value="1"/>
+		<ShowWizardAtStartup Value="0"/>
 		<SwapEyes Value="0" />
 		<LaserSightEnable Value="0" />
 		<DontLockMouse Value="0"/>
