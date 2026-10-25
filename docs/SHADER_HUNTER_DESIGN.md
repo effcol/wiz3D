@@ -65,7 +65,7 @@ Num1 prev   Num2 next   Num3 capture   Num0 exit
 
 Reuses the existing `GDIFont m_fontStatus` and `DrawTextLine` plumbing. Position: bottom-centre of the backbuffer. Fade: none — stays visible while hunt mode is active.
 
-### 5. Capture report format (`DX11ShaderDataCache/<Game>/Hunter/<CRC>_<ts>.txt`)
+### 5. Capture report format (`wiz3D_Shaders/<Game>/Hunter/<CRC>_<ts>.txt`)
 
 Written by `ShaderHunter::DoCapture()` on Numpad 3. Includes everything the author needs to go straight to authoring a `<ShaderPatch>` / `<Mono>` / `<Multiplier>` / `<Matrices>` entry:
 

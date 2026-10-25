@@ -318,15 +318,26 @@ void InitializeLogging()
 		zlog::ReopenLogger(gInfo.LogFileName, true);
 	}
 
-	// 0.5.0 shader-dump layout — mirrors DX9/DX10/11:
-	//   wiz3D_Logs/<Game>/Shaders/Dump/DX8/{vs,ps}.txt
+	// 0.4.2 shader-dump layout — mirrors DX9/DX10/11:
+	//   <DriverDir>\wiz3D_Shaders\<Game>\Dump\DX8\{vs,ps}.txt
 	// Gated on gInfo.DumpVS / gInfo.DumpPS at write time. Dir pre-created
 	// and cleared here so the per-shader write path has somewhere to go
 	// without each site doing its own CreateDirectory walk. DX8 keeps its
 	// dump dir on gInfo rather than gData — the slim DX8 globals struct
-	// predates S3DAPI's richer GlobalData and never adopted it.
-	_tcscpy(gInfo.DumpDirectory, gInfo.LogFileDirectory);
-	PathAppend(gInfo.DumpDirectory, _T("Shaders"));
+	// predates S3DAPI's richer GlobalData and never adopted it. API tag
+	// retained as a Dump\DX8 sub-folder because the DX8 wrapper historically
+	// co-ran with the DX9 wrapper on shim loads; keeping the DX8 outputs
+	// visibly separate avoids file-name collisions with DX9's dumps.
+	_tcscpy(gInfo.DumpDirectory, gInfo.DriverDirectory);
+	PathAppend(gInfo.DumpDirectory, _T("wiz3D_Shaders"));
+	CreateDirectory(gInfo.DumpDirectory, 0);
+	{
+		TCHAR game[MAX_PATH];
+		_tcscpy(game, gInfo.ApplicationName);
+		TCHAR* dot = _tcsrchr(game, _T('.'));
+		if (dot) *dot = 0;
+		PathAppend(gInfo.DumpDirectory, game);
+	}
 	CreateDirectory(gInfo.DumpDirectory, 0);
 	PathAppend(gInfo.DumpDirectory, _T("Dump"));
 	CreateDirectory(gInfo.DumpDirectory, 0);

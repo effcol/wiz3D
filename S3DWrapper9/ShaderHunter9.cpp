@@ -92,9 +92,9 @@ void HLog(const char* fmt, ...)
 
 bool BuildHunterPath(uint32_t crc, HuntStage stage, TCHAR out[MAX_PATH])
 {
-    // DX9ShaderDataCache/<Game>/Hunter/<CRC>_<stage>_<ts>.txt
+    // wiz3D_Shaders/<Game>/Hunter/<CRC>_<stage>_<ts>.txt
     _tcscpy(out, gInfo.DriverDirectory);
-    PathAppend(out, _T("DX9ShaderDataCache"));
+    PathAppend(out, _T("wiz3D_Shaders"));
     CreateDirectory(out, 0);
     {
         TCHAR game[MAX_PATH];

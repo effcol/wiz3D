@@ -132,12 +132,16 @@ void InitDirectories( )
 #ifdef ZLOG_ALLOW_TRACING
 	InitializeLogging();
 
-	// 0.4.2 layout: <DriverDir>\DX11ShaderDataCache\<Game>\Dump\ for mass
-	// dumps (DumpVS/DumpPS/DumpMeshes). Hunter/ sibling folder is reserved
-	// for user-captured single-shader reports from the ShaderHunter OSD mode.
-	// Mirrors the DX9ShaderDataCache convention iZ3D used on DX9.
+	// 0.4.2 layout: <DriverDir>\wiz3D_Shaders\<Game>\Dump\ for mass dumps
+	// (DumpVS/DumpPS/DumpMeshes). Hunter/ sibling folder is reserved for
+	// user-captured single-shader reports from the ShaderHunter OSD mode.
+	// Shared across every stereo-injector wrapper (DX7/8/9/10-11) so an
+	// author authoring across APIs sees a single Shaders folder next to
+	// the DLLs rather than per-API scattered trees. (The historical
+	// %ALLUSERSPROFILE%\DX9ShaderDataCache\<Profile>.vsc/.psc runtime
+	// binary cache from iZ3D is unrelated and stays where it is.)
 	_tcscpy(gData.DumpDirectory, gInfo.DriverDirectory);
-	PathAppend(gData.DumpDirectory, _T("DX11ShaderDataCache"));
+	PathAppend(gData.DumpDirectory, _T("wiz3D_Shaders"));
 	CreateDirectory(gData.DumpDirectory, 0);
 	{
 		TCHAR game[MAX_PATH];

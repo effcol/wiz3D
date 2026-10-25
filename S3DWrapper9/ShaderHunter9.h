@@ -6,7 +6,7 @@
 // identical fast-path semantics (atomic active flag + hashmap lookups).
 //
 // Dumps the shader's SM3 asm via D3DXDisassembleShader into
-//     DX9ShaderDataCache/<Game>/Hunter/<CRC>_<stage>_<ts>.txt
+//     wiz3D_Shaders/<Game>/Hunter/<CRC>_<stage>_<ts>.txt
 // The capture report points authors at the DX9 <Mono> block for
 // shader-level stereo-off (iZ3D-native format, shipped in 0.3.0);
 // Hunter is the ergonomic layer on top that identifies the right CRC.

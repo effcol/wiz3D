@@ -30,7 +30,7 @@ The DX9 HelixMod-compatible user-HLSL side-door (external `ShaderOverride/<CRC>.
 - **CB-math features** (Akshay's PR #31). 37 declarative tags in `BaseProfile.xml` cover most engine families (UE3, UE4, CryEngine, RAGE, Dunia).
 
 **0.4.1 (this release):**
-- **ShaderHunter** — Numpad 0 enters hunt mode, Numpad 1 / Numpad 2 cycle through CRCs drawn this frame (symmetric left/right skip to keep replay in sync), Numpad 3 captures a mini-report with disasm + CB layout + suggested `<ShaderPatch>` skeleton to `DX11ShaderDataCache/<Game>/Hunter/<CRC>_<stage>_<ts>.txt` (DX9 equivalent at `DX9ShaderDataCache/<Game>/Hunter/`). OSD strip bottom-centre while active. No config knob — the hotkey is itself the entry point. Numpad bindings follow 3Dmigoto / HelixMod convention so shaderhackers coming from those tools don't learn a new layout.
+- **ShaderHunter** — Numpad 0 enters hunt mode, Numpad 1 / Numpad 2 cycle through CRCs drawn this frame (symmetric left/right skip to keep replay in sync), Numpad 3 captures a mini-report with disasm + CB layout + suggested `<ShaderPatch>` skeleton to `wiz3D_Shaders/<Game>/Hunter/<CRC>_<stage>_<ts>.txt`. OSD strip bottom-centre while active. No config knob — the hotkey is itself the entry point. Numpad bindings follow 3Dmigoto / HelixMod convention so shaderhackers coming from those tools don't learn a new layout.
 - **`<ShaderPatch>` shorthand** (CRC-keyed, declarative). First primitive: `<SkipStereo/>` — forces a draw mono-both-eyes by short-circuiting `Context11Proxy::EditRightCBs` for the right eye when the bound VS or PS matches. Covers HUD leaks, specific crosshairs, screen-space shaders that shouldn't shift.
 
 **Example:**
@@ -76,8 +76,10 @@ Under `<GlobalSettings>`:
 
 - `CollectDebugInformation="1"` — DX10/11 only. Reports CB layouts and matrix candidates to `wiz3D_proxy.log`. Primary authoring aid for CB-math profiles.
 - `DumpVS="1"` / `DumpPS="1"` — dump every shader created by the game. Lands in:
-  - DX10/11: `DX11ShaderDataCache/<GameName>/Dump/{VS,PS,GS,HS,DS,CS}.txt`
-  - DX9: `DX9ShaderDataCache/<GameName>/Dump/{vs,ps}.{client,converted,modified}.txt`
+  - DX10/11: `wiz3D_Shaders/<GameName>/Dump/{VS,PS,GS,HS,DS,CS}.txt`
+  - DX9: `wiz3D_Shaders/<GameName>/Dump/{vs,ps}.{client,converted,modified}.txt`
+
+  Note: the folder name mirrors `wiz3D_Logs/` and sits next to the driver DLL — the historical `%ALLUSERSPROFILE%\DX9ShaderDataCache\<Profile>.vsc`/`.psc` from iZ3D is a separate thing (binary runtime cache for repeat-launch startup; keyed by profile not game) and stays where it is.
 
   Developer shortcut: set the `WIZ3D_FORCE_DUMP=1` environment variable to force-enable `DumpVS` and `DumpPS` regardless of what the shipped `wiz3D_Config.xml` says. One env var, works for every game, never ships. Useful when you're actively authoring fixes and want dumps on by default without having to flip the Config.xml knob for each install.
 - `VerboseFrameTrace="N"` with `FrameTraceStartFrame="M"` — DX10/11 only. Per-frame draw-by-draw timeline into `wiz3D_proxy.log` for `N` frames starting at Present #`M`.

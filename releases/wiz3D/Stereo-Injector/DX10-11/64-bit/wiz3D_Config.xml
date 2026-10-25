@@ -72,8 +72,12 @@
 		     =================================================================
 		     Flip these to "1" when you're writing a per-game stereo profile
 		     or investigating a stereo bug. Output lands under:
-		       <driver_folder>\DX11ShaderDataCache\<GameName>\{Dump,Hunter}\
-		       <driver_folder>\DX9ShaderDataCache\<GameName>\{Dump,Hunter}\
+		       <driver_folder>\wiz3D_Shaders\<GameName>\{Dump,Hunter}\
+		     Shared folder across every stereo-injector wrapper
+		     (DX7/8/9/10-11). The historical %ALLUSERSPROFILE%\
+		     DX9ShaderDataCache\<Profile>.vsc/.psc runtime cache from iZ3D
+		     is separate (binary modified-shader cache, keyed by profile
+		     not game) and stays where it is.
 		     Leave at "0" during normal play — the dump files grow quickly on
 		     complex games and the extra I/O is wasted when you're not reading
 		     the logs. See docs/SHADER_FIXES.md for the full authoring flow.
@@ -95,8 +99,7 @@
 		       Numpad 1      hide previous CRC drawn this frame
 		       Numpad 2      hide next CRC drawn this frame
 		       Numpad 3      capture current CRC's bytecode + CB layout to
-		                     DX11ShaderDataCache\<Game>\Hunter\<CRC>_<ts>.txt
-		                     (DX9: DX9ShaderDataCache\<Game>\Hunter\)
+		                     wiz3D_Shaders\<Game>\Hunter\<CRC>_<ts>.txt
 		     The capture report includes authoring entries for the two
 		     declarative paths (<ShaderPatch> with <SkipStereo/>, or
 		     iZ3D-native <Mono>/<Multiplier>/<Matrices>) that you drop into
@@ -106,8 +109,8 @@
 		<!-- Dump every shader the game creates to a single concatenated file
 		     per stage, with D3DDisassemble output + iZ3D shader tree + CRC32.
 		     DumpVS covers VS/HS/DS/GS, DumpPS covers PS/CS. On DX10/11 the
-		     dumps land in DX11ShaderDataCache\<Game>\Dump\{VS,PS,GS,HS,DS,CS}.txt;
-		     on DX9 they split into DX9ShaderDataCache\<Game>\Dump\{vs,ps}.{client,converted,modified}.txt.
+		     dumps land in wiz3D_Shaders\<Game>\Dump\{VS,PS,GS,HS,DS,CS}.txt;
+		     on DX9 they split into wiz3D_Shaders\<Game>\Dump\{vs,ps}.{client,converted,modified}.txt.
 		     These dumps are HUGE on complex games — only enable them when you
 		     need to read specific shader bytecode (e.g. inspecting a hunted
 		     CRC before writing a <Mono>/<Multiplier>/<ShaderPatch> entry).

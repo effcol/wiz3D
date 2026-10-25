@@ -98,7 +98,7 @@ public:
 
     // Numpad 3. Dump the currently hidden shader's bytecode disassembly + CB layout
     // + suggested ShaderPatch skeleton to:
-    //     DX11ShaderDataCache/<Game>/Hunter/<CRC>_<timestamp>.txt
+    //     wiz3D_Shaders/<Game>/Hunter/<CRC>_<timestamp>.txt
     // The <ts> timestamp is YYYYMMDD_HHMMSS so sorting by name sorts by time.
     // No-op if m_hiddenCRC is 0 or hunt mode is off.
     static void OnCapture();

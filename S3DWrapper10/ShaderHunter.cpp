@@ -92,14 +92,14 @@ char                                        s_flashLeaf[128] = {};
 
 bool PathIsOn() { return g_active.load(std::memory_order_relaxed); }
 
-// Build DX11ShaderDataCache/<Game>/Hunter/<CRC>_<ts>.txt. Returns false if
-// the path can't be built or the dir can't be created. Caller passes the
-// final filled TCHAR buffer back for fopen. Mirrors the DX9ShaderDataCache
-// convention iZ3D used on DX9.
+// Build wiz3D_Shaders/<Game>/Hunter/<CRC>_<ts>.txt. Returns false if
+// the path can't be built or the dir can't be created. Caller passes
+// the final filled TCHAR buffer back for fopen. Shared folder across
+// every stereo-injector wrapper (DX7/8/9/10-11).
 bool BuildHunterPath(uint32_t crc, HuntStage stage, TCHAR out[MAX_PATH])
 {
     _tcscpy(out, gInfo.DriverDirectory);
-    PathAppend(out, _T("DX11ShaderDataCache"));
+    PathAppend(out, _T("wiz3D_Shaders"));
     CreateDirectory(out, 0);
     {
         TCHAR game[MAX_PATH];
