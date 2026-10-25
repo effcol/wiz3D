@@ -945,6 +945,20 @@
 			<!-- Shadow-map depth-write PS (ps_3_0, writes v0.x to red). -->
 			<PixelShader CRC="0x17513EFF"/>
 		</Mono>
+		<!-- Deferred lighting + sun-shadow apply pass. ps_3_0 full-screen,
+		     167 instructions, 12-tap PCF against gShadowZSamplerDir. Reads
+		     G-buffer at screen UV, reconstructs world position via c15
+		     (eye position from gViewInverse). User-reported symptom:
+		     shadows sit at screen plane because c15 isn't being updated
+		     per-eye by the game and both eyes reconstruct the same world
+		     position. Speculative Multiplier=1.0 tag on the PS to see if
+		     wiz3D's existing per-eye stereo processing bites on this case.
+		     If no visible change, this is a known-issue for 0.4.2 pending
+		     a proper CRC-keyed per-eye PS-constant-edit primitive (roadmap
+		     task #73 territory). -->
+		<Multiplier Value="1.0">
+			<PixelShader CRC="0x4AEFF38C"/>
+		</Multiplier>
 		<Presets>
 			<Preset Index="0">
 				<One_div_ZPS Value="0.007839" />
