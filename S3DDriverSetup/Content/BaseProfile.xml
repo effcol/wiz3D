@@ -936,8 +936,7 @@
 		<CreateSquareRTInMono Value="1"/>
 		<CreateSquareDSInMono Value="1"/>
 		<Mono>
-			<!-- Shadow-map depth-write PS (ps_3_0, writes v0.x to red).
-			     Hunter capture 0x17513EFF_PS_20261025_190823.txt -->
+			<!-- Shadow-map depth-write PS (ps_3_0, writes v0.x to red). -->
 			<PixelShader CRC="0x17513EFF"/>
 		</Mono>
 		<Presets>

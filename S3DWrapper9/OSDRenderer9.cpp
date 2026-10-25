@@ -542,8 +542,8 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
         if (s_dbgFp) {
             IDirect3DSurface9* curRT = nullptr;
             device->GetRenderTarget(0, &curRT);
-            fprintf(s_dbgFp, "[OSD9DIAG] Render #%d  RT=%p  bb=%ux%u\n",
-                    s_dbgRenders, (void*)curRT, bbW, bbH);
+            fprintf(s_dbgFp, "[OSD9DIAG] Render #%d  RT=%p  bb=%ux%u  origin=(%d,%d)\n",
+                    s_dbgRenders, (void*)curRT, bbW, bbH, originX, originY);
             fflush(s_dbgFp);
             if (curRT) curRT->Release();
         }
