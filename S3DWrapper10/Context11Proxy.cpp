@@ -555,21 +555,15 @@ void Context11Proxy::EditRightCBs(bool compute)
     // as mono-both-eyes via BaseProfile.xml. Skip the whole right-eye CB edit
     // pass so the right eye renders with the game's own (unshifted) CBs,
     // identical to the left eye. See ShaderProfileData::m_bSkipStereo.
-    //
-    // 0.4.1 inline ShaderOverride: an override that reads the stereo-params
-    // SRV at t125 is applying its own eye offset in-shader. Skipping the CB
-    // edit here prevents double-shift. Same return gate as SkipStereo.
     if (!compute)
     {
         if (infos[0])
         {
-            if (infos[0]->usesStereoParams) return;
             auto it = g_ProfileData.VSCRCData.find(infos[0]->crc32);
             if (it != g_ProfileData.VSCRCData.end() && it->second.m_bSkipStereo) return;
         }
         if (infos[1])
         {
-            if (infos[1]->usesStereoParams) return;
             auto it = g_ProfileData.PSCRCData.find(infos[1]->crc32);
             if (it != g_ProfileData.PSCRCData.end() && it->second.m_bSkipStereo) return;
         }

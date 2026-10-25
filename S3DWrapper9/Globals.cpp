@@ -21,18 +21,27 @@
 
 void InitDirectories()
 {
-	// 0.4.1: ungated so zlog file-path setup + Shaders/Dump/DX9/ layout both
-	// run in shipped (FINAL_RELEASE) builds. Field diagnostics stay useful.
+	// 0.4.1: ungated so zlog file-path setup runs in shipped (FINAL_RELEASE)
+	// builds. Field diagnostics stay useful.
 	InitializeLogging();
-	// 0.5.0 layout: wiz3D_Logs/<Game>/Shaders/Dump/DX9/ for mass dumps.
-	// Hunter/ sibling folder is reserved for user-captured single-shader
-	// reports from the ShaderHunter OSD mode.
-	_tcscpy(gData.DumpDirectory, gInfo.LogFileDirectory);
-	PathAppend(gData.DumpDirectory, _T("Shaders"));
+	// 0.4.2 layout: <DriverDir>\DX9ShaderDataCache\<Game>\Dump\ for mass
+	// dumps. Hunter/ sibling folder is reserved for user-captured
+	// single-shader reports from the ShaderHunter OSD mode. Matches the
+	// DX9ShaderDataCache naming iZ3D already used for its .vsc/.psc runtime
+	// cache in AllUsersDirectory; these new per-game Dump/Hunter folders
+	// live next to the driver DLL instead.
+	_tcscpy(gData.DumpDirectory, gInfo.DriverDirectory);
+	PathAppend(gData.DumpDirectory, _T("DX9ShaderDataCache"));
+	CreateDirectory(gData.DumpDirectory, 0);
+	{
+		TCHAR game[MAX_PATH];
+		_tcscpy(game, gInfo.ApplicationName);
+		TCHAR* dot = _tcsrchr(game, _T('.'));
+		if (dot) *dot = 0;
+		PathAppend(gData.DumpDirectory, game);
+	}
 	CreateDirectory(gData.DumpDirectory, 0);
 	PathAppend(gData.DumpDirectory, _T("Dump"));
-	CreateDirectory(gData.DumpDirectory, 0);
-	PathAppend(gData.DumpDirectory, _T("DX9"));
 	CreateDirectory(gData.DumpDirectory, 0);
 	ClearDirectory(gData.DumpDirectory);
 #ifndef FINAL_RELEASE

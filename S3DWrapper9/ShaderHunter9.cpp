@@ -23,6 +23,7 @@
 #include "../S3DAPI/GlobalData.h"
 #include "../S3DAPI/ReadData.h"
 #include "../S3DAPI/ShaderProfileData.h"
+#include "../CommonUtils/System.h"
 
 #pragma comment(lib, "shlwapi.lib")
 
@@ -30,6 +31,12 @@ namespace wiz3d
 {
 namespace dx9
 {
+
+uint32_t HunterComputeCRC32(const void* bytecode, uint32_t sizeBytes)
+{
+    if (!bytecode || sizeBytes == 0) return 0;
+    return (uint32_t)CalculateCRC32(bytecode, sizeBytes);
+}
 
 namespace
 {
@@ -85,8 +92,17 @@ void HLog(const char* fmt, ...)
 
 bool BuildHunterPath(uint32_t crc, HuntStage stage, TCHAR out[MAX_PATH])
 {
-    _tcscpy(out, gInfo.LogFileDirectory);
-    PathAppend(out, _T("Shaders"));
+    // DX9ShaderDataCache/<Game>/Hunter/<CRC>_<stage>_<ts>.txt
+    _tcscpy(out, gInfo.DriverDirectory);
+    PathAppend(out, _T("DX9ShaderDataCache"));
+    CreateDirectory(out, 0);
+    {
+        TCHAR game[MAX_PATH];
+        _tcscpy(game, gInfo.ApplicationName);
+        TCHAR* dot = _tcsrchr(game, _T('.'));
+        if (dot) *dot = 0;
+        PathAppend(out, game);
+    }
     CreateDirectory(out, 0);
     PathAppend(out, _T("Hunter"));
     CreateDirectory(out, 0);
@@ -190,7 +206,7 @@ void HunterOnCyclePrev()
 {
     // Always log the outcome so a "nothing happens" complaint has a
     // diagnostic trail. Mirror of the DX11 ShaderHunter.
-    if (!PathIsOn()) { HLog("[hunt-dx9] prev: hunt mode is off (Ctrl+F2 to enter)\n"); return; }
+    if (!PathIsOn()) { HLog("[hunt-dx9] prev: hunt mode is off (Numpad 0 to enter)\n"); return; }
     std::lock_guard<std::mutex> g(s_lock);
     if (s_cycle.empty()) { HLog("[hunt-dx9] prev: cycle empty (no draws observed this frame yet)\n"); return; }
     if (s_cycleIdx == 0) s_cycleIdx = s_cycle.size() - 1;
@@ -204,7 +220,7 @@ void HunterOnCyclePrev()
 
 void HunterOnCycleNext()
 {
-    if (!PathIsOn()) { HLog("[hunt-dx9] next: hunt mode is off (Ctrl+F2 to enter)\n"); return; }
+    if (!PathIsOn()) { HLog("[hunt-dx9] next: hunt mode is off (Numpad 0 to enter)\n"); return; }
     std::lock_guard<std::mutex> g(s_lock);
     if (s_cycle.empty()) { HLog("[hunt-dx9] next: cycle empty (no draws observed this frame yet)\n"); return; }
     s_cycleIdx = (s_cycleIdx + 1) % s_cycle.size();
@@ -223,7 +239,7 @@ void HunterOnCapture()
     uint32_t    drawsSeen;
     {
         std::lock_guard<std::mutex> g(s_lock);
-        // 0.4.1: if the user presses F3 before cycling, auto-pick the first
+        // 0.4.1: if the user presses Numpad 3 before cycling, auto-pick the first
         // shader in the current cycle so the capture still fires. Matches DX11.
         if (!s_hidden && !s_cycle.empty())
         {
@@ -288,23 +304,18 @@ void HunterOnCapture()
         fprintf(fp, "No bytecode retained for this shader.\n");
     }
 
-    // DX9's shader-fix layers are already fully shipped (0.3.0). The capture
-    // report points authors at the two authoring paths rather than pre-filling
-    // XML, since DX9 doesn't have the DX11 Feature-engine CB-layout hints
-    // that let us guess at a <ShaderPatch> skeleton.
-    fprintf(fp, "\n---- Authoring options ----\n"
-                "1) Mono-force this shader (simplest):\n"
+    // DX9's shader-fix path uses iZ3D-native profile XML. The capture report
+    // points authors at the <Mono> block for shader-level stereo-off. More
+    // targeted stereo correction (projection matrices etc) uses <Multiplier>
+    // and <Matrices> entries — see docs/SHADER_FIXES.md.
+    fprintf(fp, "\n---- Authoring: mono-force this shader ----\n"
                 "   <Profile Name=\"%s\">\n"
                 "       <Mono><%sShader CRC=\"0x%08X\"/></Mono>\n"
                 "   </Profile>\n"
                 "\n"
-                "2) HelixMod-format shader override (full stereo correction):\n"
-                "   Drop a hand-tuned asm file at\n"
-                "   <game_folder>\\ShaderOverride\\%sShaders\\0x%08X.txt\n"
-                "   See docs/SHADER_FIXES.md for the DX9 stereo-params convention\n"
-                "   (texldl from s0 or s13 — matches HelixMod drops verbatim).\n",
-            "", (stage == HuntStage::VS ? "Vertex" : "Pixel"), crc,
-            (stage == HuntStage::VS ? "Vertex" : "Pixel"), crc);
+                "For projection-matrix fixes see <Matrices> / <Multiplier> in\n"
+                "docs/SHADER_FIXES.md.\n",
+            "", (stage == HuntStage::VS ? "Vertex" : "Pixel"), crc);
 
     fclose(fp);
     HLog("[hunt-dx9] captured CRC=0x%08X stage=%s to %ls\n",

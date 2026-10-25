@@ -381,6 +381,24 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 		
 		g_ScalingAgent = ScalingAgent::Initialize();
 		ReadConfigRouterType();
+
+		// Developer convenience: WIZ3D_FORCE_DUMP=1 force-enables shader
+		// dumping (DumpVS/DumpPS) regardless of wiz3D_Config.xml. One env
+		// var set once on a dev machine, works for every game, never
+		// ships (CI/release envs don't set it). Not a committed Config.xml
+		// change so there's no risk of accidentally shipping dump=on.
+		{
+			wchar_t fd[8] = {};
+			DWORD n = GetEnvironmentVariableW(L"WIZ3D_FORCE_DUMP", fd, _countof(fd));
+			if (n > 0 && n < _countof(fd) &&
+			    (fd[0] == L'1' || fd[0] == L't' || fd[0] == L'T' ||
+			     fd[0] == L'y' || fd[0] == L'Y'))
+			{
+				gInfo.DumpVS = true;
+				gInfo.DumpPS = true;
+			}
+		}
+
 		LoadOutputDll();
 		if (gInfo.CollectDebugInformation)
 			HookExceptions();

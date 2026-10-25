@@ -1001,57 +1001,6 @@ void ReadProfilePart2Data(TiXmlNode* node)
 					pProfile->m_bSkipStereo = true;
 			}
 		}
-		else if ( strcmp( itemElement->Value(), "ShaderOverride" ) == 0 )
-		{
-			// 0.4.1 inline <ShaderOverride CRC Stage>: full HLSL replacement
-			// for the shader with this CRC. Format:
-			//   <ShaderOverride CRC="0xABC12345" Stage="VS">
-			//     <![CDATA[
-			//       Texture2D<float4> StereoParams : register(t125);
-			//       struct VSInput  { ... };
-			//       struct VSOutput { float4 pos : SV_Position; };
-			//       VSOutput main(VSInput i) { ... }
-			//     ]]>
-			//   </ShaderOverride>
-			// The raw HLSL text is captured here; Device11Proxy's AnalyzeAndCreate
-			// lazily compiles on first game-side shader create for this CRC. We
-			// don't compile here because S3DAPI doesn't link d3dcompiler — doing
-			// the compile in the per-API wrapper keeps that dependency where it
-			// belongs. See ShaderProfileData::m_overrideHLSL + m_overrideBytecode.
-			const char* crcStr   = itemElement->Attribute("CRC");
-			const char* stageStr = itemElement->Attribute("Stage");
-			if (!crcStr || !stageStr) continue;
-			DWORD crc = 0;
-			sscanf_s(crcStr, "0x%x", &crc);
-			if (!crc) continue;
-			ShaderProfileData* pProfile = nullptr;
-			if      (!strcmp(stageStr, "VS")) pProfile = &g_ProfileData.VSCRCData[crc];
-			else if (!strcmp(stageStr, "PS")) pProfile = &g_ProfileData.PSCRCData[crc];
-			else if (!strcmp(stageStr, "GS")) pProfile = &g_ProfileData.GSCRCData[crc];
-			if (!pProfile) continue;
-			// TinyXML surfaces CDATA child nodes as TiXmlText with CDATA() == true.
-			// Walk every text/CDATA child and concatenate so an author can split
-			// the HLSL across comments or whitespace without ugly bookkeeping.
-			std::string hlsl;
-			for (TiXmlNode* child = itemElement->FirstChild(); child; child = child->NextSibling())
-			{
-				if (TiXmlText* t = child->ToText())
-				{
-					const char* v = t->Value();
-					if (v) hlsl += v;
-				}
-			}
-			// Trim leading / trailing whitespace to keep the compile log tidy.
-			while (!hlsl.empty() && (hlsl.front() == ' ' || hlsl.front() == '\t' ||
-			                         hlsl.front() == '\r' || hlsl.front() == '\n'))
-				hlsl.erase(hlsl.begin());
-			while (!hlsl.empty() && (hlsl.back() == ' ' || hlsl.back() == '\t' ||
-			                        hlsl.back() == '\r' || hlsl.back() == '\n'))
-				hlsl.pop_back();
-			if (!hlsl.empty())
-				pProfile->m_overrideHLSL = hlsl;
-			pProfile->m_overrideBytecode.clear();   // force recompile on reload
-		}
 		else if ( strcmp( itemElement->Value(), "Keys" ) == 0 )
 		{
 			for( TiXmlElement* itemElement2 = itemElement->FirstChildElement(); itemElement2; itemElement2 = itemElement2->NextSiblingElement() )

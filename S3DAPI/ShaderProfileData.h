@@ -79,21 +79,6 @@ public:
 	// by covering the CB-math feature engine added in PR #31 — the legacy
 	// path affected only the DX9-era bStereo gate in ShaderWrapper.
 	bool				m_bSkipStereo;
-	// 0.4.1 inline <ShaderOverride CRC Stage>: HLSL text and cached compiled
-	// bytecode for a per-CRC shader replacement. Populated by ReadData from
-	// the Profile's inline CDATA block (raw HLSL kept here, not compiled —
-	// S3DAPI doesn't link d3dcompiler). Device11Proxy::AnalyzeAndCreate
-	// lazily compiles on first game-side CreateVertexShader / CreatePixelShader
-	// hit, caches the result in m_overrideBytecode, and swaps the bytecode
-	// pointer so the rest of the pipeline (analysis + storage + feature
-	// detection) runs against the overridden shader.
-	//
-	// Empty m_overrideHLSL => no override. Empty m_overrideBytecode with
-	// non-empty m_overrideHLSL => not yet compiled OR last compile failed
-	// (compile errors log into wiz3D_proxy.log and leave the game's
-	// original shader untouched for that CRC).
-	std::string			m_overrideHLSL;
-	std::vector<BYTE>	m_overrideBytecode;
 	float				m_ZNear;
 	ShaderMatrices*		m_pMatrices;
 	int					m_PreTransformProjectionId;	// id of the matrix for shader modification in particular frame (for Bioshock2 shadows), -1 - not used

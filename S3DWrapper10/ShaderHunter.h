@@ -85,20 +85,20 @@ public:
     // Hotkey handlers (KeyboardHook thread). All take the s_lock.
     // -------------------------------------------------------------------------
 
-    // Ctrl+F2. Toggle hunt mode on/off. First activation also arms the fast-
+    // Numpad 0. Toggle hunt mode on/off. First activation also arms the fast-
     // path atomic. Deactivation clears m_hiddenCRC so no draws stay hidden.
     static void OnToggleHunt();
 
-    // F2. Cycle m_hiddenCRC to the previous CRC in the current frame's cycle.
+    // Numpad 1. Cycle m_hiddenCRC to the previous CRC in the current frame's cycle.
     // No-op if the cycle is empty (no draws seen yet) or hunt mode is off.
     static void OnCyclePrev();
 
-    // Shift+F2. Mirror of OnCyclePrev going forward.
+    // Numpad 2. Mirror of OnCyclePrev going forward.
     static void OnCycleNext();
 
-    // F3. Dump the currently hidden shader's bytecode disassembly + CB layout
+    // Numpad 3. Dump the currently hidden shader's bytecode disassembly + CB layout
     // + suggested ShaderPatch skeleton to:
-    //     wiz3D_Logs/<Game>/Shaders/Hunter/<CRC>_<timestamp>.txt
+    //     DX11ShaderDataCache/<Game>/Hunter/<CRC>_<timestamp>.txt
     // The <ts> timestamp is YYYYMMDD_HHMMSS so sorting by name sorts by time.
     // No-op if m_hiddenCRC is 0 or hunt mode is off.
     static void OnCapture();

@@ -92,16 +92,22 @@ char                                        s_flashLeaf[128] = {};
 
 bool PathIsOn() { return g_active.load(std::memory_order_relaxed); }
 
-// Build wiz3D_Logs/<Game>/Shaders/Hunter/<CRC>_<ts>.txt. Returns false if the
-// path can't be built or the dir can't be created. Caller passes the final
-// filled TCHAR buffer back for fopen.
+// Build DX11ShaderDataCache/<Game>/Hunter/<CRC>_<ts>.txt. Returns false if
+// the path can't be built or the dir can't be created. Caller passes the
+// final filled TCHAR buffer back for fopen. Mirrors the DX9ShaderDataCache
+// convention iZ3D used on DX9.
 bool BuildHunterPath(uint32_t crc, HuntStage stage, TCHAR out[MAX_PATH])
 {
-    // LogFileDirectory is set up by S3DAPI/Logging.cpp to be
-    //   <DriverDirectory>\wiz3D_Logs\<GameName>
-    // so we just append Shaders\Hunter\ and the filename.
-    _tcscpy(out, gInfo.LogFileDirectory);
-    PathAppend(out, _T("Shaders"));
+    _tcscpy(out, gInfo.DriverDirectory);
+    PathAppend(out, _T("DX11ShaderDataCache"));
+    CreateDirectory(out, 0);
+    {
+        TCHAR game[MAX_PATH];
+        _tcscpy(game, gInfo.ApplicationName);
+        TCHAR* dot = _tcsrchr(game, _T('.'));
+        if (dot) *dot = 0;
+        PathAppend(out, game);
+    }
     CreateDirectory(out, 0);
     PathAppend(out, _T("Hunter"));
     CreateDirectory(out, 0);
@@ -234,7 +240,7 @@ void ShaderHunter::FrameEnd()
 
 void ShaderHunter::OnToggleHunt()
 {
-    // The hunter is always wired. Ctrl+F2 is itself the opt-in; no config
+    // The hunter is always wired. Numpad 0 is itself the opt-in; no config
     // knob gates this. Zero overhead while hunt mode is off: NoteDraw /
     // ShouldSkipDraw early-return on the atomic g_active flag.
     std::lock_guard<std::mutex> g(s_lock);
@@ -251,11 +257,11 @@ void ShaderHunter::OnToggleHunt()
 void ShaderHunter::OnCyclePrev()
 {
     // Always log the outcome so a user who sees "nothing happens" when
-    // pressing F2 can tell whether (a) hunt mode was off, (b) the key
+    // pressing Numpad 1 can tell whether (a) hunt mode was off, (b) the key
     // never reached our hook, or (c) the cycle was transiently empty
     // between Present-POST frames. Pre-0.4.1 these early-returns were
-    // silent and made the "F2 does nothing" complaint undiagnosable.
-    if (!PathIsOn()) { DDILog("[hunt] prev: hunt mode is off (Ctrl+F2 to enter)\n"); return; }
+    // silent and made the "Numpad 1 does nothing" complaint undiagnosable.
+    if (!PathIsOn()) { DDILog("[hunt] prev: hunt mode is off (Numpad 0 to enter)\n"); return; }
     std::lock_guard<std::mutex> g(s_lock);
     if (s_cycle.empty()) { DDILog("[hunt] prev: cycle empty (no draws observed this frame yet)\n"); return; }
     if (s_cycleIdx == 0) s_cycleIdx = s_cycle.size() - 1;
@@ -269,7 +275,7 @@ void ShaderHunter::OnCyclePrev()
 
 void ShaderHunter::OnCycleNext()
 {
-    if (!PathIsOn()) { DDILog("[hunt] next: hunt mode is off (Ctrl+F2 to enter)\n"); return; }
+    if (!PathIsOn()) { DDILog("[hunt] next: hunt mode is off (Numpad 0 to enter)\n"); return; }
     std::lock_guard<std::mutex> g(s_lock);
     if (s_cycle.empty()) { DDILog("[hunt] next: cycle empty (no draws observed this frame yet)\n"); return; }
     s_cycleIdx = (s_cycleIdx + 1) % s_cycle.size();
@@ -288,8 +294,8 @@ void ShaderHunter::OnCapture()
     uint32_t     drawsSeen;
     {
         std::lock_guard<std::mutex> g(s_lock);
-        // 0.4.1 ergonomics: if the user enters hunt mode and presses F3
-        // before cycling (F2 / Shift+F2) to pick a shader, auto-select the
+        // 0.4.1 ergonomics: if the user enters hunt mode and presses Numpad 3
+        // before cycling (Numpad 1 / Numpad 2) to pick a shader, auto-select the
         // first shader in the current cycle so the capture still fires.
         // Previously this was a silent no-op that left Shaders/Hunter/ empty
         // and gave the user no feedback — hard to tell from "nothing happened"
@@ -409,29 +415,40 @@ void ShaderHunter::OnCapture()
                     "needs to be inspected).\n");
     }
 
-    // ------------- Suggested ShaderPatch skeleton -------------
-    fprintf(fp, "\n---- Suggested ShaderPatch skeleton ----\n");
+    // ------------- Suggested authoring entries -------------
+    // Two paths available on DX11, both CRC-keyed in BaseProfile.xml:
+    //   1) <ShaderPatch> shorthand with <SkipStereo/>  — Akshay PR#31
+    //   2) iZ3D-native <Mono> / <Multiplier> / <Matrices> — pre-dates PR#31
+    // The DX11 <ShaderPatch> loader currently consumes <SkipStereo/> only;
+    // <PatchCB>/<ScaleCB>/<OverrideFeature> are 0.5.0-planned, so this
+    // skeleton deliberately doesn't emit them (would be a silent no-op).
+    fprintf(fp, "\n---- Authoring entry (A): declarative <ShaderPatch> ----\n");
     fprintf(fp, "<ShaderPatch CRC=\"0x%08X\" Stage=\"%s\" Note=\"...\">\n",
             crc, (stage == HuntStage::VS ? "VS" : "PS"));
+    fprintf(fp, "    <SkipStereo/>  <!-- force mono-both-eyes for this draw -->\n");
+    fprintf(fp, "</ShaderPatch>\n");
+
+    fprintf(fp, "\n---- Authoring entry (B): iZ3D-native (equivalent for mono) ----\n");
+    fprintf(fp, "<Mono><%sShader CRC=\"0x%08X\"/></Mono>\n",
+            (stage == HuntStage::VS ? "Vertex" : "Pixel"), crc);
     if (info.parsed && !info.projection.matrixData.cb.empty())
     {
+        fprintf(fp, "\n---- Authoring entry (C): projection matrix hints ----\n");
+        fprintf(fp, "<!-- Analyser flagged these matrix locations. If the\n"
+                    "     symptom is a mis-stereo projection (world geometry\n"
+                    "     doesn't converge), use <Matrices> to describe each\n"
+                    "     one; see docs/SHADER_FIXES.md for attribute reference. -->\n");
         for (const auto& cb : info.projection.matrixData.cb)
         {
             for (const auto& md : cb.second)
             {
                 fprintf(fp,
-                    "    <!-- %s matrix cb%u r%u — "
-                    "flatten/scale/skip as needed for the symptom -->\n"
-                    "    <PatchCB Buffer=\"cb%u\" Register=\"r%u\" Factor=\"0.0\"/>\n",
+                    "<!-- %s matrix in cb%u at r%u -->\n",
                     md.incorrectProjection ? "flagged" : "detected",
-                    (unsigned)cb.first, (unsigned)md.matrixRegister,
                     (unsigned)cb.first, (unsigned)md.matrixRegister);
             }
         }
     }
-    fprintf(fp, "    <!-- Or make this draw mono entirely: -->\n");
-    fprintf(fp, "    <!-- <SkipStereo/> -->\n");
-    fprintf(fp, "</ShaderPatch>\n");
 
     fclose(fp);
     DDILog("[hunt] captured CRC=0x%08X stage=%s to %ls\n",
@@ -465,7 +482,7 @@ ShaderHunter::State ShaderHunter::GetState()
     State out = {};
     // Lock up-front: the save-toast fields need to be readable even when
     // hunt mode is off, so the toast keeps rendering if the user exits
-    // hunt mode in the 2 s window after pressing F3.
+    // hunt mode in the 2 s window after pressing Numpad 3.
     std::lock_guard<std::mutex> g(s_lock);
     if (s_flashDeadline && (uint64_t)GetTickCount64() < s_flashDeadline)
     {

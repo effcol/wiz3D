@@ -551,9 +551,9 @@ In-game hotkeys for adjusting stereo on the fly. All bindings are remappable in 
 | `Shift+F1` | Toggle on-screen hotkey hints |
 | `Ctrl+F1` | Toggle status strip + FPS counter |
 | `Ctrl+Numpad /` | Toggle laser sight (crosshair anchored at screen depth) |
-| `Ctrl+F2` | **ShaderHunter**: enter / exit hunt mode (DX9 + DX11) — see [Profile Building & Shader Fixes](#profile-building--shader-fixes) |
-| `F2` / `Shift+F2` | Hunt-mode only: cycle to previous / next drawn shader |
-| `F3` | Hunt-mode only: capture the currently hidden shader to `wiz3D_Logs\<Game>\Shaders\Hunter\` |
+| `Numpad 0` | **ShaderHunter**: enter / exit hunt mode (DX9 + DX11) — see [Profile Building & Shader Fixes](#profile-building--shader-fixes) |
+| `Numpad 1` / `Numpad 2` | Hunt-mode only: cycle to previous / next drawn shader |
+| `Numpad 3` | Hunt-mode only: capture the currently hidden shader to `DX11ShaderDataCache\<Game>\Hunter\` (DX9: `DX9ShaderDataCache\<Game>\Hunter\`) |
 | `Ctrl+F5` | Reload `BaseProfile.xml` live (apply profile edits without restarting the game) |
 | `PrintScreen` | Save a stereo screenshot to `My Pictures\wiz3D Screenshots\<Game>\` (default format `.png`; pick PNG/PNS/JPEG/JPS/BMP/DDS via `<ScreenshotType>` in `wiz3D_Config.xml`) |
 | `Ctrl+PrintScreen` | Save a stereo screenshot without applying the display's gamma ramp |
@@ -569,10 +569,10 @@ The fix lives in your copy of `BaseProfile.xml` next to the game `.exe`, so it's
 ### Quick workflow — DX11
 
 1. **Launch the game.** Get to the scene with the broken effect.
-2. **Press `Ctrl+F2`** to enter ShaderHunter mode. A `HUNT` strip appears at the bottom of the screen.
-3. **Press `F2` / `Shift+F2`** to cycle through the shaders used this frame. Each shader is *hidden* (its draws are skipped) one at a time — when the broken effect disappears, you've found the shader responsible.
-4. **Press `F3`** to capture that shader. A `Shader saved` toast appears bottom-right with the filename. The report lands at `wiz3D_Logs\<Game>\Shaders\Hunter\0x<CRC>_<stage>_<timestamp>.txt` and contains the shader disassembly, matrix-CB hints, and a suggested `<ShaderPatch>` skeleton you can paste into `BaseProfile.xml`.
-5. **Press `Ctrl+F2`** again to leave hunt mode.
+2. **Press `Numpad 0`** to enter ShaderHunter mode. A `HUNT` strip appears at the bottom of the screen.
+3. **Press `Numpad 1` / `Numpad 2`** to cycle through the shaders used this frame. Each shader is *hidden* (its draws are skipped) one at a time — when the broken effect disappears, you've found the shader responsible.
+4. **Press `Numpad 3`** to capture that shader. A `Shader saved` toast appears bottom-right with the filename. The report lands at `DX11ShaderDataCache\<Game>\Hunter\0x<CRC>_<stage>_<timestamp>.txt` and contains the shader disassembly, matrix-CB hints, and a suggested `<ShaderPatch>` / `<Mono>` skeleton you can paste into `BaseProfile.xml`.
+5. **Press `Numpad 0`** again to leave hunt mode.
 6. **Edit `BaseProfile.xml`** next to the game `.exe`. Drop the suggested skeleton inside the game's `<Profile>` block. The simplest fix is `<SkipStereo/>` — mono-force that shader so the broken effect stops shifting between eyes.
 7. **Press `Ctrl+F5`** in-game to reload the profile. No restart needed.
 8. **Iterate.** When happy, open a GitHub issue or PR with your profile addition so other players benefit.
@@ -601,11 +601,13 @@ The fix lives in your copy of `BaseProfile.xml` next to the game `.exe`, so it's
 
 ### DX9
 
-The DX9 wrapper has the same ShaderHunter + reload workflow (same hotkeys) and ships a HelixMod-compatible override path: drop `.txt` ASM files into `<game>\ShaderOverride\{Vertex,Pixel}Shaders\0x<CRC>.txt`, or use `<ShaderPatch>` entries in `BaseProfile.xml`. See `docs/SHADER_FIXES.md` for the full technical breakdown.
+The DX9 wrapper has the same ShaderHunter + reload workflow (same hotkeys). Fix authoring uses the iZ3D-native declarative XML in `BaseProfile.xml`: `<Mono>` for shader-level stereo-off, `<Multiplier>` / `<ConvergenceShift>` for per-CRC stereo-param overrides, and `<Matrices>` for projection-matrix identification. See `docs/SHADER_FIXES.md` for the full technical breakdown.
 
 ### Mass-dump option
 
-If you want every shader the game creates (not just the ones you hunt), flip `<DumpVS Value="1"/>` and `<DumpPS Value="1"/>` in `wiz3D_Config.xml`. Dumps land in `wiz3D_Logs\<Game>\Shaders\Dump\`. Useful when you have a known-good HelixMod fix from another wrapper and want to CRC-match the shaders yourself.
+If you want every shader the game creates (not just the ones you hunt), flip `<DumpVS Value="1"/>` and `<DumpPS Value="1"/>` in `wiz3D_Config.xml`. Dumps land in `DX11ShaderDataCache\<Game>\Dump\` (DX9: `DX9ShaderDataCache\<Game>\Dump\`). Useful when you have a known-good HelixMod fix from another wrapper and want to CRC-match the shaders yourself.
+
+Developer shortcut: set the `WIZ3D_FORCE_DUMP=1` environment variable to auto-enable `DumpVS` + `DumpPS` across every game without having to flip the Config.xml knob per install — intended for local authoring workflows, never set in release/CI environments.
 
 ### Submitting fixes
 

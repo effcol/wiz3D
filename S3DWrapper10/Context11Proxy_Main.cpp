@@ -8,7 +8,6 @@
 
 #include "StdAfx.h"
 #include "Context11Proxy-inl.h"
-#include "StereoParams11.h"            // 0.4.1 inline ShaderOverride params
 
 namespace wiz3d
 {
@@ -610,26 +609,6 @@ void Context11Proxy::BindStageCBs(StageIdx stage, bool right)
 
 void Context11Proxy::BindEye(bool right)
 {
-    // 0.4.1 inline ShaderOverride: ensure the per-device stereo-params
-    // texture + SRV exist, update per-eye bytes, bind at t125 on every
-    // programmable stage. Split into two calls so the Map goes to the
-    // IMMEDIATE context (RightRecorder11::Map rejects textures with
-    // Unexpected("Map (not a buffer)"), which permanently stopped batching
-    // in 0.4.1 before this split — Akshay 2026-10-22 observation).
-    //
-    // The SRV binding still flows through m_real so right-eye recorded
-    // draws see t125 bound; the Map goes through m_immediate (set by
-    // BeginRightRecording) or m_real when we're not recording.
-    if (ID3D11Device* dev = m_parent ? m_parent->GetReal() : nullptr)
-    {
-        wiz3d::EnsureStereoParams(dev);
-        const float sep  = wiz3D_GetEffectiveEyeShift();
-        const float conv = stereo::Convergence();
-        ID3D11DeviceContext* imm = m_immediate ? m_immediate : m_real;
-        wiz3d::UpdateStereoParamsBytes(imm, dev, right, sep, conv);
-        wiz3d::BindStereoParamsSRV(m_real, dev);
-    }
-
     // The duplicated draw and this rebind both call m_real directly, so they
     // bypass the proxy methods that carry FrameTrace. Log them here instead.
     if (FrameTraceActive())

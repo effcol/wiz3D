@@ -16,7 +16,7 @@ wiz3D needs the same thing to make the planned ShaderPatch / inline ShaderOverri
 
 ### 1. No config knob — hotkey is the entry
 
-Earlier revisions of this doc proposed a `<EnableShaderHunter>` config field. Dropped in review: the Ctrl+F2 hotkey is itself the opt-in. Pressing it enters hunt mode, pressing again exits. All hunter machinery is always compiled in and wired up; `IsActive()` returns false until Ctrl+F2 is pressed, which short-circuits every hot-path call (`NoteDraw`, `ShouldSkipDraw`) at a relaxed atomic load. Zero overhead when not hunting; one less knob users have to find in XML.
+Earlier revisions of this doc proposed a `<EnableShaderHunter>` config field. Dropped in review: the Numpad 0 hotkey is itself the opt-in. Pressing it enters hunt mode, pressing again exits. All hunter machinery is always compiled in and wired up; `IsActive()` returns false until Numpad 0 is pressed, which short-circuits every hot-path call (`NoteDraw`, `ShouldSkipDraw`) at a relaxed atomic load. Zero overhead when not hunting; one less knob users have to find in XML.
 
 ### 2. Hotkey additions (`S3DAPI/GlobalData.h` + `KeyboardHook.cpp`)
 
@@ -24,10 +24,12 @@ Four new `EventId` entries, added before `MAX_EVENTS`:
 
 | EventId                 | Suggested binding | Behavior                           |
 |-------------------------|-------------------|------------------------------------|
-| `TOGGLE_SHADER_HUNT`    | Ctrl + F2 (625)   | Enter / exit hunt mode             |
-| `HUNT_PREV_SHADER`      | F2 (113)          | Hide the previous CRC in the frame |
-| `HUNT_NEXT_SHADER`      | Shift + F2 (369)  | Hide the next CRC in the frame     |
-| `HUNT_CAPTURE_SHADER`   | F3 (114)          | Dump the current hunted CRC        |
+| `TOGGLE_SHADER_HUNT`    | Numpad 0 (96)     | Enter / exit hunt mode             |
+| `HUNT_PREV_SHADER`      | Numpad 1 (97)     | Hide the previous CRC in the frame |
+| `HUNT_NEXT_SHADER`      | Numpad 2 (98)     | Hide the next CRC in the frame     |
+| `HUNT_CAPTURE_SHADER`   | Numpad 3 (99)     | Dump the current hunted CRC        |
+
+Numpad bindings follow 3Dmigoto / HelixMod convention. iZ3D's hotkey table uses Numpad 7/8/9 + `*`/`+`/`-`/`/` for stereo controls, so Numpad 0-6 slot in without collision. The shaderhacker standard also sidesteps the F-key problem — games routinely grab F1-F12 for their own UI.
 
 Added to the `hotKeyList` initialiser and the KeyboardHook event switch.
 
@@ -58,14 +60,14 @@ Add a fourth slot `Slot::Hunter` to `TexSlot m_slots[(int)Slot::_Count]`. Shown 
 
 ```
 HUNT  VS:0xABC12345  draws:847  cycle 23/142
-F2 prev  Shift+F2 next  F3 capture  Ctrl+F2 exit
+Num1 prev   Num2 next   Num3 capture   Num0 exit
 ```
 
 Reuses the existing `GDIFont m_fontStatus` and `DrawTextLine` plumbing. Position: bottom-centre of the backbuffer. Fade: none — stays visible while hunt mode is active.
 
-### 5. Capture report format (`wiz3D_Logs/<Game>/Shaders/Hunter/<CRC>_<ts>.txt`)
+### 5. Capture report format (`DX11ShaderDataCache/<Game>/Hunter/<CRC>_<ts>.txt`)
 
-Written by `ShaderHunter::DoCapture()` on F3. Includes everything the author needs to go straight to authoring a ShaderPatch or ShaderOverride entry:
+Written by `ShaderHunter::DoCapture()` on Numpad 3. Includes everything the author needs to go straight to authoring a `<ShaderPatch>` / `<Mono>` / `<Multiplier>` / `<Matrices>` entry:
 
 ```
 Shader CRC:    0xABC12345
@@ -143,7 +145,7 @@ Each chunk is one commit, independently reviewable, independently rollback-able.
    - **Proposal**: key by `(crc, stage)`. Minor cost, correct behavior under collisions.
 3. **Deferred contexts**: `DeferredContext11` records commands into a command list. ShaderHunter's `NoteDraw` on a deferred context would attribute the draw to the wrong frame. Should hunt mode skip deferred-context recording entirely (safe), or try to backfill when the command list is executed on the immediate context?
    - **Proposal**: skip deferred contexts for the hunt system. Draws through deferred contexts aren't huntable in 0.5.0; document as a known limitation.
-4. **Thread safety of `OnCapture`**: the F3 handler needs to synchronously read the current hunted CRC's analyser state, which lives on `m_known`. Protect with the same mutex; capture is a 1-shot slow operation (file I/O) so lock contention isn't a real concern.
+4. **Thread safety of `OnCapture`**: the Numpad 3 handler needs to synchronously read the current hunted CRC's analyser state, which lives on `m_known`. Protect with the same mutex; capture is a 1-shot slow operation (file I/O) so lock contention isn't a real concern.
 
 ## Testing plan
 
@@ -152,7 +154,7 @@ Each chunk is one commit, independently reviewable, independently rollback-able.
 3. Verify hiding a VS makes its draws disappear (visually)
 4. Verify hiding a PS makes its draws disappear (visually)
 5. Verify prev/next cycle through the full `m_cycle` and wrap
-6. Verify F3 produces a valid report
+6. Verify Numpad 3 produces a valid report
 7. Verify no replay desync on cycle while a game is active
 
 ## Out of scope for 0.5.0

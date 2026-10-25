@@ -67,11 +67,14 @@
 		     =================================================================
 		     Flip these to "1" when you're writing a per-game stereo profile
 		     or investigating a stereo bug. Output lands under:
-		       <game_folder>\wiz3D_Logs\<GameName>\Shaders\Dump\DX{9,10}\
-		       <game_folder>\wiz3D_Logs\<GameName>\Shaders\Hunter\
+		       <driver_folder>\DX11ShaderDataCache\<GameName>\{Dump,Hunter}\
+		       <driver_folder>\DX9ShaderDataCache\<GameName>\{Dump,Hunter}\
 		     Leave at "0" during normal play — the dump files grow quickly on
 		     complex games and the extra I/O is wasted when you're not reading
-		     the logs. See docs/SHADER_FIXES.md for the full authoring flow. -->
+		     the logs. See docs/SHADER_FIXES.md for the full authoring flow.
+		     Developer shortcut: set the WIZ3D_FORCE_DUMP=1 environment
+		     variable to force DumpVS + DumpPS on regardless of these knobs,
+		     for local authoring workflows without per-install Config edits. -->
 
 		<!-- Report what the DX10/11 feature engine detected in the game's
 		     shaders: CB names + byte offsets, matrix candidates, suggested
@@ -81,27 +84,30 @@
 		<CollectDebugInformation Value="0"/>
 
 		<!-- ShaderHunter is always available via hotkey — no config knob.
-		     To enter hunt mode in-game, press Ctrl+F2. The bottom-centre
-		     OSD strip appears and the cycle hotkeys are armed:
-		       Ctrl+F2       enter / exit hunt mode
-		       F2            hide previous CRC drawn this frame
-		       Shift+F2      hide next CRC drawn this frame
-		       F3            capture current CRC's bytecode + CB layout to
-		                     wiz3D_Logs\<Game>\Shaders\Hunter\<CRC>_<ts>.txt
-		     The report includes a suggested ShaderPatch skeleton you can
-		     drop into BaseProfile.xml. Zero cost when hunt mode is off.
-		     DX10/11 only in 0.4.1; DX9 to follow. See
-		     docs/SHADER_HUNTER_DESIGN.md and docs/SHADER_FIXES.md. -->
+		     Numpad bindings match 3Dmigoto / HelixMod convention so
+		     shaderhackers coming from those tools don't learn a new layout:
+		       Numpad 0      enter / exit hunt mode
+		       Numpad 1      hide previous CRC drawn this frame
+		       Numpad 2      hide next CRC drawn this frame
+		       Numpad 3      capture current CRC's bytecode + CB layout to
+		                     DX11ShaderDataCache\<Game>\Hunter\<CRC>_<ts>.txt
+		                     (DX9: DX9ShaderDataCache\<Game>\Hunter\)
+		     The capture report includes authoring entries for the two
+		     declarative paths (<ShaderPatch> with <SkipStereo/>, or
+		     iZ3D-native <Mono>/<Multiplier>/<Matrices>) that you drop into
+		     BaseProfile.xml. Zero cost when hunt mode is off. DX9 + DX11.
+		     See docs/SHADER_HUNTER_DESIGN.md and docs/SHADER_FIXES.md. -->
 
 		<!-- Dump every shader the game creates to a single concatenated file
 		     per stage, with D3DDisassemble output + iZ3D shader tree + CRC32.
 		     DumpVS covers VS/HS/DS/GS, DumpPS covers PS/CS. On DX10/11 the
-		     dumps land in Shaders\Dump\DX10\{VS,PS,GS,HS,DS,CS}.txt; on DX9
-		     they split into {vs,ps}.{client,converted,modified}.txt.
+		     dumps land in DX11ShaderDataCache\<Game>\Dump\{VS,PS,GS,HS,DS,CS}.txt;
+		     on DX9 they split into DX9ShaderDataCache\<Game>\Dump\{vs,ps}.{client,converted,modified}.txt.
 		     These dumps are HUGE on complex games — only enable them when you
-		     need to read specific shader bytecode (e.g. authoring a
-		     ShaderOverride entry for a hunted CRC). For profile authoring
-		     keyed by CB layout, CollectDebugInformation above is enough. -->
+		     need to read specific shader bytecode (e.g. inspecting a hunted
+		     CRC before writing a <Mono>/<Multiplier>/<ShaderPatch> entry).
+		     For profile authoring keyed by CB layout, CollectDebugInformation
+		     above is enough. -->
 		<DumpVS Value="0"/>
 		<DumpPS Value="0"/>
 

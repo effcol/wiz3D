@@ -103,20 +103,6 @@ int RdefView::SrvSlot(const std::string& name) const
     return -1;
 }
 
-bool RdefView::UsesSrvAtSlot(UINT slot) const
-{
-    const DWORD resCount = Rd32(8), resOff = Rd32(12);
-    if (!m_rd || resOff + resCount * 32u > m_size) return false;
-    for (DWORD i = 0; i < resCount; ++i)
-    {
-        const DWORD type = Rd32(resOff + i * 32u + 4);
-        if ((type == 2 || type == 5 || type == 7) &&
-            Rd32(resOff + i * 32u + 20) == slot)
-            return true;
-    }
-    return false;
-}
-
 std::vector<std::pair<int, UINT>> RdefView::Variables(const std::string& name, bool usedOnly) const
 {
     std::vector<std::pair<int, UINT>> out;

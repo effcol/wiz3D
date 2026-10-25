@@ -700,10 +700,8 @@ const BYTE* FindDxbcChunk(const void* blob, SIZE_T blobLen, DWORD tag, DWORD& ou
     return FindChunk(static_cast<const BYTE*>(blob), blobLen, tag, outSize);
 }
 
-// 0.4.1 ShaderOverride: expose the CRC32 the analyser uses so Device11Proxy
-// can look up a profile entry by CRC before CreateShader runs — a shader
-// with an inline <ShaderOverride> replaces its bytecode in-place and the
-// rest of the pipeline analyses the replacement, not the game's original.
+// Public exposure of the analyser's bytecode CRC32 so ShaderHunter can key
+// capture metadata by the same CRC the analyser puts on ShaderAnalysis11Result.
 DWORD ShaderBytecodeCRC32(const void* pBytecode, SIZE_T byteLength)
 {
     if (!pBytecode || byteLength == 0) return 0;

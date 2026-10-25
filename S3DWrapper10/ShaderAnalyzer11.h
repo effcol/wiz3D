@@ -93,12 +93,6 @@ struct ShaderAnalysis11Result
     std::shared_ptr<const std::vector<BYTE>> bytecode;
     // A feature's right eye draws a twin of this shader: its code is kept past the budget.
     bool keepCode = false;
-    // 0.4.1 inline ShaderOverride: true if this shader binds an SRV at the
-    // reserved stereo-params slot (t125 by convention — see StereoParams11.h).
-    // Context11Proxy::EditRightCBs sees this and skips the CB-feature edit
-    // pass for the stage; the shader is doing its own per-eye offset via the
-    // stereo-params texture, so applying our offset too would double-shift.
-    bool usesStereoParams = false;
 };
 
 // Analyze a DXBC bytecode blob. Returns true if a SHDR/SHEX + OSGN pair was
@@ -109,9 +103,7 @@ bool AnalyzeShader11(const void* pBytecode, SIZE_T byteLength,
                      ShaderAnalysis11Result& outResult);
 
 // CRC32 over the raw bytecode. Matches ShaderAnalysis11Result::crc32
-// (same algorithm). Used by 0.4.1 ShaderOverride to look up a profile
-// entry by CRC before creating the game-side shader, so an overridden
-// shader can substitute its bytecode before the real D3D11 create call.
+// (same algorithm). ShaderHunter uses it to key capture metadata.
 DWORD ShaderBytecodeCRC32(const void* pBytecode, SIZE_T byteLength);
 
 // A DXBC chunk's data (after its tag and size) and size, by four-character tag; null when the blob has none.

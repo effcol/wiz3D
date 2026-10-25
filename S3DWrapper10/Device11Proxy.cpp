@@ -13,7 +13,6 @@
 #include "Texture3D11Proxy.h"
 #include "StereoHeuristic.h"
 #include "ShaderHunter.h"                   // 0.4.1 hunt-mode plumbing
-#include "StereoParams11.h"                 // 0.4.1 inline ShaderOverride params
 #include "..\S3DAPI\ReadData.h"            // ReadCurrentProfile
 #include "..\S3DAPI\ShaderProfileData.h"   // g_ProfileData
 #include "proxy_factory.h"     // for IID_wiz3D_Device11Proxy
@@ -23,10 +22,8 @@
 #include <dxgi1_2.h>
 #include <dxgi1_3.h>
 #include <madCHook.h>
-#include <d3dcompiler.h>       // D3DCompile for inline ShaderOverride HLSL
 #include <intrin.h>            // _ReturnAddress
 #include <mutex>
-#pragma comment(lib, "d3dcompiler.lib")
 #include <unordered_map>
 #include <atomic>
 
@@ -251,10 +248,6 @@ Device11Proxy::Device11Proxy(ID3D11Device* real)
 Device11Proxy::~Device11Proxy()
 {
     Wiz3D_UnregisterActiveRenderer(this);
-    // 0.4.1 inline ShaderOverride: free the per-device stereo-params
-    // texture + SRV if one was allocated. No-op when no override ever
-    // caused Ensure() to run on this device.
-    if (m_real) wiz3d::ReleaseStereoParams(m_real);
     {
         // Release() has already dropped m_real, so the entry is found by its proxy; a stale one sends a new device at the same
         // address into this freed object.
@@ -444,81 +437,13 @@ const wiz3d::ModifiedVS11* Device11Proxy::LookupModifiedVS(ID3D11VertexShader* o
 
 namespace {
 
-// 0.4.1 inline ShaderOverride: lazily compile the HLSL text held on a
-// matched ShaderProfileData entry. On success the compiled bytecode is
-// cached in the profile so subsequent CreateVertexShader / PS hits for
-// the same CRC skip the compile. On failure, logs to wiz3D_proxy.log
-// and returns false; the caller then falls back to the game's own
-// bytecode (so a broken fix doesn't brick the game).
-bool TryCompileOverrideHLSL(ShaderProfileData& profile, const char* tag, DWORD crc)
-{
-    if (!profile.m_overrideBytecode.empty()) return true;   // cached
-    if (profile.m_overrideHLSL.empty())      return false;
-
-    const char* target = nullptr;
-    if      (!strcmp(tag, "Vertex")) target = "vs_5_0";
-    else if (!strcmp(tag, "Pixel"))  target = "ps_5_0";
-    else                              return false;        // GS / CS: deferred
-
-    CComPtr<ID3DBlob> pCode, pErr;
-    HRESULT hr = D3DCompile(
-        profile.m_overrideHLSL.c_str(), profile.m_overrideHLSL.size(),
-        "wiz3D_override", /*defines*/ nullptr, /*include*/ nullptr,
-        "main", target, /*flags1*/ 0, /*flags2*/ 0,
-        &pCode, &pErr);
-    if (FAILED(hr))
-    {
-        const char* errText = pErr ? (const char*)pErr->GetBufferPointer() : "(no error blob)";
-        DDILog("[override] HLSL compile FAILED for %s CRC=0x%08X target=%s hr=0x%08X\n"
-               "%s\n", tag, (unsigned)crc, target, (unsigned)hr, errText);
-        return false;
-    }
-    profile.m_overrideBytecode.assign(
-        (const BYTE*)pCode->GetBufferPointer(),
-        (const BYTE*)pCode->GetBufferPointer() + pCode->GetBufferSize());
-    DDILog("[override] HLSL compiled OK for %s CRC=0x%08X target=%s (%u bytes)\n",
-           tag, (unsigned)crc, target, (unsigned)profile.m_overrideBytecode.size());
-    return true;
-}
-
 template<typename TShader, typename CreateFn>
 HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createReal,
                          const void* pBytecode, SIZE_T byteLength,
                          ID3D11ClassLinkage* pClassLinkage, TShader** ppShader)
 {
-    // 0.4.1 inline ShaderOverride: compute the game bytecode's CRC first,
-    // check for an inline <ShaderOverride> profile entry, and substitute
-    // its compiled bytecode before the real CreateVertexShader / PS call.
-    // The rest of the pipeline (analysis, feature OnShaderCreated, modified-
-    // VS build) then runs against the override, which is what we want: a
-    // replacement shader participates in the feature engine the same way a
-    // game's own shader would.
-    const DWORD gameCrc = ShaderBytecodeCRC32(pBytecode, byteLength);
-    const void* finalBytecode = pBytecode;
-    SIZE_T      finalLength   = byteLength;
-    if (gameCrc)
-    {
-        auto& profileMap = (!strcmp(tag, "Vertex")) ? g_ProfileData.VSCRCData
-                        : (!strcmp(tag, "Pixel"))   ? g_ProfileData.PSCRCData
-                        :                              g_ProfileData.GSCRCData;
-        auto pit = profileMap.find(gameCrc);
-        if (pit != profileMap.end() && !pit->second.m_overrideHLSL.empty())
-        {
-            if (TryCompileOverrideHLSL(pit->second, tag, gameCrc))
-            {
-                finalBytecode = pit->second.m_overrideBytecode.data();
-                finalLength   = pit->second.m_overrideBytecode.size();
-            }
-        }
-    }
-
-    HRESULT hr = createReal(finalBytecode, finalLength, pClassLinkage, ppShader);
+    HRESULT hr = createReal(pBytecode, byteLength, pClassLinkage, ppShader);
     if (FAILED(hr) || !ppShader || !*ppShader) return hr;
-    // The analyser and feature pipeline below reference the final bytecode,
-    // whether it's the game's own or the override. Rebind pBytecode / byteLength
-    // locally to the substituted blob so the existing code below "just works".
-    pBytecode  = finalBytecode;
-    byteLength = finalLength;
 
     ShaderAnalysis11Result info;
     const bool analyzed = AnalyzeShader11(pBytecode, byteLength, info);
@@ -530,17 +455,6 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
     static const ProfileFeatures s_shaderFeatures = CreateProfileFeatures();
     const RdefView rdef(pBytecode, byteLength);
     for (const auto& f : s_shaderFeatures) f->OnShaderCreated(rdef, info);
-    // 0.4.1 inline ShaderOverride: flag replacement shaders that read the
-    // stereo-params SRV at t125 so EditRightCBs skips the CB-feature pass
-    // for them. Avoids double-shift when the override is applying its own
-    // eye offset via the stereo-params texture (HelixMod / 3DMigoto model).
-    if (rdef.Present() && rdef.UsesSrvAtSlot(wiz3d::kStereoParamsSlot))
-    {
-        info.usesStereoParams = true;
-        DDILog("  Device11Proxy::Create%sShader: CRC=0x%08X reads stereo-params at t%u "
-               "— CB feature edits will be skipped for this shader\n",
-               tag, info.crc32, (unsigned)wiz3d::kStereoParamsSlot);
-    }
     // Vertex stage too: a second camera matrix outside the position chain (last frame's, for per-object velocity).
     if (!strcmp(tag, "Pixel") || !strcmp(tag, "Compute") || !strcmp(tag, "Vertex")) info.readMatrices = rdef.UsedMatrices();
     // CodeMatrices, reflection stripped: a vertex shader's matrices from the code that builds its outputs, a pixel or

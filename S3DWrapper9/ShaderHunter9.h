@@ -2,16 +2,13 @@
 // wiz3D ShaderHunter — DX9
 //
 // Mirror of S3DWrapper10/ShaderHunter.{h,cpp} with DX9-specific capture.
-// Same hotkey model (Ctrl+F2 enter, F2 / Shift+F2 cycle, F3 capture) and
+// Same hotkey model (Numpad 0 enter, Numpad 1 / Numpad 2 cycle, Numpad 3 capture) and
 // identical fast-path semantics (atomic active flag + hashmap lookups).
 //
-// Capture format for DX9 is HelixMod-compatible: dumps the shader's SM3
-// asm via D3DXDisassembleShader into
-//     wiz3D_Logs/<Game>/Shaders/Hunter/<CRC>_<stage>_<ts>.txt
-// A suggested skeleton points at either (a) the DX9 <Mono> block for
-// shader-level stereo-off, (b) a HelixMod ShaderOverride .txt the author
-// can drop into <game>/ShaderOverride/{VertexShaders,PixelShaders}/
-// <CRC>.txt and tune. Both authoring paths already shipped in 0.3.0;
+// Dumps the shader's SM3 asm via D3DXDisassembleShader into
+//     DX9ShaderDataCache/<Game>/Hunter/<CRC>_<stage>_<ts>.txt
+// The capture report points authors at the DX9 <Mono> block for
+// shader-level stereo-off (iZ3D-native format, shipped in 0.3.0);
 // Hunter is the ergonomic layer on top that identifies the right CRC.
 //
 // See docs/SHADER_HUNTER_DESIGN.md and docs/SHADER_FIXES.md.
@@ -32,15 +29,19 @@ enum class HuntStage : uint8_t
     _Count
 };
 
-// Fast-path gate used by hot callers. Returns false until Ctrl+F2 enters
+// Fast-path gate used by hot callers. Returns false until Numpad 0 enters
 // hunt mode. One relaxed atomic load — no lock.
 bool HunterIsActive();
 
-// Record a newly created shader. Called from CBaseStereoRenderer::Create*
-// after the ShaderOverride substitution. `bytecode` is retained by shared_ptr
-// so the capture-report path can disassemble it later without the game
-// re-sending the blob.
+// Record a newly created shader. Called from CBaseStereoRenderer::Create*.
+// `bytecode` is retained by shared_ptr so the capture-report path can
+// disassemble it later without the game re-sending the blob.
 void HunterNoteCreated(uint32_t crc, HuntStage stage, const void* bytecode, uint32_t sizeBytes);
+
+// CRC32 over the raw shader bytecode. Exposed so CBaseStereoRenderer::Create*
+// can key HunterNoteCreated/HunterNoteDraw without relink churn against the
+// generic CRC32 helpers.
+uint32_t HunterComputeCRC32(const void* bytecode, uint32_t sizeBytes);
 
 // Record that a draw used these two bound shaders. 0 == stage unbound.
 void HunterNoteDraw(uint32_t vsCrc, uint32_t psCrc);

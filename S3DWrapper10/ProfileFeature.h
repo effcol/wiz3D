@@ -35,11 +35,6 @@ public:
     int TextureSlot(const std::string& name) const;
     // The t-slot of any shader resource (texture, structured or byte-address buffer), -1 = none.
     int SrvSlot(const std::string& name) const;
-    // 0.4.1 inline ShaderOverride: true if the shader binds any SRV at the
-    // given slot (texture or buffer, any type). Used to detect replacement
-    // shaders that read wiz3D's stereo-params SRV at t125 so EditRightCBs
-    // can skip the CB-feature pass for them (double-shift avoidance).
-    bool UsesSrvAtSlot(UINT slot) const;
     // Every cbuffer variable of that name: (cb slot, byte offset). usedOnly = only where the shader reads it.
     std::vector<std::pair<int, UINT>> Variables(const std::string& name, bool usedOnly) const;
     // The last of them; false when there is none.

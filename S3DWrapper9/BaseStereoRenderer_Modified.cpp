@@ -18,31 +18,17 @@
 #include "..\S3DAPI\EnumToString.h"
 #include "ProxyQuery.h"
 #include "CommandDumper.h"
-#include "ShaderOverrideLoader.h"
 #include "ShaderHunter9.h"
 
 STDMETHODIMP CBaseStereoRenderer::CreateVertexShader(CONST DWORD * pFunction, IDirect3DVertexShader9** ppShader)
 {
 	HRESULT hResult;
 
-	// HelixMod-compatible override: if <game>\ShaderOverride\VertexShaders\<CRC>.txt
-	// exists, assemble it and substitute its bytecode in place of the game's
-	// original. The substituted shader flows through Convert() the same way,
-	// and Phase 1b's bytecode scan picks up the texldl pattern so wiz3D won't
-	// also apply matrix offset on top.
+	// 0.4.1 ShaderHunter DX9: record the created shader so the author's
+	// capture reports match what SetVertexShader will set on
+	// m_CurrentShaderData.CRC32 at draw time.
 	UINT  origSize = D3DXGetShaderSize(pFunction);
-	DWORD origCRC  = wiz3d::shader_override::ComputeShaderCRC32(pFunction, origSize);
-	CComPtr<ID3DXBuffer> pOverrideAsm;
-	{
-		if (wiz3d::shader_override::TryLoadOverride(origCRC,
-		        wiz3d::shader_override::ShaderType::Vertex, pOverrideAsm))
-		{
-			pFunction = (CONST DWORD*)pOverrideAsm->GetBufferPointer();
-		}
-	}
-	// 0.4.1 ShaderHunter DX9: record the created shader (pre-conversion CRC
-	// so the author's capture reports match what SetVertexShader will set on
-	// m_CurrentShaderData.CRC32 at draw time).
+	DWORD origCRC  = wiz3d::dx9::HunterComputeCRC32(pFunction, origSize);
 	wiz3d::dx9::HunterNoteCreated(origCRC, wiz3d::dx9::HuntStage::VS,
 	                              pFunction, origSize);
 
@@ -81,18 +67,9 @@ STDMETHODIMP CBaseStereoRenderer::CreatePixelShader(CONST DWORD* pFunction, IDir
 {
 	HRESULT hResult;
 
-	// HelixMod-compatible override (PS): see CreateVertexShader for details.
+	// 0.4.1 ShaderHunter DX9: record the created shader by CRC.
 	UINT  origSize = D3DXGetShaderSize(pFunction);
-	DWORD origCRC  = wiz3d::shader_override::ComputeShaderCRC32(pFunction, origSize);
-	CComPtr<ID3DXBuffer> pOverrideAsm;
-	{
-		if (wiz3d::shader_override::TryLoadOverride(origCRC,
-		        wiz3d::shader_override::ShaderType::Pixel, pOverrideAsm))
-		{
-			pFunction = (CONST DWORD*)pOverrideAsm->GetBufferPointer();
-		}
-	}
-	// 0.4.1 ShaderHunter DX9: record the created shader by pre-conversion CRC.
+	DWORD origCRC  = wiz3d::dx9::HunterComputeCRC32(pFunction, origSize);
 	wiz3d::dx9::HunterNoteCreated(origCRC, wiz3d::dx9::HuntStage::PS,
 	                              pFunction, origSize);
 

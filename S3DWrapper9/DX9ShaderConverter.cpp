@@ -323,82 +323,6 @@ void DX9ShaderConverter<T, Q>::SearchMatrixAndAdd( char* commentText, const char
 	}
 }
 
-#include "ShaderOverrideLoader.h"
-
-// Walks DX9 shader bytecode looking for the canonical HelixMod stereo
-// instruction `texldl <reg>, <const>, sN` reading from sampler register
-// targetSamplerNum. Returns true if found.
-//
-// Why scan bytecode rather than disassembled text: this runs once per shader
-// at creation time. Bytecode walking is cheap and avoids a D3DXDisassemble
-// allocation per shader. Token bit layout follows d3d9types.h.
-//
-// sizeBytes is mandatory: bytecode coming from the DX8->DX9 wrapper
-// (S3DWrapperD3D8 assembling shaders into D3D9 bytecode) is not always
-// terminated by a clean D3DSIO_END token, and walking past the end has
-// crashed AquaNox in testing. Bound the walk to the buffer.
-static bool ScanForStereoTexldl(CONST DWORD * pFunction, UINT sizeBytes, DWORD targetSamplerNum)
-{
-	// Only run the scan if the user has installed shader fixes. Otherwise
-	// any false positive would cause wiz3D to bind the stereo-params texture
-	// to the game's texture stages and clobber legitimate game textures
-	// (Valkyria Chronicles videos and some UI rendered black until this gate
-	// was added). When the gate is closed we behave exactly like v0.1.5.
-	if (!wiz3d::shader_override::IsShaderFixActive())
-		return false;
-	if (!pFunction || sizeBytes < sizeof(DWORD) * 2)
-		return false;
-
-	CONST DWORD * command = pFunction;
-	CONST DWORD * end = pFunction + (sizeBytes / sizeof(DWORD));
-	command++; // skip version token
-
-	// Walk header (D3DSIO_COMMENT) blocks. Then iterate instruction tokens.
-	while (command < end)
-	{
-		DWORD token = *command;
-		DWORD opcode = token & D3DSI_OPCODE_MASK;
-
-		if (opcode == D3DSIO_END)
-			break;
-
-		DWORD length;
-		if (opcode == D3DSIO_COMMENT)
-		{
-			length = (token & D3DSI_COMMENTSIZE_MASK) >> D3DSI_COMMENTSIZE_SHIFT;
-		}
-		else
-		{
-			length = (token & D3DSI_INSTLENGTH_MASK) >> D3DSI_INSTLENGTH_SHIFT;
-
-			if (opcode == D3DSIO_TEXLDL)
-			{
-				// texldl encoding: dest_token, src0_token (coord), src1_token (sampler)
-				// length encodes operand-token count, so we need at least 3 and
-				// the buffer must hold them.
-				if (length >= 3 && (command + 3) < end)
-				{
-					DWORD samplerToken = command[3];
-					DWORD regType = ((samplerToken & D3DSP_REGTYPE_MASK) >> D3DSP_REGTYPE_SHIFT)
-					              | ((samplerToken & D3DSP_REGTYPE_MASK2) >> D3DSP_REGTYPE_SHIFT2);
-					DWORD regNum  = samplerToken & D3DSP_REGNUM_MASK;
-					if (regType == D3DSPR_SAMPLER && regNum == targetSamplerNum)
-						return true;
-				}
-			}
-		}
-
-		// Sanity: a length+1 step must move us strictly forward and stay in bounds.
-		// Some DX8-translated shaders have produced length values that overflow
-		// when added to the pointer; bail out cleanly rather than walk off the end.
-		DWORD step = length + 1;
-		if (step == 0 || command + step > end)
-			break;
-		command += step;
-	}
-
-	return false;
-}
 
 template <typename T, typename Q >
 void DX9ShaderConverter<T, Q>::CalculateCRCEx( CONST DWORD * pFunction, UINT Size )
@@ -734,10 +658,6 @@ HRESULT DX9VertexShaderConverter::Convert(CONST DWORD *pFunction, IDirect3DVerte
 	m_CurrentShaderData.Clear();
 	m_CurrentShaderData.shaderGlobalIndex = m_GlobalCounter;
 	CalculateCRCEx(pFunction, Size);
-	// HelixMod-compatible fixes do their own per-eye offset via `texldl r, c, s0`.
-	// If we detect that pattern here, ProcessStereoShader skips wiz3D's matrix
-	// adjustment for this shader (would otherwise double-shift).
-	m_CurrentShaderData.hasStereoTexldl = ScanForStereoTexldl(pFunction, Size, 0);
 
 	if(ProcessShader(pFunction, Size, pModifiedShader))
 	{
@@ -1051,8 +971,6 @@ HRESULT DX9PixelShaderConverter::Convert(CONST DWORD *pFunction, IDirect3DPixelS
 	m_CurrentShaderData.Clear();
 	m_CurrentShaderData.shaderGlobalIndex = m_GlobalCounter;
 	CalculateCRCEx(pFunction, Size);
-	// HelixMod PS fixes read stereo params from sampler 13.
-	m_CurrentShaderData.hasStereoTexldl = ScanForStereoTexldl(pFunction, Size, 13);
 
 	if(ProcessShader(pFunction, Size, pModifiedShader))
 	{
