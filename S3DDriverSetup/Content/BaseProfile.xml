@@ -941,6 +941,7 @@
 		<File Name="GTAIV.exe" />
 		<Mono>
 			<PixelShader CRC="0x17513EFF"/>
+			<PixelShader CRC="0x45F1BDA0"/>
 		</Mono>
 		<Presets>
 			<Preset Index="0">
