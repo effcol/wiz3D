@@ -569,7 +569,15 @@ public:
 			{ "ZPSDecrease", DECREASE_ZPS,                                  365 },  //--- Shift + Num -			---
 			{ "StereoBaseIncrease", INCREASE_STEREOBASE,                    107 }, 	//--- Num +					---
 			{ "StereoBaseDecrease", DECREASE_STEREOBASE,                    109 }, 	//--- Num -					---
-			{ "SwapEyes", SWAP_EYES,                                        631 },  //--- Ctrl + F8				---
+			// 0.4.3: SwapEyes hotkey binding removed from the shipped table.
+			// The Config.xml <SwapEyes Value="0|1"/> still controls the
+			// per-install default -- that's the right place to set it once
+			// for a given panel. The hotkey was an iZ3D-era quick-fix for
+			// shutter-glass orientation; modern panels (SR, SBS, HD3D)
+			// have a fixed per-output eye convention, so a runtime toggle
+			// isn't needed. Keeping 0 here reserves the slot without a
+			// keybinding.
+			{ "SwapEyes", SWAP_EYES,                                          0 },
 			{ "SetPreset1", SET_PRESET_1,                                   103 },	//--- Num 7					---
 			{ "SetPreset2", SET_PRESET_2,                                   104 },	//--- Num 8					---
 			{ "SetPreset3", SET_PRESET_3,                                   105 },	//--- Num 9					---
