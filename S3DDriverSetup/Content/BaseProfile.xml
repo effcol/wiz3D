@@ -1510,13 +1510,6 @@
 			</Preset>
 		</Presets>
 	</Profile>
-	<Profile Name="Batman Arkham Origins Blackgate HD">
-		<File Name="Game.exe" />
-		<CreateSquareRTInMono Value="1" />
-		<CreateRTThatLessThanBBInMono Value="1" />
-		<CreateSquareDSInMono Value="1" />
-		<CreateDSThatLessThanBBInMono Value="1" />
-	</Profile>
 	<Profile Name="Settlers II">
 		<File Name="S2DNG.exe" />
 		<CreateSquareRTInMono Value="1" />
