@@ -193,6 +193,33 @@ void KeyboardHook::KeyboardProcedure()
 					break;
 
 				case SWAP_EYES:
+					{
+						// 0.4.2 DIAG: user reports Ctrl inverts eyes even after
+						// the hotkey was de-bound (code=0) + the dispatch loop
+						// guard. If this fires in the next test, something else
+						// (shared state, DLL load order, external injection) is
+						// routing to SWAP_EYES. Log the match once so we know.
+						static int s_swapHits = 0;
+						if (s_swapHits < 5) {
+							wchar_t p[MAX_PATH] = {};
+							if (GetModuleFileNameW(nullptr, p, MAX_PATH)) {
+								if (wchar_t* bs = wcsrchr(p, L'\\')) {
+									*(bs + 1) = L'\0';
+									lstrcatW(p, L"wiz3D_Logs");
+									CreateDirectoryW(p, nullptr);
+									lstrcatW(p, L"\\wiz3D_proxy.log");
+									FILE* fp = nullptr;
+									_wfopen_s(&fp, p, L"a");
+									if (fp) {
+										fprintf(fp, "[SWAP_EYES_DIAG] hit #%d  code=0x%X  (hotkey table code should be 0; if non-zero, build is stale)\n",
+										        s_swapHits, HotKeyList[i].code);
+										fclose(fp);
+									}
+								}
+							}
+							s_swapHits++;
+						}
+					}
 					gInfo.Input.SwapEyes = !gInfo.Input.SwapEyes;
 					break;
 

@@ -939,21 +939,9 @@
 	</Profile>
 	<Profile Name="GTA IV">
 		<File Name="GTAIV.exe" />
-		<CreateSquareRTInMono Value="1"/>
-		<CreateSquareDSInMono Value="1"/>
 		<Mono>
-			<!-- Shadow-map depth-write PS (ps_3_0, writes v0.x to red). -->
 			<PixelShader CRC="0x17513EFF"/>
 		</Mono>
-		<!-- 0.4.2 known issue: the deferred lighting + sun-shadow apply
-		     pass (ps_3_0 CRC 0x4AEFF38C, 167 instructions, 12-tap PCF)
-		     reads a per-eye reconstruction from G-buffer at screen UV and
-		     reconstructs world position via c15 (eye position from
-		     gViewInverse). The game appears to set c15 once per frame
-		     rather than per-eye, so shadows sit at the screen plane. A
-		     speculative <Multiplier Value="1.0"> tag on the PS was tested
-		     and had no effect (confirmed 2026-10-25). Full fix needs a
-		     CRC-keyed per-eye PS-constant-edit primitive in 0.5.0. -->
 		<Presets>
 			<Preset Index="0">
 				<One_div_ZPS Value="0.007839" />
@@ -1076,13 +1064,9 @@
 			<VertexShader CRC="0x68A6499"/>
 		</Multiplier>
 		<Mono>
-			<!-- Shadow casters: Hunter captures from the character-shadow-
-			     doubled / world-misaligned scene. Simple position-transform
-			     VSes with only o0 (position) + o1.xy (texcoord) outputs. -->
-			<VertexShader CRC="0x194F59B7"/>   <!-- static-geometry shadow caster (176 draws, no skinning) -->
-			<VertexShader CRC="0xAFE233AD"/>   <!-- character shadow caster (14 draws, 1-bone skin) -->
-			<VertexShader CRC="0xDCAC1E7D"/>   <!-- character shadow caster (15 draws, 4-blend-weight skin) -->
-			<!-- Underwater (pre-0.4.2 entries) -->
+			<VertexShader CRC="0x194F59B7"/>
+			<VertexShader CRC="0xAFE233AD"/>
+			<VertexShader CRC="0xDCAC1E7D"/>
 			<VertexShader CRC="0xCEF9837E"/>
 			<PixelShader CRC="0x733F522D"/>
 		</Mono>
