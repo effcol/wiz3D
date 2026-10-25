@@ -38,18 +38,17 @@ struct ShaderStaticData
 	ShaderProfileDataMap* pDataMap;
 };
 
-#ifndef FINAL_RELEASE
-#define GET_DUMP_FLAG(x)	&x
-#else
-#define GET_DUMP_FLAG(x)	NULL
-#endif
-
-static ShaderStaticData g_VS(L"VS", GET_DUMP_FLAG(gInfo.DumpVS), &g_ProfileData.VSCRCData);
-static ShaderStaticData g_HS(L"HS", GET_DUMP_FLAG(gInfo.DumpVS), NULL);
-static ShaderStaticData g_DS(L"DS", GET_DUMP_FLAG(gInfo.DumpVS), NULL);
-static ShaderStaticData g_GS(L"GS", GET_DUMP_FLAG(gInfo.DumpVS), &g_ProfileData.GSCRCData);
-static ShaderStaticData g_PS(L"PS", GET_DUMP_FLAG(gInfo.DumpPS), &g_ProfileData.PSCRCData);
-static ShaderStaticData g_CS(L"CS", GET_DUMP_FLAG(gInfo.DumpPS), NULL);
+// 0.4.2: ungated. Was #ifndef FINAL_RELEASE → NULL under the shipping
+// config, so DumpVS=1 in Config / WIZ3D_FORCE_DUMP=1 silently did nothing
+// on DX10/11 release builds. Dump path is driven by gData.DumpDirectory
+// (<DriverDir>\wiz3D_Shaders\<Game>\Dump\) which is set up unconditionally
+// in S3DWrapperD3D10.cpp::InitDirectories.
+static ShaderStaticData g_VS(L"VS", &gInfo.DumpVS, &g_ProfileData.VSCRCData);
+static ShaderStaticData g_HS(L"HS", &gInfo.DumpVS, NULL);
+static ShaderStaticData g_DS(L"DS", &gInfo.DumpVS, NULL);
+static ShaderStaticData g_GS(L"GS", &gInfo.DumpVS, &g_ProfileData.GSCRCData);
+static ShaderStaticData g_PS(L"PS", &gInfo.DumpPS, &g_ProfileData.PSCRCData);
+static ShaderStaticData g_CS(L"CS", &gInfo.DumpPS, NULL);
 
 ShaderWrapper::ShaderWrapper() 
 { 

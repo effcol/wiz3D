@@ -901,27 +901,26 @@ bool DX9VertexShaderConverter::ProcessShader( CONST DWORD * pFunction, UINT Size
 	analyzingTime.QuadPart = stop.QuadPart - currentTime.QuadPart;
 #endif
 
-#ifdef ZLOG_ALLOW_TRACING
-	if(GINFO_DEBUG && gInfo.DumpVS) 
+	// 0.4.2: ungated. Was wrapped in #ifdef ZLOG_ALLOW_TRACING + GINFO_DEBUG,
+	// which both compile to FALSE under FINAL_RELEASE (the shipping config)
+	// -- so DumpVS=1 in Config / WIZ3D_FORCE_DUMP=1 silently did nothing.
+	// Dump path is driven by gData.DumpDirectory (<DriverDir>\wiz3D_Shaders
+	// \<Game>\Dump\) which is set up unconditionally in Globals.cpp.
+	if (gInfo.DumpVS)
 	{
 		TCHAR shader_file[ MAX_PATH ];
 		_tcscpy(shader_file, gData.DumpDirectory);
 		PathAppend(shader_file, _T("vs.client.txt"));
 		WriteShaderTextToFile(shader_file, inputShaderText, Size);
 
-		//_tcscpy( shader_file, gData.LogFileName );
-		//_tcscpy( &shader_file[ _tcslen( shader_file ) - 4 ], _T("_vs.no.comments.txt") );
-		//WriteVSTextToFile(shader_file, pureShaderText, &m_CurrentVSData, Size);
-
 		_tcscpy(shader_file, gData.DumpDirectory);
 		PathAppend(shader_file, _T("vs.converted.txt"));
 		WriteShaderTextToFile(shader_file, convertedShaderText, Size, true);
-		
+
 		_tcscpy(shader_file, gData.DumpDirectory);
 		PathAppend(shader_file, _T("vs.modified.txt"));
 		WriteShaderTextToFile(shader_file, modifiedShaderText, Size, true);
 	}
-#endif
 
 	return m_CurrentShaderData.shaderIsMono || m_CurrentShaderData.matricesData.matrixSize != 0 || modifiedShaderText;
 }
@@ -1092,23 +1091,18 @@ bool DX9PixelShaderConverter::ProcessShader( CONST DWORD * pFunction, UINT Size,
 	analyzingTime.QuadPart= stop.QuadPart - currentTime.QuadPart;
 #endif	
 
-#ifdef ZLOG_ALLOW_TRACING
-	if(GINFO_DEBUG && gInfo.DumpPS) 
+	// 0.4.2: ungated. See the matching VS dump block above for the full note.
+	if (gInfo.DumpPS)
 	{
 		TCHAR shader_file[ MAX_PATH ];
 		_tcscpy(shader_file, gData.DumpDirectory);
 		PathAppend(shader_file, _T("ps.client.txt"));
 		WriteShaderTextToFile(shader_file, inputShaderText, Size);
 
-		//_tcscpy( shader_file, gData.LogFileName );
-		//_tcscpy( &shader_file[ _tcslen( shader_file ) - 4 ], _T("_ps.no.comments.txt") );
-		//WriteShaderTextToFile(shader_file, pureShaderText, Size);
-		
 		_tcscpy(shader_file, gData.DumpDirectory);
 		PathAppend(shader_file, _T("ps.modified.txt"));
 		WriteShaderTextToFile(shader_file, modifiedShaderText, Size, true);
 	}
-#endif
 
 	return bAddCRC || modifiedShaderText;
 }

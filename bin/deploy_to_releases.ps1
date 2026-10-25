@@ -420,22 +420,28 @@ foreach ($t in "$relRoot\Stereo-Injector\DX7",
     }
 }
 
-# Local-only diagnostic default: flip CollectDebugInformation=0 -> 1 in the
-# deployed Stereo-Injector configs so a local test run always captures the
-# VEH crash shield + the DX11 right-eye-recording telemetry. We detect CI
-# via GITHUB_ACTIONS (always set in GitHub Actions runners); any build that
-# isn't CI gets the diagnostic flip. The source Config.xml stays at =0 so
-# shipped CI artifacts match the user-facing default.
+# Local-only diagnostic defaults: flip the three shader-authoring switches
+# (CollectDebugInformation / DumpVS / DumpPS) from 0 -> 1 in the deployed
+# Stereo-Injector configs so a local test run always captures CB-matrix
+# telemetry + the DX{N}ShaderDataCache bulk shader dumps that make
+# ShaderHunter captures useful to cross-reference. We detect CI via
+# GITHUB_ACTIONS (always set in GitHub Actions runners); any build that
+# isn't CI gets the three diagnostic flips. The source Config.xml stays at
+# =0 so shipped CI artifacts match the user-facing default (no debug cost
+# for players; the per-game dumps are large and would waste disk).
 $isCI = ($env:GITHUB_ACTIONS -eq 'true') -or ($env:CI -eq 'true')
 if (-not $isCI) {
     foreach ($t in $wiz3dConfigTargets) {
         $dst = Join-Path $t 'wiz3D_Config.xml'
         if (Test-Path $dst) {
-            $xml = [IO.File]::ReadAllText($dst) -replace '<CollectDebugInformation Value="0"/>', '<CollectDebugInformation Value="1"/>'
+            $xml = [IO.File]::ReadAllText($dst) `
+                -replace '<CollectDebugInformation Value="0"/>', '<CollectDebugInformation Value="1"/>' `
+                -replace '<DumpVS Value="0"/>', '<DumpVS Value="1"/>' `
+                -replace '<DumpPS Value="0"/>', '<DumpPS Value="1"/>'
             [IO.File]::WriteAllText($dst, $xml)
         }
     }
-    Write-Host "  CollectDebugInformation=1 (local build; CI deploys keep the default 0)"
+    Write-Host "  CollectDebugInformation + DumpVS + DumpPS = 1 (local build; CI deploys keep the defaults 0)"
 }
 Write-Host ("  {0,-30}  spread to {1} dirs" -f 'wiz3D_Config.xml', $wiz3dConfigTargets.Count)
 
