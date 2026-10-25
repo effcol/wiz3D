@@ -450,6 +450,9 @@ void OSDRenderer9::BuildSaveToastText(wchar_t* line1, size_t cap1,
     _snwprintf_s(line2, cap2, _TRUNCATE, L"%hs", s.flashLeaf);
 }
 
+// Status: "wiz3D | Preset N | Sep X% | Conv Yunits [| AutoFocus] [| EyesSwapped]"
+// Mirror of DX11 OSDRenderer::BuildStatusText -- content layer kept in sync so
+// the user sees the same strip across DX9 and DX11 StereoInjector paths.
 void OSDRenderer9::BuildStatusText(wchar_t* out, size_t cap) const
 {
     const CameraPreset* p = gInfo.Input.GetActivePreset();
@@ -457,7 +460,16 @@ void OSDRenderer9::BuildStatusText(wchar_t* out, size_t cap) const
     const float sepPercent = p ? (p->StereoBase / 0.008f) : 0.f;
     const float convUnits  = (p && p->One_div_ZPS != 0.f) ? (1.f / p->One_div_ZPS) : 0.f;
     // Convergence at 2 decimals (see DX11 OSDRenderer::BuildStatusText).
-    if (gInfo.Input.SwapEyes) {
+    const bool af = p && p->AutoFocusEnable;
+    if (af && gInfo.Input.SwapEyes) {
+        _snwprintf_s(out, cap, _TRUNCATE,
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   AutoFocus   |   Eyes Swapped",
+                     presetIdx, sepPercent, convUnits);
+    } else if (af) {
+        _snwprintf_s(out, cap, _TRUNCATE,
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   AutoFocus",
+                     presetIdx, sepPercent, convUnits);
+    } else if (gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
                      L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   Eyes Swapped",
                      presetIdx, sepPercent, convUnits);

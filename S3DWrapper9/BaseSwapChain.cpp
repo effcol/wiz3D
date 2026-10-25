@@ -1668,14 +1668,9 @@ void CBaseSwapChain::DrawOSD( float fFrameTimeDelta )
 		}
 		theBaseDevice->m_ViewPort = viewport; // ID3DXSprite corrupt that
 
-		if( gInfo.Input.ShowHotKeyOSD ){
-			viewport = GetBaseDevice()->m_ViewPort;
-			theBaseDevice->m_bInStateBlock = true; // Skip Sprite states
-			GetBaseDevice()->m_HotKeyOSD.RenderDX9( IsStereoActive(), &m_RightViewRect,
-				&m_LeftViewRect, m_pRightBackBuffer, m_pLeftBackBuffer);
-			theBaseDevice->m_bInStateBlock = false;
-			theBaseDevice->m_ViewPort = viewport;
-		}
+		// 0.4.2: uilib HotKeyOSD removed -- its Shift+F1 toggle now drives
+		// the modern OSDRenderer9::Slot::HotkeyHelp (gInfo.Input.ShowHotKeyOSD
+		// is read by WantHotkeyHelp()). RenderDX9 call site stripped.
 	}
 #endif
 

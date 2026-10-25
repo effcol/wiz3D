@@ -1822,48 +1822,16 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 		m_pOutputMethod->GetLogo() || m_bShowMouse || m_bShowGDIMouse))
 		CreateFont();
 	
-	if(!m_pFont)
-		return;
-
-	pSwapChain->PrepareFPSMessage();
-
-	std::wostringstream szCameraInfo;
-	if(gInfo.ShowOSD && m_nOSDShowTimeLeft.QuadPart > 0)
-	{
-		szCameraInfo << g_LocalData.GetText(LT_Preset) << L" " << m_Input.ActivePreset + 1 << L"\n";
-		//--- show ZPS in LEFT handed coordinate system ---
-		if(m_Input.GetActivePreset()->One_div_ZPS == 0.f)
-			szCameraInfo << g_LocalData.GetText(LT_ConvergenceINF) << L"\n";
-		else
-			szCameraInfo << g_LocalData.GetText(LT_Convergence) << L" = " << std::fixed << std::setprecision(4) << -m_Input.GetActivePreset()->One_div_ZPS << L"\n";
-
-		//--- show Separation as % ---
-		bool separationValid = true;
-		if(m_Input.GetActivePreset()->AutoFocusEnable)
-		{
-			if(!pSwapChain->m_ShiftFinder.IsCurrentShiftValid() || 
-				(pSwapChain->m_ShiftFinder.IsShiftToHoldValid() && pSwapChain->m_nPresentCounter == pSwapChain->m_ShiftFinder.GetShiftInValidationFrame()))
-				separationValid = false;
-		}
-
-		szCameraInfo << g_LocalData.GetText(LT_Separation) << L" = " << std::fixed << std::setprecision(2) << 
-			SEPARATION_TO_PERCENT(m_Input.GetActivePreset()->StereoBase) << L"\n";
-		szCameraInfo << g_LocalData.GetText(LT_AutoFocus) << L" " <<
-			(m_Input.GetActivePreset()->AutoFocusEnable ? g_LocalData.GetText(LT_ON) : g_LocalData.GetText(LT_OFF));
-		if (!separationValid)
-			szCameraInfo << L" " << g_LocalData.GetText(LT_tooMuchSeparation);
-		szCameraInfo << L"\n";
-
-		if (m_Input.SwapEyes)
-			szCameraInfo << g_LocalData.GetText(LT_SwapLR) << L"\n";
-
-		//--- show trial mode  ---
-		int DaysLeft = m_pOutputMethod->GetTrialDaysLeft();
-		if (DaysLeft != -1)
-		{
-			szCameraInfo << g_LocalData.GetText(LT_DaysLeft) << L" " << DaysLeft << L"\n";
-		}
-	}
+	// 0.4.2 OSD rework: wrap the legacy m_pFont rendering in a scope so
+	// the modern OSDRenderer9 + LaserSightRenderer9 blocks at the end of
+	// this function run regardless of whether CFont::Init found
+	// OSDFont.fnt. The legacy font path is retained for warning text,
+	// mouse-cursor and output-method logo rendering, and #ifndef
+	// FINAL_RELEASE debug text / graphs. Legacy FPS, status strip
+	// (preset / convergence / separation / autofocus) and the uilib
+	// HotKeyOSD overlay were duplicates of the modern OSD's slots and
+	// have been removed.
+	if (m_pFont) {
 
 #ifndef FINAL_RELEASE
 	CHAR szDebugInfo[2048];
@@ -2061,42 +2029,15 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 		if (gInfo.FixNone16x9TextPosition)
 			y += std::max(0.0f, (pSwapChain->m_BackBufferSize.cy - (pSwapChain->m_BackBufferSize.cx / (16.0f / 9))) / 2);
 
-		if (gInfo.ShowFPS)
-		{
-			std::wstring s = pSwapChain->m_szFPS.str();
-			y += m_pFont->DrawML(x, y, 1.0f, s.c_str(), 0, 0) * m_pFont->GetHeight();
-		};
-
-		if (m_bCantFindStereoDevice)
-		{
-			m_pFont->Draw(x, y, 1.0f, g_LocalData.GetText(LT_CantFindStereoDevice).c_str(), 0, 0);
-			y += m_pFont->GetHeight();
-		} 
-		else if (m_bUsingMonoOutput)
-		{
-			m_pFont->Draw(x, y, 1.0f, g_LocalData.GetText(LT_CantLoadOutputDLL).c_str(), 0, 0);
-			y += m_pFont->GetHeight();
-		};
-		
-		if(m_bUpdateAQBSDriver)
-		{
-			m_pFont->Draw(x, y, 1.0f, g_LocalData.GetText(LT_UpdateAMDDriver).c_str(), 0, 0);
-			y += m_pFont->GetHeight();
-		}
-
-		if(m_bUnsupported3DDevice)
-		{
-			m_pFont->Draw(x, y, 1.0f, g_LocalData.GetText(LT_NotSupported3DDevice).c_str(), 0, 0);
-			y += m_pFont->GetHeight();
-		}
-
-
-		if(gInfo.ShowOSD && m_nOSDShowTimeLeft.QuadPart > 0)
-		{
-			std::wstring s = szCameraInfo.str();
-			y += m_pFont->DrawML(x, y, 1.0f, s.c_str(), 0, 0) * m_pFont->GetHeight();
-		};
-
+		// Legacy FPS counter (duplicate of modern OSDRenderer9::Slot::Fps),
+		// status strip (duplicate of OSDRenderer9::Slot::Status), and the
+		// four warning blocks (CantFindStereoDevice / CantLoadOutputDLL /
+		// UpdateAMDDriver / NotSupported3DDevice) were removed in 0.4.2.
+		// The flags still exist for diagnostic use; the AMD HD3D warnings
+		// are dead code for the StereoInjector flow (HD3D moved to its own
+		// wrapper), the mono-fallback is self-evident from the lack of
+		// stereo on screen. Only the #ifndef FINAL_RELEASE debug text
+		// (which has no modern equivalent) still draws through m_pFont.
 #ifndef FINAL_RELEASE
 		if(gInfo.ShowDebugInfo && m_Input.DebugInfoPage)
 		{
@@ -2129,14 +2070,21 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 #endif WIN64
 		}
 #endif
-	}
+		}
+	}  // if (m_pFont) -- legacy font path for debug text/graphs
 
-	// Modern OSD: runs alongside the legacy m_pFont path (which no-ops on
-	// current builds because %ALLUSERSPROFILE%\Font\OSDFont.fnt is never
-	// deployed). Renders to the LEFT eye's render target -- the SBS
-	// composite copies this to both eyes at Present. One Render call
-	// per DrawInfo pass.
+	// Modern OSD + laser-sight: run unconditionally, independent of the
+	// legacy font path. The modern OSD renders XYZRHW quads with its own
+	// FVF/state so it doesn't need m_pTextState or CFont. We render to
+	// the LEFT eye's RT; the SBS composite copies this to both eyes at
+	// Present. When the legacy loop above ran, LEFT RT is already the
+	// current target (loop iterates RIGHT -> LEFT); when it didn't (no
+	// m_pFont triggers), set LEFT explicitly here.
 	{
+		const bool bStereoOn = RenderToRight() && RenderInStereo();
+		if (bStereoOn)
+			SetStereoRenderTarget<VIEWINDEX_LEFT>();
+
 		const UINT bbW = pSwapChain->m_BackBufferSize.cx;
 		const UINT bbH = pSwapChain->m_BackBufferSize.cy;
 
