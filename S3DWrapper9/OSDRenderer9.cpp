@@ -404,7 +404,7 @@ bool OSDRenderer9::WantHunter() const
 }
 
 // Save-toast survives exiting hunt mode so a user who presses F3 then
-// Ctrl+F2 still sees the confirmation. Mirrors DX11 behaviour.
+// Numpad 0 still sees the confirmation. Mirrors DX11 behaviour.
 bool OSDRenderer9::WantSaveToast() const
 {
     const wiz3d::dx9::HunterState s = wiz3d::dx9::HunterGetState();
@@ -432,7 +432,7 @@ void OSDRenderer9::BuildHunterText(wchar_t* line1, size_t cap1,
                      s.hiddenCRC, s.drawsForHidden, s.cycleIdx, s.cycleSize);
     }
     _snwprintf_s(line2, cap2, _TRUNCATE,
-                 L"F2 prev   Shift+F2 next   F3 capture   Ctrl+F2 exit");
+                 L"Num1 prev   Num2 next   Num3 capture   Num0 exit");
 }
 
 // 0.4.1 save-toast — bottom-right "Shader saved" / "<leaf>". Mirror of DX11.

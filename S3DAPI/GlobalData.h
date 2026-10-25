@@ -398,7 +398,7 @@ public:
 	// is a silent no-op (the wrapper that would handle it isn't loaded).
 	// S3DWrapperD3D10 sets these from InitDirectories; other wrappers
 	// may set equivalents when their own ShaderHunter port lands.
-	// The system is always wired — Ctrl+F2 enters hunt mode on demand,
+	// The system is always wired — Numpad 0 enters hunt mode on demand,
 	// no config knob gating; zero cost when IsActive() is false.
 	void      (*HuntToggleHandler)();
 	void      (*HuntPrevHandler)();
@@ -579,12 +579,15 @@ public:
 			{ "ToggleFPS", TOGGLE_FPS,                                      0 },	//---           			---
 			{ "ToggleHotkeysOSD", TOGGLE_HOTKEY,						    368 },	//--- Shift + F1 (iZ3D legacy hotkey-help)	---
 			{ "ToggleOSD", TOGGLE_SHOW_OSD,                                 624 },	//--- Ctrl + F1 (status strip + FPS)	---
-			// 0.4.1 ShaderHunter — hotkey is itself the opt-in. Ctrl+F2 toggles
-			// hunt mode; the cycle/capture keys only act while hunt mode is on.
-			{ "ToggleShaderHunt",  TOGGLE_SHADER_HUNT,                      625 },	//--- Ctrl + F2 (enter/exit hunt mode)	---
-			{ "HuntPrevShader",    HUNT_PREV_SHADER,                        113 },	//--- F2 (hide previous CRC)	---
-			{ "HuntNextShader",    HUNT_NEXT_SHADER,                        369 },	//--- Shift + F2 (hide next CRC)	---
-			{ "HuntCaptureShader", HUNT_CAPTURE_SHADER,                     114 },	//--- F3 (capture current CRC)	---
+			// 0.4.1 ShaderHunter — hotkey is itself the opt-in. Numpad 0 toggles
+			// hunt mode; cycle/capture keys only act while hunt mode is on.
+			// Numpad bindings match 3Dmigoto / HelixMod convention (bo3b review
+			// 0.4.1): F-keys collide with games, Numpad 0-6 are empty in iZ3D's
+			// map so the shaderhacker standard slots in cleanly.
+			{ "ToggleShaderHunt",  TOGGLE_SHADER_HUNT,                       96 },	//--- Numpad 0 (enter/exit hunt mode)	---
+			{ "HuntPrevShader",    HUNT_PREV_SHADER,                         97 },	//--- Numpad 1 (hide previous CRC)	---
+			{ "HuntNextShader",    HUNT_NEXT_SHADER,                         98 },	//--- Numpad 2 (hide next CRC)	---
+			{ "HuntCaptureShader", HUNT_CAPTURE_SHADER,                      99 },	//--- Numpad 3 (capture current CRC)	---
 			// 0.4.1 runtime profile reload: re-parse BaseProfile.xml live.
 			{ "ReloadBaseProfile", RELOAD_BASE_PROFILE,                     628 },	//--- Ctrl + F5 (re-read BaseProfile.xml)	---
 			{ "PresenterSleepTimeIncrease", INCREASE_PRESENTER_SLEEP_TIME,  221 },  //--- ]				        ---

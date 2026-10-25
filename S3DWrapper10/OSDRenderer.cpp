@@ -655,7 +655,7 @@ bool OSDRenderer::WantSaveToast() const
 //   line 1: HUNT  VS:0xABC12345  draws:847  cycle 23/142
 //           — OR "HUNT  none selected  (N CRCs drawn last frame)" when no
 //              shader has been cycled onto yet.
-//   line 2: F2 prev   Shift+F2 next   F3 capture   Ctrl+F2 exit (always).
+//   line 2: Num1 prev   Num2 next   Num3 capture   Num0 exit (always).
 // Pulled from the ShaderHunter's atomic snapshot — no locks held while
 // GDI renders, so a cycle change mid-frame is fine.
 void OSDRenderer::BuildHunterText(wchar_t* line1, size_t cap1,
@@ -682,7 +682,7 @@ void OSDRenderer::BuildHunterText(wchar_t* line1, size_t cap1,
                      s.hiddenCRC, s.drawsForHidden, s.cycleIdx, s.cycleSize);
     }
     _snwprintf_s(line2, cap2, _TRUNCATE,
-                 L"F2 prev   Shift+F2 next   F3 capture   Ctrl+F2 exit");
+                 L"Num1 prev   Num2 next   Num3 capture   Num0 exit");
 }
 
 // 0.4.1 save-toast: bottom-right, two lines like "Shader saved" / "<leaf>".
@@ -825,7 +825,7 @@ void OSDRenderer::Render(ID3D11DeviceContext* ctx,
             L"Shift + F1",           L"Toggle this hotkey list",
             L"Ctrl + F1",            L"Toggle OSD strip + FPS",
             L"Shift + Numpad *",     L"Open the wizard overlay",
-            L"Ctrl + F2",            L"ShaderHunter: enter / exit hunt mode",
+            L"Numpad 0",             L"ShaderHunter: enter / exit hunt mode",
             L"Ctrl + F5",            L"Reload BaseProfile.xml (live)",
         };
         int row = 72;
