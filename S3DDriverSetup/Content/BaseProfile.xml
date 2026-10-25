@@ -935,6 +935,11 @@
 		<File Name="GTAIV.exe" />
 		<CreateSquareRTInMono Value="1"/>
 		<CreateSquareDSInMono Value="1"/>
+		<Mono>
+			<!-- Shadow-map depth-write PS (ps_3_0, writes v0.x to red).
+			     Hunter capture 0x17513EFF_PS_20261025_190823.txt -->
+			<PixelShader CRC="0x17513EFF"/>
+		</Mono>
 		<Presets>
 			<Preset Index="0">
 				<One_div_ZPS Value="0.007839" />
@@ -1379,6 +1384,12 @@
 		<Stereo>
 			<VertexShader CRC="0x1CD594CF" ZNear="30.0"/>
 		</Stereo>
+		<Presets>
+			<Preset Index="1">
+				<StereoBase Value="1.04" />
+				<AutoFocusEnable Value="0" />
+			</Preset>
+		</Presets>
 	</Profile>
 	<Profile Name="Sims 3">
 		<File Name="TS3.exe"/>

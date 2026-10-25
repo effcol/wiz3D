@@ -509,9 +509,12 @@ void OSDRenderer9::DrawQuad(IDirect3DDevice9* device, IDirect3DTexture9* tex,
     device->SetTexture(0, nullptr);
 }
 
-void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
+void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
+                          int originX, int originY)
 {
     if (!device || bbW == 0 || bbH == 0) return;
+    const float oX = (float)originX;
+    const float oY = (float)originY;
     if (m_initFailed) return;
     if (!m_initDone && !Init(device)) return;
 
@@ -709,15 +712,15 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
         float dh = (float)(std::min<UINT>)(bbH > 40 ? bbH - 40 : (UINT)s.h, (UINT)s.h);
         float dx = ((float)bbW - dw) * 0.5f;
         float dy = ((float)bbH - dh) * 0.5f;
-        DrawQuad(device, s.tex, dx, dy, dw, dh);
+        DrawQuad(device, s.tex, oX + dx, oY + dy, dw, dh);
     }
     if (wantStatus) {
         TexSlot& s = m_slots[(int)Slot::Status];
-        DrawQuad(device, s.tex, 20.f, 20.f, (float)s.w, (float)s.h);
+        DrawQuad(device, s.tex, oX + 20.f, oY + 20.f, (float)s.w, (float)s.h);
     }
     if (wantFps) {
         TexSlot& s = m_slots[(int)Slot::Fps];
-        DrawQuad(device, s.tex, (float)bbW - 20.f - (float)s.w, 20.f, (float)s.w, (float)s.h);
+        DrawQuad(device, s.tex, oX + (float)bbW - 20.f - (float)s.w, oY + 20.f, (float)s.w, (float)s.h);
     }
     if (wantHunter) {
         TexSlot& s = m_slots[(int)Slot::Hunter];
@@ -725,7 +728,7 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
         float dx = ((float)bbW - dw) * 0.5f;
         float dy = (float)bbH - (float)s.h - 20.f;
         if (dy < 0) dy = 0;
-        DrawQuad(device, s.tex, dx, dy, dw, (float)s.h);
+        DrawQuad(device, s.tex, oX + dx, oY + dy, dw, (float)s.h);
     }
     // Save-toast: bottom-right (mirror of DX11).
     if (wantToast) {
@@ -734,7 +737,7 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH)
         float dy = (float)bbH - (float)s.h - 20.f;
         if (dx < 0) dx = 0;
         if (dy < 0) dy = 0;
-        DrawQuad(device, s.tex, dx, dy, (float)s.w, (float)s.h);
+        DrawQuad(device, s.tex, oX + dx, oY + dy, (float)s.w, (float)s.h);
     }
 
     sb->Apply();

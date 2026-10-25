@@ -44,7 +44,15 @@ public:
     // D3DPOOL_DEFAULT must be re-created.
     void OnDeviceLost();
 
-    void Render(IDirect3DDevice9* device, UINT bbW, UINT bbH);
+    // originX/originY shift every overlay element by that many pixels in
+    // the destination render target. bbW/bbH describe the per-eye drawable
+    // extent (not the full SBS wide RT). Non-wide callers pass origin=0,
+    // bbW/bbH = device backbuffer; wide-SBS callers call Render twice, once
+    // per eye-view-rect, with origin = eyeRect.{left,top} and bbW/bbH =
+    // eyeRect.{right - left, bottom - top}. XYZRHW vertices bypass the
+    // vertex-shader / viewport, so the overlay has to add origin itself.
+    void Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
+                int originX = 0, int originY = 0);
 
     void NoteSettingChanged();
     void TickFrame();

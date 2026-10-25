@@ -2075,62 +2075,49 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 
 	// Modern OSD + laser-sight: run unconditionally, independent of the
 	// legacy font path. The modern OSD renders XYZRHW quads with its own
-	// FVF/state so it doesn't need m_pTextState or CFont. In stereo
-	// output modes the LEFT and RIGHT backbuffers are separate RTs that
-	// get composited side-by-side at Present (no copy between them), so
-	// we render each overlay once per eye. In mono the current RT is
-	// whatever is active and one render is enough.
-	// Rendering both eyes at the same screen-space position puts the
-	// overlay at the screen plane with zero stereo shift, which is what
-	// we want for a HUD-style status / FPS / hotkey card / Hunter strip.
+	// FVF/state so it doesn't need m_pTextState or CFont.
+	//
+	// 0.4.3 OSD both-eye fix: diagnostic logging (18ac141b) showed that in
+	// Side-by-Side output the device render target is a single wide RT
+	// (e.g. 3840x2160 covering both eyes). SetStereoRenderTarget<LEFT/RIGHT>
+	// adjusts per-eye offsets / pixel-shader constants but does NOT swap
+	// the device RT. XYZRHW overlay vertices bypass the vertex-shader so
+	// they ignore those offsets -- the overlay always landed in the left
+	// half of the wide RT. The pre-computed m_LeftViewRect / m_RightViewRect
+	// on the swap chain already describe where each eye's half-pixel-range
+	// lives in the wide RT; we render the overlay once per rect in that
+	// case. In the non-wide case (shutter, HD3D, SR-weave with separate
+	// per-eye RTs) the two rects match and we fall through to the per-eye
+	// RT-swap path.
 	{
 		const bool bStereoOn = RenderToRight() && RenderInStereo();
 		const UINT bbW = pSwapChain->m_BackBufferSize.cx;
 		const UINT bbH = pSwapChain->m_BackBufferSize.cy;
-
-		// 0.4.2 DIAG: once per frame, log bStereoOn + the LEFT and RIGHT
-		// stereo surface pointers so we can confirm SetStereoRenderTarget
-		// is actually swapping the device target. Pair with [OSD9DIAG]
-		// lines in OSDRenderer9::Render to see the full picture.
-		static int   s_biEyeFrame = 0;
-		static FILE* s_biEyeFp    = nullptr;
-		if (s_biEyeFrame < 20) {
-			if (!s_biEyeFp) {
-				wchar_t p[MAX_PATH] = {};
-				if (GetModuleFileNameW(nullptr, p, MAX_PATH)) {
-					if (wchar_t* bs = wcsrchr(p, L'\\')) {
-						*(bs + 1) = L'\0';
-						lstrcatW(p, L"wiz3D_Logs");
-						CreateDirectoryW(p, nullptr);
-						lstrcatW(p, L"\\wiz3D_proxy.log");
-						s_biEyeFp = _wfopen(p, L"a");
-					}
-				}
-			}
-			if (s_biEyeFp) {
-				IDirect3DSurface9* rt0 = nullptr;
-				m_Direct3DDevice.GetRenderTarget(0, &rt0);
-				fprintf(s_biEyeFp,
-				        "[BIEYE] frame=%d  bStereoOn=%d  currentRT=%p  bb=%ux%u\n",
-				        s_biEyeFrame, (int)bStereoOn, (void*)rt0, bbW, bbH);
-				fflush(s_biEyeFp);
-				if (rt0) rt0->Release();
-			}
-			s_biEyeFrame++;
-		}
+		const RECT& lrect = pSwapChain->m_LeftViewRect;
+		const RECT& rrect = pSwapChain->m_RightViewRect;
+		const bool bWideSBS = bStereoOn && (lrect.left != rrect.left ||
+		                                     lrect.right != rrect.right ||
+		                                     lrect.top  != rrect.top ||
+		                                     lrect.bottom != rrect.bottom);
 
 		if (!m_pOSD)
 			m_pOSD = new wiz3d::OSDRenderer9();
 		if (m_pOSD && m_pOSD->Init(m_Direct3DDevice))
 		{
 			m_pOSD->TickFrame();   // FPS EMA + status fade timer -- once per frame
-			if (bStereoOn)
-			{
+			if (bWideSBS) {
+				const UINT eyeW = (UINT)(lrect.right - lrect.left);
+				const UINT eyeH = (UINT)(lrect.bottom - lrect.top);
+				m_pOSD->Render(m_Direct3DDevice, eyeW, eyeH, lrect.left, lrect.top);
+				m_pOSD->Render(m_Direct3DDevice, eyeW, eyeH, rrect.left, rrect.top);
+			} else if (bStereoOn) {
 				SetStereoRenderTarget<VIEWINDEX_RIGHT>();
 				m_pOSD->Render(m_Direct3DDevice, bbW, bbH);
+				SetStereoRenderTarget<VIEWINDEX_LEFT>();
+				m_pOSD->Render(m_Direct3DDevice, bbW, bbH);
+			} else {
+				m_pOSD->Render(m_Direct3DDevice, bbW, bbH);
 			}
-			SetStereoRenderTarget<VIEWINDEX_LEFT>();
-			m_pOSD->Render(m_Direct3DDevice, bbW, bbH);
 		}
 
 		// Laser-sight crosshair (replaces the dead resources.zip path).
@@ -2139,13 +2126,22 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 			m_pLaserSight = new wiz3d::LaserSightRenderer9();
 		if (m_pLaserSight && m_pLaserSight->Init(m_Direct3DDevice))
 		{
-			if (bStereoOn)
-			{
+			if (bWideSBS) {
+				// Laser-sight has its own per-eye convergence logic internally;
+				// in wide-SBS it needs to be told the eye extent + origin so its
+				// screen-space crosshair maths lands in the correct half.
+				const UINT eyeW = (UINT)(lrect.right - lrect.left);
+				const UINT eyeH = (UINT)(lrect.bottom - lrect.top);
+				m_pLaserSight->Render(m_Direct3DDevice, eyeW, eyeH);
+				m_pLaserSight->Render(m_Direct3DDevice, eyeW, eyeH);
+			} else if (bStereoOn) {
 				SetStereoRenderTarget<VIEWINDEX_RIGHT>();
 				m_pLaserSight->Render(m_Direct3DDevice, bbW, bbH);
+				SetStereoRenderTarget<VIEWINDEX_LEFT>();
+				m_pLaserSight->Render(m_Direct3DDevice, bbW, bbH);
+			} else {
+				m_pLaserSight->Render(m_Direct3DDevice, bbW, bbH);
 			}
-			SetStereoRenderTarget<VIEWINDEX_LEFT>();
-			m_pLaserSight->Render(m_Direct3DDevice, bbW, bbH);
 		}
 	}
 }
