@@ -2100,6 +2100,35 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 		                                     lrect.top  != rrect.top ||
 		                                     lrect.bottom != rrect.bottom);
 
+		// 0.4.3: in wide output (HEIGHTMUL=2) the actual render target is
+		// taller than the game-reported BB. The game sets a viewport sized
+		// to the game BB (bbW x bbH), which clips XYZRHW vertices placed
+		// above the game-BB height. For the right-eye render at
+		// (rrect.left, rrect.top >= bbH) to be visible, we need the
+		// viewport to span the full wide RT for the duration of the OSD /
+		// laser-sight pass. We query the actual RT dimensions once, widen
+		// the viewport, render, then restore.
+		D3DVIEWPORT9 savedVp = {};
+		D3DVIEWPORT9 wideVp  = {};
+		bool bWidenedVp = false;
+		if (bWideSBS) {
+			IDirect3DSurface9* rt = nullptr;
+			m_Direct3DDevice.GetRenderTarget(0, &rt);
+			if (rt) {
+				D3DSURFACE_DESC rtDesc = {};
+				rt->GetDesc(&rtDesc);
+				rt->Release();
+				if (rtDesc.Width > 0 && rtDesc.Height > 0) {
+					m_Direct3DDevice.GetViewport(&savedVp);
+					wideVp.X = 0; wideVp.Y = 0;
+					wideVp.Width = rtDesc.Width; wideVp.Height = rtDesc.Height;
+					wideVp.MinZ = 0.0f; wideVp.MaxZ = 1.0f;
+					m_Direct3DDevice.SetViewport(&wideVp);
+					bWidenedVp = true;
+				}
+			}
+		}
+
 		if (!m_pOSD)
 			m_pOSD = new wiz3d::OSDRenderer9();
 		if (m_pOSD && m_pOSD->Init(m_Direct3DDevice))
@@ -2127,9 +2156,9 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 		if (m_pLaserSight && m_pLaserSight->Init(m_Direct3DDevice))
 		{
 			if (bWideSBS) {
-				// Laser-sight has its own per-eye convergence logic internally;
-				// in wide-SBS it needs to be told the eye extent + origin so its
-				// screen-space crosshair maths lands in the correct half.
+				// Laser-sight uses its own per-eye convergence logic internally;
+				// in wide-SBS it still needs the widened viewport to not clip at
+				// the game-BB height.
 				const UINT eyeW = (UINT)(lrect.right - lrect.left);
 				const UINT eyeH = (UINT)(lrect.bottom - lrect.top);
 				m_pLaserSight->Render(m_Direct3DDevice, eyeW, eyeH);
@@ -2142,6 +2171,10 @@ void CBaseStereoRenderer::DrawInfo(CBaseSwapChain* pSwapChain)
 			} else {
 				m_pLaserSight->Render(m_Direct3DDevice, bbW, bbH);
 			}
+		}
+
+		if (bWidenedVp) {
+			m_Direct3DDevice.SetViewport(&savedVp);
 		}
 	}
 }

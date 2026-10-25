@@ -555,6 +555,12 @@
 			<VertexShader CRC="0xADBF5498" ZNear="30.0"/>
 			<Texture CRC="0xEE2E283B"/>
 		</Stereo>
+		<Presets>
+			<Preset Index="1">
+				<StereoBase Value="1.04" />
+				<AutoFocusEnable Value="0" />
+			</Preset>
+		</Presets>
 	</Profile>
 	<Profile Name="Lego Star Wars">
 		<File Name="LegoStarwars.exe" />
