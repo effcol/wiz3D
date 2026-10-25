@@ -1061,6 +1061,8 @@
 	</Profile>
 	<Profile Name="Tomb Raider Underworld">
 		<File Name="tru.exe"/>
+		<CreateSquareRTInMono Value="1"/>
+		<CreateSquareDSInMono Value="1"/>
 		<Multiplier Value="0.001">
 			<VertexShader CRC="0x68A6499"/>
 		</Multiplier>
@@ -1069,6 +1071,12 @@
 			<VertexShader CRC="0xCEF9837E"/>
 			<PixelShader CRC="0x733F522D"/>
 		</Mono>
+		<Presets>
+			<Preset Index="1">
+				<StereoBase Value="1.04" />
+				<AutoFocusEnable Value="0" />
+			</Preset>
+		</Presets>
 	</Profile>
 	<Profile Name="Burnout Paradise">
 		<File Name="BurnoutParadise.exe"/>
