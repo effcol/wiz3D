@@ -1376,9 +1376,9 @@
 		<File Name="trl.exe" />
 		<CreateSquareRTInMono Value="1"/>
 		<CreateSquareDSInMono Value="1"/>
-		<Mono>
-			<VertexShader CRC="0x1CD594CF" />
-		</Mono>
+		<Stereo>
+			<VertexShader CRC="0x1CD594CF" ZNear="30.0"/>
+		</Stereo>
 	</Profile>
 	<Profile Name="Sims 3">
 		<File Name="TS3.exe"/>
