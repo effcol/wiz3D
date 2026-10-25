@@ -1654,25 +1654,21 @@ void CBaseSwapChain::DrawOSD( float fFrameTimeDelta )
 		}
 	}
 
-#ifndef DISABLE_WIZARD
-	if (gInfo.ShowOSD)
-	{
-		D3DVIEWPORT9 viewport = GetBaseDevice()->m_ViewPort;
-		auto theBaseDevice = GetBaseDevice();
-		if (m_WizardData.IsInitialized())
-		{
-			theBaseDevice->m_bInStateBlock = true; // Skip Sprite states
-			m_WizardData.RenderDX9( IsStereoActive(), &m_RightViewRect,
-				&m_LeftViewRect, m_pRightBackBuffer, m_pLeftBackBuffer );
-			theBaseDevice->m_bInStateBlock = false;
-		}
-		theBaseDevice->m_ViewPort = viewport; // ID3DXSprite corrupt that
-
-		// 0.4.2: uilib HotKeyOSD removed -- its Shift+F1 toggle now drives
-		// the modern OSDRenderer9::Slot::HotkeyHelp (gInfo.Input.ShowHotKeyOSD
-		// is read by WantHotkeyHelp()). RenderDX9 call site stripped.
-	}
-#endif
+	// 0.4.2: uilib Wizard + HotKeyOSD render call sites removed.
+	//
+	// Wizard: WizardSCData::RenderDX9 has no visibility check and paints
+	// the m_pDesktop control tree every frame once Initialize() has run,
+	// regardless of ShowWizardAtStartup / WizardWasShown. That made the
+	// Wizard appear on screen even with ShowWizardAtStartup=0. The whole
+	// Wizard flow is vestigial anyway -- it was iZ3D's shutter-glass-era
+	// calibration tool and depends on %ALLUSERSPROFILE%\resources.zip +
+	// OSDFont.fnt that no longer ship -- so rendering has no useful
+	// content. Shift+Numpad* ProcessKeys() still runs in BaseStereoRenderer
+	// _Main.cpp so the hotkey chain doesn't fall off.
+	//
+	// HotKeyOSD: Shift+F1 now drives the modern OSDRenderer9::Slot::
+	// HotkeyHelp card (via gInfo.Input.ShowHotKeyOSD read by
+	// WantHotkeyHelp()). The uilib HotKeyOSD.Render* path is dead.
 
 }
 

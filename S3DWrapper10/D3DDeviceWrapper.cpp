@@ -642,20 +642,16 @@ void D3DDeviceWrapper::DrawOSD( D3DSwapChain* pSwapChain_, float fFrameTimeDelta
 
 
 #ifndef DISABLE_WIZARD
+	// 0.4.2: match the DX9 strip (see S3DWrapper9/BaseSwapChain.cpp
+	// around DrawOSD). WizardData::RenderDX10 and HotKeyOSD::Render
+	// are vestigial iZ3D-era paths whose on-screen output is either
+	// uninformative (Wizard, assets never ship) or duplicates the
+	// modern DX11 OSDRenderer (HotKeyOSD vs Slot::HotkeyHelp).
+	// ProcessKeys stays so Shift+Numpad* hotkey chain doesn't fall off.
 	if (gInfo.ShowOSD)
 	{
 		pSwapChain->GetWizardData()->SetCurSC( pRes );
 		pSwapChain->GetWizardData()->ProcessKeys();
-
-		pSwapChain->GetWizardData()->RenderDX10( m_Input.StereoActive, true );
-		if( IsStereoActive() )
-			pSwapChain->GetWizardData()->RenderDX10( m_Input.StereoActive, false );
-	}
-	if( gInfo.Input.ShowHotKeyOSD ){
-		m_HotKeyOSD.SetCurrentSwapChain( pRes );
-		m_HotKeyOSD.Render( true );
-		if( IsStereoActive() )
-			m_HotKeyOSD.Render( false );
 	}
 #endif
 }
