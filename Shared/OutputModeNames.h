@@ -53,42 +53,62 @@ struct OutputModeEntry
     int         mode;             // one of the OUTMODE_* ids
     const char* canonicalName;    // user-facing shortname
     const char* legacyDll;        // iZ3D-era OutputMethodDll value for back-compat
+    int         legacySubmode;    // per-DLL submode index passed to CreateOutputDXn()
+                                  // ctor (NOT the global `mode` id). Each shipped
+                                  // output DLL has its own switch over 0..N; 0 is
+                                  // the DLL's default. See EnumOutputModes() in
+                                  // each OutputMethods/<DLL>/Output_dx9.cpp.
 };
 
 // 0.4.1 rename: short canonical names first (what OutputModeToCanonical
 // returns, what the config comments show), legacy long-form names kept as
 // alias rows below so pre-0.4.1 configs still parse. Legacy DLL column is
-// the exact filename DX9's plugin loader looks up; unchanged. Case-
-// insensitive matching across the whole table.
+// the exact filename DX9's plugin loader looks up. Case-insensitive matching
+// across the whole table.
+//
+// 0.4.3 note on DLLs that don't ship (TopAndBottomOutput, ColumnInterleavedOutput):
+// these never had their own DLL in the shipped OutputMethods/ folder; the
+// matching mode is served by a SUBMODE of a sibling DLL (TopAndBottomOutput
+// -> SideBySideOutput submode 1 "Over/Under"; ColumnInterleavedOutput ->
+// InterlacedOutput submode 1 "Vertical (Optimized)"). The unified refactor
+// in 0.4.1 wired these to the wrong DLL + no submode, so e.g. selecting
+// HalfTAB tried to load a missing DLL and selecting SBS passed OUTMODE_* id
+// 1 (which happened to collide with SideBySideOutput's submode 1 = Over/Under),
+// which is why SBS rendered as TAB. See kOutputModeTable rows below for the
+// correct DLL + submode pairing.
 static const OutputModeEntry kOutputModeTable[] =
 {
     // --- Canonical short names (0.4.1+). These are what the config comments show. ---
-    { OUTMODE_HALF_SIDE_BY_SIDE,    "HalfSBS",                "SideBySideOutput"            },
-    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSBS",                "FullSideBySideOutput"        },
-    { OUTMODE_HALF_TOP_AND_BOTTOM,  "HalfTAB",                "TopAndBottomOutput"          },
-    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTAB",                "FullTopAndBottomOutput"      },
-    { OUTMODE_ANAGLYPH,             "Anaglyph",               "AnaglyphOutput"              },
-    { OUTMODE_ROW_INTERLEAVED,      "RowIL",                  "InterlacedOutput"            },
-    { OUTMODE_COLUMN_INTERLEAVED,   "ColumnIL",               "ColumnInterleavedOutput"     },
-    { OUTMODE_CHECKERBOARD,         "Checker",                "CheckerboardOutput"          },
-    { OUTMODE_SR_WEAVE,             "SRWeave",                "SimulatedRealityWeaveOutput" },
-    { OUTMODE_STEREO_MIRROR,        "Mirror",                 "StereoMirrorOutput"          },
-    { OUTMODE_IZ3D_DUAL,            "iZ3D",                   "S3DOutput"                   },
+    { OUTMODE_HALF_SIDE_BY_SIDE,    "HalfSBS",                "SideBySideOutput",            0 },
+    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSBS",                "FullSideBySideOutput",        0 },
+    { OUTMODE_HALF_TOP_AND_BOTTOM,  "HalfTAB",                "SideBySideOutput",            1 },
+    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTAB",                "FullTopAndBottomOutput",      0 },
+    { OUTMODE_ANAGLYPH,             "Anaglyph",               "AnaglyphOutput",              0 },
+    { OUTMODE_ROW_INTERLEAVED,      "RowIL",                  "InterlacedOutput",            0 },
+    { OUTMODE_COLUMN_INTERLEAVED,   "ColumnIL",               "InterlacedOutput",            1 },
+    { OUTMODE_CHECKERBOARD,         "Checker",                "CheckerboardOutput",          0 },
+    { OUTMODE_SR_WEAVE,             "SRWeave",                "SimulatedRealityWeaveOutput", 0 },
+    { OUTMODE_STEREO_MIRROR,        "Mirror",                 "StereoMirrorOutput",          0 },
+    { OUTMODE_IZ3D_DUAL,            "iZ3D",                   "S3DOutput",                   0 },
     // --- Ultra-short bare-mode aliases (user convenience). "SBS" means
     //     HalfSBS, "TAB" means HalfTAB -- picking the common half variants.
-    { OUTMODE_HALF_SIDE_BY_SIDE,    "SBS",                    "SideBySideOutput"            },
-    { OUTMODE_HALF_TOP_AND_BOTTOM,  "TAB",                    "TopAndBottomOutput"          },
+    { OUTMODE_HALF_SIDE_BY_SIDE,    "SBS",                    "SideBySideOutput",            0 },
+    { OUTMODE_HALF_TOP_AND_BOTTOM,  "TAB",                    "SideBySideOutput",            1 },
     // --- Legacy long-form aliases (pre-0.4.1 names kept recognised). ---
-    { OUTMODE_HALF_SIDE_BY_SIDE,    "HalfSideBySide",         "SideBySideOutput"            },
-    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSideBySide",         "FullSideBySideOutput"        },
-    { OUTMODE_HALF_TOP_AND_BOTTOM,  "HalfTopAndBottom",       "TopAndBottomOutput"          },
-    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTopAndBottom",       "FullTopAndBottomOutput"      },
-    { OUTMODE_ROW_INTERLEAVED,      "RowInterleaved",         "InterlacedOutput"            },
-    { OUTMODE_COLUMN_INTERLEAVED,   "ColumnInterleaved",      "ColumnInterleavedOutput"     },
-    { OUTMODE_CHECKERBOARD,         "Checkerboard",           "CheckerboardOutput"          },
-    { OUTMODE_SR_WEAVE,             "SimulatedRealityWeave",  "SimulatedRealityWeaveOutput" },
-    { OUTMODE_STEREO_MIRROR,        "StereoMirror",           "StereoMirrorOutput"          },
-    { OUTMODE_IZ3D_DUAL,            "iZ3DDualPanel",          "S3DOutput"                   },
+    { OUTMODE_HALF_SIDE_BY_SIDE,    "HalfSideBySide",         "SideBySideOutput",            0 },
+    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSideBySide",         "FullSideBySideOutput",        0 },
+    { OUTMODE_HALF_TOP_AND_BOTTOM,  "HalfTopAndBottom",       "SideBySideOutput",            1 },
+    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTopAndBottom",       "FullTopAndBottomOutput",      0 },
+    { OUTMODE_ROW_INTERLEAVED,      "RowInterleaved",         "InterlacedOutput",            0 },
+    { OUTMODE_COLUMN_INTERLEAVED,   "ColumnInterleaved",      "InterlacedOutput",            1 },
+    { OUTMODE_CHECKERBOARD,         "Checkerboard",           "CheckerboardOutput",          0 },
+    { OUTMODE_SR_WEAVE,             "SimulatedRealityWeave",  "SimulatedRealityWeaveOutput", 0 },
+    { OUTMODE_STEREO_MIRROR,        "StereoMirror",           "StereoMirrorOutput",          0 },
+    { OUTMODE_IZ3D_DUAL,            "iZ3DDualPanel",          "S3DOutput",                   0 },
+    // --- Pre-0.4.1 wrong-DLL aliases (recognise so users with stale configs
+    //     still land on the right DLL + submode after a 0.4.3 upgrade). ---
+    { OUTMODE_HALF_TOP_AND_BOTTOM,  "TopAndBottomOutput",     "SideBySideOutput",            1 },
+    { OUTMODE_COLUMN_INTERLEAVED,   "ColumnInterleavedOutput","InterlacedOutput",            1 },
 };
 
 // Hardware-specific legacy plugin DLL names, kept recognised so the resolver
@@ -153,6 +173,20 @@ inline const char* OutputModeToCanonical(int mode)
     for (size_t i = 0; i < sizeof(kOutputModeTable) / sizeof(kOutputModeTable[0]); ++i)
         if (kOutputModeTable[i].mode == mode) return kOutputModeTable[i].canonicalName;
     return nullptr;
+}
+
+// Returns the per-DLL submode index for an OUTMODE_* id -- the value the
+// shipped OutputMethods/<DLL>/Output_dx9.cpp constructor expects as its
+// `mode` arg. Different from the global OUTMODE_* id: e.g. HalfTAB is
+// global id 3, but is submode 1 of SideBySideOutput.dll (Over/Under).
+// Returns 0 (the DLL's default submode) for unregistered ids, which is
+// also the right answer for every DLL whose EnumOutputModes only lists
+// a "Default" case.
+inline int OutputModeToLegacySubmode(int mode)
+{
+    for (size_t i = 0; i < sizeof(kOutputModeTable) / sizeof(kOutputModeTable[0]); ++i)
+        if (kOutputModeTable[i].mode == mode) return kOutputModeTable[i].legacySubmode;
+    return 0;
 }
 
 // Returns true if `name` matches a recognised legacy hardware plugin DLL

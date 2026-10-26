@@ -5,6 +5,7 @@
 #include "..\S3DAPI\GlobalData.h"
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
+#include "..\Shared\OutputModeNames.h"
 #include "D3DDeviceWrapper.h"
 #include "Commands\CommandSet.h"
 #include "DXGISwapChainWrapper.h"
@@ -1139,7 +1140,16 @@ void D3DDeviceWrapper::CreateOutput()
 		}
 		else
 		{
-			m_pOutputMethod = lpfnCreateOutput(gInfo.OutputMode, gInfo.OutputSpanMode);
+			// 0.4.3 fix: pass the per-DLL submode index (0..N inside the
+			// loaded Output DLL), not the global OUTMODE_* id. Same bug as
+			// S3DWrapper9/BaseStereoRenderer::CreateOutput. gInfo.OutputMode
+			// stays as the global id so SwapChain11Proxy::SelectedOutputMode
+			// and OSD routing elsewhere keep working.
+			const DWORD dllSubmode = static_cast<DWORD>(
+				wiz3d::OutputModeToLegacySubmode(static_cast<int>(gInfo.OutputMode)));
+			DDILog("CreateOutput: dllSubmode=%d (from global OutputMode=%d)\n",
+				(int)dllSubmode, (int)gInfo.OutputMode);
+			m_pOutputMethod = lpfnCreateOutput(dllSubmode, gInfo.OutputSpanMode);
 			DDILog("CreateOutput: CreateOutputDX10 returned m_pOutputMethod=%p\n",
 				(void*)m_pOutputMethod);
 		}

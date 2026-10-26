@@ -25,6 +25,7 @@
 #include "..\S3DAPI\EnumToString.h"
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
+#include "..\Shared\OutputModeNames.h"
 #include "..\uilib\Wizard.h"
 #include "DumpManager.h"
 #include "atiqbstereo.h"
@@ -200,7 +201,14 @@ void CBaseStereoRenderer::CreateOutput()
 		else
 		{
 			g_RenderInfo.SetOutputDll(gInfo.hOutputDLL);
-			m_pOutputMethod = lpfnCreateOutput(gInfo.OutputMode, gInfo.OutputSpanMode);
+			// 0.4.3 fix: pass the per-DLL submode index (0..N inside the
+			// loaded Output DLL), not the global OUTMODE_* id. See
+			// Shared/OutputModeNames.h and each OutputMethods/<DLL>/
+			// EnumOutputModes() for the mapping. gInfo.OutputMode stays as
+			// the global id so OSD + routing elsewhere keep working.
+			const DWORD dllSubmode = static_cast<DWORD>(
+				wiz3d::OutputModeToLegacySubmode(static_cast<int>(gInfo.OutputMode)));
+			m_pOutputMethod = lpfnCreateOutput(dllSubmode, gInfo.OutputSpanMode);
 		}
 	}
 	if (m_pOutputMethod == NULL)
