@@ -460,23 +460,32 @@ void OSDRenderer9::BuildStatusText(wchar_t* out, size_t cap) const
     const float sepPercent = p ? (p->StereoBase / 0.008f) : 0.f;
     const float convUnits  = (p && p->One_div_ZPS != 0.f) ? (1.f / p->One_div_ZPS) : 0.f;
     // Convergence at 2 decimals (see DX11 OSDRenderer::BuildStatusText).
+    // 0.4.3: ConvergenceShift (Alt+Numpad +/-) shown next to Conv when
+    // non-zero so the global comfort-shift hotkey has visible feedback.
+    wchar_t convStr[48];
+    if (gInfo.Input.ConvergenceShift != 0.0f) {
+        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE,
+                     L"Conv %.2f (shift %+.2f)", convUnits, gInfo.Input.ConvergenceShift);
+    } else {
+        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE, L"Conv %.2f", convUnits);
+    }
     const bool af = p && p->AutoFocusEnable;
     if (af && gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   AutoFocus   |   Eyes Swapped",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus   |   Eyes Swapped",
+                     presetIdx, sepPercent, convStr);
     } else if (af) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   AutoFocus",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus",
+                     presetIdx, sepPercent, convStr);
     } else if (gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   Eyes Swapped",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   Eyes Swapped",
+                     presetIdx, sepPercent, convStr);
     } else {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s",
+                     presetIdx, sepPercent, convStr);
     }
 }
 
@@ -573,6 +582,7 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
             L"Numpad *",             L"Toggle stereo on / off",
             L"Numpad +  /  -",       L"Separation (depth strength)",
             L"Shift + Numpad +/-",   L"Convergence (where screen plane sits)",
+            L"Alt + Numpad +/-",     L"Convergence shift (quick comfort offset)",
             L"Numpad 7 / 8 / 9",     L"Preset Low / Default / Strong",
             L"Numpad /",             L"Toggle auto-focus",
             L"Ctrl + Numpad /",      L"Toggle laser-sight crosshair",

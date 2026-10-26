@@ -602,7 +602,7 @@ bool OSDRenderer::WantHotkeyHelp() const
     return gInfo.Input.ShowHotKeyOSD != 0;
 }
 
-// Status: "wiz3D | Preset N | Sep X% | Conv Yunits [| AutoFocus] [| EyesSwapped]"
+// Status: "wiz3D | Preset N | Sep X% | Conv Yunits [(+shift)] [| AutoFocus] [| EyesSwapped]"
 void OSDRenderer::BuildStatusText(wchar_t* out, size_t cap) const
 {
     const CameraPreset* p = gInfo.Input.GetActivePreset();
@@ -613,23 +613,33 @@ void OSDRenderer::BuildStatusText(wchar_t* out, size_t cap) const
     // visible even at 4K BB where each step moves convUnits by ~0.02 units
     // (one decimal would collapse 3-4 consecutive presses onto the same
     // "2.0" reading before the user saw any number change).
+    // 0.4.3: Alt+Numpad +/- adjusts the global ConvergenceShift (additive
+    // to the preset's One_div_ZPS at render time). Show it next to Conv
+    // when non-zero so the user sees the hotkey do something.
+    wchar_t convStr[48];
+    if (gInfo.Input.ConvergenceShift != 0.0f) {
+        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE,
+                     L"Conv %.2f (shift %+.2f)", convUnits, gInfo.Input.ConvergenceShift);
+    } else {
+        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE, L"Conv %.2f", convUnits);
+    }
     const bool af = p && p->AutoFocusEnable;
     if (af && gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   AutoFocus   |   Eyes Swapped",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus   |   Eyes Swapped",
+                     presetIdx, sepPercent, convStr);
     } else if (af) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   AutoFocus",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus",
+                     presetIdx, sepPercent, convStr);
     } else if (gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f   |   Eyes Swapped",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   Eyes Swapped",
+                     presetIdx, sepPercent, convStr);
     } else {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %.2f",
-                     presetIdx, sepPercent, convUnits);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s",
+                     presetIdx, sepPercent, convStr);
     }
 }
 
@@ -817,6 +827,7 @@ void OSDRenderer::Render(ID3D11DeviceContext* ctx,
             L"Numpad *",             L"Toggle stereo on / off",
             L"Numpad +  /  -",       L"Separation (depth strength)",
             L"Shift + Numpad +/-",   L"Convergence (where screen plane sits)",
+            L"Alt + Numpad +/-",     L"Convergence shift (quick comfort offset)",
             L"Numpad 7 / 8 / 9",     L"Preset Low / Default / Strong",
             L"Numpad /",             L"Toggle auto-focus",
             L"Ctrl + Numpad /",      L"Toggle laser-sight crosshair",
