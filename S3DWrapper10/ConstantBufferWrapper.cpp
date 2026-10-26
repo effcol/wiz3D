@@ -389,6 +389,12 @@ public:
 			m_CurrentConvergenceShift = m_ShaderData.ConvergenceShift;
 		}
 
+		// 0.4.3: Add global user ConvergenceShift (Alt+Numpad +/-) on top of
+		// per-shader profile shift. Default 0.0f so users who don't press the
+		// hotkey see no behaviour change. Mirrors the DX9 wiring in
+		// BaseStereoRenderer_Main.cpp AutoDetectStereoSettings.
+		m_CurrentConvergenceShift += pWrp->m_Input.ConvergenceShift;
+
 		if (gInfo.VertexShaderModificationMethod < 2)
 		{
 			float m31 = m_CurrentMeshMultiplier * pWrp->GetTransformationMatrix(vi)._31;

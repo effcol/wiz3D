@@ -120,8 +120,14 @@ struct DataInput
 #ifndef FINAL_RELEASE
 	float ZNear;
 	float Multiplier;
-	float ConvergenceShift;
 #endif
+	// 0.4.3: ConvergenceShift ungated for release. Additive to One_div_ZPS at
+	// render time (ConstantBufferWrapper.cpp:408), giving users a global
+	// comfort knob that layers on top of the preset focal plane. Hotkey:
+	// Alt+Numpad +/-. Per-shader ConvergenceShift from BaseProfile.xml was
+	// already live in release; the global hotkey was dead code because this
+	// field and the dispatch case were both FINAL_RELEASE-gated.
+	float ConvergenceShift;
 	CameraPreset* GetActivePreset() { return &Preset[ActivePreset]; }
 	void SwitchCurrentPresetAutofocus(); 
 	bool IsChanged(DataInput& inputOther);
@@ -157,8 +163,8 @@ struct DataInput
 #ifndef FINAL_RELEASE
 		ZNear				= 1.0f;
 		Multiplier			= 1.0f;
-		ConvergenceShift	= 0.0f;
 #endif
+		ConvergenceShift	= 0.0f;
 	}
 };
 
@@ -587,12 +593,13 @@ public:
 			{ "ToggleFPS", TOGGLE_FPS,                                      0 },	//---           			---
 			{ "ToggleHotkeysOSD", TOGGLE_HOTKEY,						    368 },	//--- Shift + F1 (iZ3D legacy hotkey-help)	---
 			{ "ToggleOSD", TOGGLE_SHOW_OSD,                                 624 },	//--- Ctrl + F1 (status strip + FPS)	---
-			// 0.4.1 ShaderHunter — hotkey is itself the opt-in. Numpad 0 toggles
-			// hunt mode; cycle/capture keys only act while hunt mode is on.
-			// Numpad bindings match 3Dmigoto / HelixMod convention (bo3b review
-			// 0.4.1): F-keys collide with games, Numpad 0-6 are empty in iZ3D's
-			// map so the shaderhacker standard slots in cleanly.
-			{ "ToggleShaderHunt",  TOGGLE_SHADER_HUNT,                       96 },	//--- Numpad 0 (enter/exit hunt mode)	---
+			// 0.4.1 ShaderHunter — hotkey is itself the opt-in. Cycle/capture keys
+			// only act while hunt mode is on, so Numpad 1-3 are safe to leave as
+			// Numpad because games can't hit them without first entering hunt mode.
+			// 0.4.3: Hunt-toggle moved from Numpad 0 to Ctrl+0 (top-row 0) --
+			// Max Payne 3 (and other games) bind Numpad 0 as a gameplay key, so
+			// the bare Numpad 0 kept triggering hunt mode mid-game.
+			{ "ToggleShaderHunt",  TOGGLE_SHADER_HUNT,                      560 },	//--- Ctrl + 0 (top-row) enter/exit hunt mode	---
 			{ "HuntPrevShader",    HUNT_PREV_SHADER,                         97 },	//--- Numpad 1 (hide previous CRC)	---
 			{ "HuntNextShader",    HUNT_NEXT_SHADER,                         98 },	//--- Numpad 2 (hide next CRC)	---
 			{ "HuntCaptureShader", HUNT_CAPTURE_SHADER,                      99 },	//--- Numpad 3 (capture current CRC)	---

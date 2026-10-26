@@ -1133,6 +1133,14 @@ void CBaseStereoRenderer::CheckMeshMultiplier()
 	}
 #endif
 
+	// 0.4.3: Add global user-driven convergence shift (Alt+Numpad +/-) on
+	// top of whatever the per-shader profile or weapon/mesh entries set.
+	// Default is 0.0f so users who don't press the hotkey see no behaviour
+	// change. Also wiring the hotkey into actual rendering (pre-0.4.3 the
+	// field itself was FINAL_RELEASE-gated so this value never existed
+	// in shipped builds).
+	m_CurrentConvergenceShift += m_Input.ConvergenceShift;
+
 	if (m_Pipeline == Shader && m_bInverseZ)
 		m_CurrentMeshMultiplier *= -1.0f;
 	m_CurrentMeshMultiplier *= gInfo.SeparationScale;

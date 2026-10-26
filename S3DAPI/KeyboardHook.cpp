@@ -285,23 +285,29 @@ void KeyboardHook::KeyboardProcedure()
 					gInfo.Input.Multiplier -= OFFSET(gInfo.Input.Multiplier, STEP_MULTIPLIER);
 					break;
 
+				case SWITCH_DEBUG_INFO_PAGE:
+					if ((++gInfo.Input.DebugInfoPage) > DEBUG_INFO_PAGES_COUNT) gInfo.Input.DebugInfoPage = 0;
+					break;
+#endif
+
+				// 0.4.3: INCREASE/DECREASE_CONVERGENCE_SHIFT ungated for release.
+				// The dev-only Multiplier divisor from the pre-0.4.3 delta formula
+				// is replaced by a constant 1.0 so the hotkey keeps compiling in
+				// FINAL_RELEASE where Multiplier doesn't exist. Semantics match
+				// the per-shader ConvergenceShift from BaseProfile.xml -- additive
+				// to the preset's One_div_ZPS at render time.
 				case INCREASE_CONVERGENCE_SHIFT:
 					{
-						float delta = STEP_ONE_DIV_ZPS / 50 * m_Scale / gInfo.Input.Multiplier;
+						float delta = STEP_ONE_DIV_ZPS / 50 * m_Scale;
 						gInfo.Input.ConvergenceShift += delta;
 					}
 					break;
 				case DECREASE_CONVERGENCE_SHIFT:
 					{
-						float delta = STEP_ONE_DIV_ZPS / 50 * m_Scale / gInfo.Input.Multiplier;
+						float delta = STEP_ONE_DIV_ZPS / 50 * m_Scale;
 						gInfo.Input.ConvergenceShift -= delta;
 					}
 					break;
-
-				case SWITCH_DEBUG_INFO_PAGE:
-					if ((++gInfo.Input.DebugInfoPage) > DEBUG_INFO_PAGES_COUNT) gInfo.Input.DebugInfoPage = 0;
-					break;
-#endif
 				}
 #undef OFFSET
 			}

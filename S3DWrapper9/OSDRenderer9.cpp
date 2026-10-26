@@ -582,7 +582,7 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
             // ShaderHunter cycle/capture/exit keys live on the hunter OSD
             // line 2 while hunt mode is active; only the entry hotkey needs
             // to appear in the global menu (user 2026-10-21 feedback).
-            L"Numpad 0",             L"ShaderHunter: enter / exit hunt mode",
+            L"Ctrl + 0",             L"ShaderHunter: enter / exit hunt mode",
             L"Ctrl + F5",            L"Reload BaseProfile.xml (live)",
         };
         int row = 72;

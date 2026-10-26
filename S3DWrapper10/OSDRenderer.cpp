@@ -823,7 +823,7 @@ void OSDRenderer::Render(ID3D11DeviceContext* ctx,
             L"PrtScn",               L"Stereo screenshot",
             L"Shift + F1",           L"Toggle this hotkey list",
             L"Ctrl + F1",            L"Toggle OSD strip + FPS",
-            L"Numpad 0",             L"ShaderHunter: enter / exit hunt mode",
+            L"Ctrl + 0",             L"ShaderHunter: enter / exit hunt mode",
             L"Ctrl + F5",            L"Reload BaseProfile.xml (live)",
         };
         int row = 72;

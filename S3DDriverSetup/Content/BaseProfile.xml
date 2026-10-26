@@ -1375,6 +1375,19 @@
 		<CodeMatrices Value="1"/>
 		<ViewportMatrices Value="1"/>
 		<CodeMatrixRows Value="1"/>
+		<!-- 0.4.3: Trine 4 defaults pushed the scene behind the screen plane on
+		     tester rigs (Trine 5 doesn't; same engine, different camera scale).
+		     Preset[1] boosts separation to 150% and pulls convergence closer
+		     per tester-reported "27in sweet spot". Users wanting popout can
+		     also push convergence further with Shift+Numpad+/-. Deeper issue
+		     (convergence slider acting like separation) is tracked for 0.4.4
+		     and will need Hunter captures of the view-proj matrix path. -->
+		<Presets>
+			<Preset Index="1">
+				<StereoBase Value="1.50" />
+				<One_div_ZPS Value="0.15" />
+			</Preset>
+		</Presets>
 	</Profile>
 	<Profile Name="Trine 5: A Clockwork Conspiracy">
 		<File Name="trine5.exe" />
@@ -3821,6 +3834,24 @@
 		<HudDepth Value="ApparentDepth" Rect="TransPos" />
 		<!-- Spot shadow maps: depth-only passes into targets not the screen's size -->
 		<LightViewPasses Value="1" />
+		<!-- 0.4.3 explicit presets: MP3 cutscenes have fast cuts + FOV changes
+		     that interact poorly with the dynamic depth read via HudDepth above,
+		     so pin AutoFocus=0 across presets. Users can toggle via Numpad / in
+		     game if they want to try it on. Preset[1] (Numpad 8) +130% sep for
+		     bigger panels; Preset[2] (Numpad 9) wider convergence for close-up. -->
+		<Presets>
+			<Preset Index="0">
+				<AutoFocusEnable Value="0" />
+			</Preset>
+			<Preset Index="1">
+				<StereoBase Value="1.30" />
+				<AutoFocusEnable Value="0" />
+			</Preset>
+			<Preset Index="2">
+				<One_div_ZPS Value="0.070000" />
+				<AutoFocusEnable Value="0" />
+			</Preset>
+		</Presets>
 	</Profile>
 	<!--should be last-->
 	<Profile Name="Half-Life 2">
