@@ -79,14 +79,24 @@ struct OutputModeEntry
 static const OutputModeEntry kOutputModeTable[] =
 {
     // --- Canonical short names (0.4.1+). These are what the config comments show. ---
+    // 0.4.3: Full-SBS and Full-TAB alias to the SideBySideOutput DLL at the
+    // same submode as their Half counterparts. The DLL is a surface blitter
+    // that operates on whatever backbuffer size it finds -- user picks a
+    // 2x-wide / 2x-tall display mode to get the actual "Full" presentation.
+    // The DX11 Stereo-Injector and 3DV-Direct compositors use the same
+    // UV-sampled approach; DX9 matches by alias rather than a dedicated DLL.
     { OUTMODE_HALF_SIDE_BY_SIDE,    "HalfSBS",                "SideBySideOutput",            0 },
-    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSBS",                "FullSideBySideOutput",        0 },
+    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSBS",                "SideBySideOutput",            0 },
     { OUTMODE_HALF_TOP_AND_BOTTOM,  "HalfTAB",                "SideBySideOutput",            1 },
-    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTAB",                "FullTopAndBottomOutput",      0 },
+    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTAB",                "SideBySideOutput",            1 },
     { OUTMODE_ANAGLYPH,             "Anaglyph",               "AnaglyphOutput",              0 },
     { OUTMODE_ROW_INTERLEAVED,      "RowIL",                  "InterlacedOutput",            0 },
     { OUTMODE_COLUMN_INTERLEAVED,   "ColumnIL",               "InterlacedOutput",            1 },
-    { OUTMODE_CHECKERBOARD,         "Checker",                "CheckerboardOutput",          0 },
+    // 0.4.3: Checker aliases to DLP3DOutput (the dedicated DLP 3D-Ready
+    // output DLL that produces the checkerboard pattern DLP-Link glasses
+    // sync on). S3DOutput submode 10 also has a Checkerboard but it's
+    // #ifndef FINAL_RELEASE-gated so unavailable in shipped builds.
+    { OUTMODE_CHECKERBOARD,         "Checker",                "DLP3DOutput",                 0 },
     { OUTMODE_SR_WEAVE,             "SRWeave",                "SimulatedRealityWeaveOutput", 0 },
     { OUTMODE_STEREO_MIRROR,        "Mirror",                 "StereoMirrorOutput",          0 },
     { OUTMODE_IZ3D_DUAL,            "iZ3D",                   "S3DOutput",                   0 },
@@ -96,12 +106,12 @@ static const OutputModeEntry kOutputModeTable[] =
     { OUTMODE_HALF_TOP_AND_BOTTOM,  "TAB",                    "SideBySideOutput",            1 },
     // --- Legacy long-form aliases (pre-0.4.1 names kept recognised). ---
     { OUTMODE_HALF_SIDE_BY_SIDE,    "HalfSideBySide",         "SideBySideOutput",            0 },
-    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSideBySide",         "FullSideBySideOutput",        0 },
+    { OUTMODE_FULL_SIDE_BY_SIDE,    "FullSideBySide",         "SideBySideOutput",            0 },
     { OUTMODE_HALF_TOP_AND_BOTTOM,  "HalfTopAndBottom",       "SideBySideOutput",            1 },
-    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTopAndBottom",       "FullTopAndBottomOutput",      0 },
+    { OUTMODE_FULL_TOP_AND_BOTTOM,  "FullTopAndBottom",       "SideBySideOutput",            1 },
     { OUTMODE_ROW_INTERLEAVED,      "RowInterleaved",         "InterlacedOutput",            0 },
     { OUTMODE_COLUMN_INTERLEAVED,   "ColumnInterleaved",      "InterlacedOutput",            1 },
-    { OUTMODE_CHECKERBOARD,         "Checkerboard",           "CheckerboardOutput",          0 },
+    { OUTMODE_CHECKERBOARD,         "Checkerboard",           "DLP3DOutput",                 0 },
     { OUTMODE_SR_WEAVE,             "SimulatedRealityWeave",  "SimulatedRealityWeaveOutput", 0 },
     { OUTMODE_STEREO_MIRROR,        "StereoMirror",           "StereoMirrorOutput",          0 },
     { OUTMODE_IZ3D_DUAL,            "iZ3DDualPanel",          "S3DOutput",                   0 },
