@@ -131,6 +131,39 @@ HRESULT SimulatedRealityWeaveOutput::InitializeSCData(CBaseSwapChain* pSwapChain
         m_ViewHeight = desc.Height;
         m_ViewFormat = desc.Format;
 
+        // 0.5.0 task #77 diagnostic -- write to same log the DX9 wrapper uses.
+        // Path: <GameExeDir>\wiz3D_Logs\<App>\_task77_subnative.log
+        // gInfo isn't exported from the wrapper, so we rebuild the path from
+        // GetModuleFileName(NULL).
+        {
+            WCHAR exePath[MAX_PATH] = {};
+            GetModuleFileNameW(NULL, exePath, MAX_PATH);
+            WCHAR* slash = wcsrchr(exePath, L'\\');
+            if (slash) *slash = 0;
+            WCHAR* exeName = slash ? (slash + 1) : exePath;
+            // Extract app base name from the ORIGINAL exePath+filename
+            WCHAR appBase[MAX_PATH] = {};
+            if (slash) {
+                WCHAR tmp[MAX_PATH];
+                wcscpy_s(tmp, MAX_PATH, slash + 1);
+                WCHAR* dot = wcsrchr(tmp, L'.');
+                if (dot) *dot = 0;
+                wcscpy_s(appBase, MAX_PATH, tmp);
+            }
+            WCHAR logPath[MAX_PATH];
+            swprintf_s(logPath, MAX_PATH, L"%s\\wiz3D_Logs\\%s\\_task77_subnative.log",
+                exePath, appBase);
+            FILE* f = nullptr;
+            _wfopen_s(&f, logPath, L"a");
+            if (f) {
+                fprintf(f, "SR_Weave InitializeSCData: primary BB %ux%u fmt=%u -> m_ViewWidth=%u m_ViewHeight=%u (SBS tex %ux%u)\n",
+                    desc.Width, desc.Height, (unsigned)desc.Format,
+                    m_ViewWidth, m_ViewHeight, m_ViewWidth * 2, m_ViewHeight);
+                fclose(f);
+            }
+            (void)exeName;
+        }
+
         // SBS texture: left eye occupies [0, ViewWidth), right eye [ViewWidth, ViewWidth*2)
         m_pd3dDevice->CreateTexture(
             m_ViewWidth * 2, m_ViewHeight,
@@ -240,6 +273,41 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
 
     if (!pLeft || !pRight)
         return S_OK;
+
+    // 0.5.0 task #77: diagnostic -- log pLeft/pRight dims + the rects we read from
+    static int s_logN = 0;
+    if (s_logN < 3)
+    {
+        ++s_logN;
+        D3DSURFACE_DESC lDesc = {}, rDesc = {}, pDesc = {};
+        pLeft->GetDesc(&lDesc);
+        pRight->GetDesc(&rDesc);
+        pSwapChain->m_pPrimaryBackBuffer->GetDesc(&pDesc);
+        WCHAR exePath[MAX_PATH] = {};
+        GetModuleFileNameW(NULL, exePath, MAX_PATH);
+        WCHAR* slash = wcsrchr(exePath, L'\\');
+        WCHAR appBase[MAX_PATH] = {};
+        if (slash) {
+            *slash = 0;
+            wcscpy_s(appBase, MAX_PATH, slash + 1);
+            WCHAR* dot = wcsrchr(appBase, L'.');
+            if (dot) *dot = 0;
+        }
+        WCHAR logPath[MAX_PATH];
+        swprintf_s(logPath, MAX_PATH, L"%s\\wiz3D_Logs\\%s\\_task77_subnative.log", exePath, appBase);
+        FILE* f = nullptr;
+        _wfopen_s(&f, logPath, L"a");
+        if (f) {
+            fprintf(f, "SR_Weave Output #%d: primaryBB=%ux%u pLeft=%p (%ux%u) pRight=%p (%ux%u) pLeftRect=(%ld,%ld,%ld,%ld) pRightRect=(%ld,%ld,%ld,%ld) m_ViewWidth=%u m_ViewHeight=%u sameLR=%d\n",
+                s_logN, pDesc.Width, pDesc.Height,
+                (void*)pLeft, lDesc.Width, lDesc.Height,
+                (void*)pRight, rDesc.Width, rDesc.Height,
+                pLeftRect->left, pLeftRect->top, pLeftRect->right, pLeftRect->bottom,
+                pRightRect->left, pRightRect->top, pRightRect->right, pRightRect->bottom,
+                m_ViewWidth, m_ViewHeight, (int)(pLeft == pRight));
+            fclose(f);
+        }
+    }
 
     IDirect3DSurface9* pSBSSurface = nullptr;
     if (FAILED(m_pSBSTexture->GetSurfaceLevel(0, &pSBSSurface)))
