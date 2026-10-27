@@ -40,6 +40,7 @@
 #define OGL_OUTPUT_COLUMN_INTERLEAVED  7
 #define OGL_OUTPUT_CHECKERBOARD        8
 #define OGL_OUTPUT_SR_WEAVE            9
+#define OGL_OUTPUT_KATANGA             12  // bo3b's shared-texture viewer; see KatangaOGL.{h,cpp}
 
 struct GlobalInfo
 {

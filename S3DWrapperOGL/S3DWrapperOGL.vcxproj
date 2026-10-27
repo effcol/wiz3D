@@ -116,7 +116,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)lib\gl\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;d3d11.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore32.dll;SimulatedRealityDirectX32.dll;SimulatedRealityOpenGL32.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <IgnoreSpecificDefaultLibraries>LIBC.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ModuleDefinitionFile>$(ProjectName).def</ModuleDefinitionFile>
@@ -133,7 +133,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)lib\gl\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;d3d11.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore.dll;SimulatedRealityDirectX.dll;SimulatedRealityOpenGL.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <IgnoreSpecificDefaultLibraries>LIBC.lib;libcmt.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ModuleDefinitionFile>$(ProjectName).def</ModuleDefinitionFile>
@@ -147,7 +147,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)lib\gl\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;d3d11.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore32.dll;SimulatedRealityDirectX32.dll;SimulatedRealityOpenGL32.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <IgnoreSpecificDefaultLibraries>LIBC.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ModuleDefinitionFile>$(ProjectName).def</ModuleDefinitionFile>
@@ -164,7 +164,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)lib\gl\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;d3d11.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore.dll;SimulatedRealityDirectX.dll;SimulatedRealityOpenGL.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <IgnoreSpecificDefaultLibraries>LIBC.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ModuleDefinitionFile>$(ProjectName).def</ModuleDefinitionFile>
@@ -178,7 +178,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)lib\gl\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;d3d11.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore32.dll;SimulatedRealityDirectX32.dll;SimulatedRealityOpenGL32.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <IgnoreSpecificDefaultLibraries>LIBC.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ModuleDefinitionFile>$(ProjectName).def</ModuleDefinitionFile>
@@ -195,7 +195,7 @@
       <AdditionalIncludeDirectories>$(SolutionDir)lib\gl\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
-      <AdditionalDependencies>shlwapi.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>shlwapi.lib;d3d11.lib;$(MinHookLib);$(SRLib);%(AdditionalDependencies)</AdditionalDependencies>
       <DelayLoadDLLs>SimulatedRealityCore.dll;SimulatedRealityDirectX.dll;SimulatedRealityOpenGL.dll;opencv_world343.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
       <IgnoreSpecificDefaultLibraries>LIBC.lib;%(IgnoreSpecificDefaultLibraries)</IgnoreSpecificDefaultLibraries>
       <ModuleDefinitionFile>$(ProjectName).def</ModuleDefinitionFile>
@@ -206,6 +206,10 @@
     <ClCompile Include="Modified.cpp" />
     <ClCompile Include="Renderer.cpp" />
     <ClCompile Include="SRWeaveOGL.cpp" />
+    <ClCompile Include="KatangaOGL.cpp" />
+    <ClCompile Include="..\Shared\KatangaProducer.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="S3DWrapperOGL.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -227,6 +231,8 @@
     <ClInclude Include="shaders.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="Trace.h" />
+    <ClInclude Include="KatangaOGL.h" />
+    <ClInclude Include="..\Shared\KatangaProducer.h" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="S3DWrapperOGL.rc" />

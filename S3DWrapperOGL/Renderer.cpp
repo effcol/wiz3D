@@ -19,6 +19,7 @@
 #include "tchar.h"
 #include "ProductNames.h"
 #include "SRWeaveOGL.h"
+#include "KatangaOGL.h"
 
 std::vector<Renderer>	g_RendererList;
 static HWND	m_hFrontWnd;
@@ -302,6 +303,14 @@ Renderer::~Renderer(void)
 		SRWeaveOGLContext* sr = (SRWeaveOGLContext*)m_pSRWeave;
 		SRWeaveOGL_Cleanup(&sr);
 		m_pSRWeave = nullptr;
+	}
+	// Katanga interop teardown must also happen with GL context alive so
+	// wglDXUnregisterObjectNV / wglDXCloseDeviceNV complete cleanly.
+	if (m_pKatanga)
+	{
+		KatangaOGLContext* kt = (KatangaOGLContext*)m_pKatanga;
+		KatangaOGL_Cleanup(&kt);
+		m_pKatanga = nullptr;
 	}
 	if (m_TextureID[0])
 	{
@@ -799,6 +808,7 @@ BOOL	Renderer::InitializeShaders()
 		case OGL_OUTPUT_FULL_SBS:
 		case OGL_OUTPUT_HALF_TB:
 		case OGL_OUTPUT_FULL_TB:
+		case OGL_OUTPUT_KATANGA:   // Katanga publishes elsewhere; the on-screen fallback is SBS
 			szBackFS  = g_szRAWLeftShaderText;
 			szFrontFS = g_szRAWRightShaderText;
 			break;
@@ -1094,6 +1104,45 @@ BOOL	Renderer::SwapBuffers()
 	glBindTexture(GL_TEXTURE_2D, m_TextureID[1]);
 	wglBindTexImageARB(m_hPBuffer, bStereo ? rightEye : m_MonoBuffer);
 
+	// Katanga publish runs independently of (and before) the on-screen
+	// composite. The game window still gets an SBS fallback below so the
+	// user sees content whether or not a Katanga consumer is attached.
+	if (gInfo.OutputMode == OGL_OUTPUT_KATANGA && bStereo)
+	{
+		if (!m_pKatanga && !m_bKatangaTriedInit)
+		{
+			m_bKatangaTriedInit = TRUE;
+			KatangaOGLContext* kt = nullptr;
+			KatangaOGL_Initialize(&kt, m_hWnd, m_nWindowWidth, m_nWindowHeight);
+			m_pKatanga = kt;
+
+			TCHAR path[MAX_PATH];
+			_tcscpy_s(path, MAX_PATH, gInfo.DriverDirectory);
+			_tcscat_s(path, MAX_PATH, _T("\\OpenGLQuadBufferStereo.log"));
+			FILE* f = NULL;
+			_tfopen_s(&f, path, _T("a"));
+			if (f)
+			{
+				bool fb = kt && KatangaOGL_IsFallback((KatangaOGLContext*)kt);
+				const char* status = (kt && !fb) ? "ok"
+					: fb ? "init returned fallback (d3d11 / interop / Katanga missing) - SBS only"
+					     : "init returned false - SBS only";
+				fprintf(f, "[wiz3D-OGL diag Katanga-init] viewW=%u viewH=%u status=%s\n",
+					m_nWindowWidth, m_nWindowHeight, status);
+				fflush(f);
+				fclose(f);
+			}
+		}
+		if (m_pKatanga && !KatangaOGL_IsFallback((KatangaOGLContext*)m_pKatanga))
+		{
+			KatangaOGL_Render((KatangaOGLContext*)m_pKatanga,
+				(unsigned int)m_TextureID[0], (unsigned int)m_TextureID[1],
+				fTextureCoordX, fTextureCoordY,
+				m_nWindowWidth, m_nWindowHeight,
+				gInfo.SwapEyes != 0);
+		}
+	}
+
 	// ---- Output compositing ----
 	GLint sL, sR;
 	if (gInfo.OutputMode == OGL_OUTPUT_SR_WEAVE)
@@ -1252,7 +1301,8 @@ BOOL	Renderer::SwapBuffers()
 	else if (gInfo.OutputMode == OGL_OUTPUT_HALF_SBS ||
 			 gInfo.OutputMode == OGL_OUTPUT_FULL_SBS ||
 			 gInfo.OutputMode == OGL_OUTPUT_HALF_TB ||
-			 gInfo.OutputMode == OGL_OUTPUT_FULL_TB)
+			 gInfo.OutputMode == OGL_OUTPUT_FULL_TB ||
+			 gInfo.OutputMode == OGL_OUTPUT_KATANGA)   // Katanga publishes above; the on-screen fallback is SBS
 	{
 		// Split-screen modes: left eye to one half of the back buffer, right
 		// eye to the other. Half-vs-Full is identical compositor geometry —

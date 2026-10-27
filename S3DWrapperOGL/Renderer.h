@@ -59,6 +59,13 @@ class Renderer
 	void*	m_pSRWeave;
 	BOOL	m_bSRWeaveTriedInit;
 
+	// Katanga (OutputMode 12). Same opaque-pointer pattern as SR weave;
+	// full type is KatangaOGLContext in KatangaOGL.cpp. m_bKatangaTriedInit
+	// is sticky so Output() falls through to plain SBS once we've decided
+	// Katanga isn't up / interop missing.
+	void*	m_pKatanga;
+	BOOL	m_bKatangaTriedInit;
+
 	// Mono-HUD overlay state (gInfo.MonoHudOverlay). idTech 3 family games
 	// (RtCW / Q3 / Doom 3) render the HUD via mono GL_BACK draws after the
 	// two per-eye 3D passes, which makes the HUD/cinematics/menus appear in
