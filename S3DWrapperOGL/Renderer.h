@@ -66,6 +66,11 @@ class Renderer
 	void*	m_pKatanga;
 	BOOL	m_bKatangaTriedInit;
 
+	// NV3D-Lib shutter glasses (OutputMode 11). Opaque pointer to a
+	// NV3DGlassesOGLContext; m_bNV3DTriedInit is sticky.
+	void*	m_pNV3DGlasses;
+	BOOL	m_bNV3DGlassesTriedInit;
+
 	// Mono-HUD overlay state (gInfo.MonoHudOverlay). idTech 3 family games
 	// (RtCW / Q3 / Doom 3) render the HUD via mono GL_BACK draws after the
 	// two per-eye 3D passes, which makes the HUD/cinematics/menus appear in

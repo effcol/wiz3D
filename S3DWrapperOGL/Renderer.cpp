@@ -20,6 +20,7 @@
 #include "ProductNames.h"
 #include "SRWeaveOGL.h"
 #include "KatangaOGL.h"
+#include "NV3DGlassesOGL.h"
 
 std::vector<Renderer>	g_RendererList;
 static HWND	m_hFrontWnd;
@@ -311,6 +312,13 @@ Renderer::~Renderer(void)
 		KatangaOGLContext* kt = (KatangaOGLContext*)m_pKatanga;
 		KatangaOGL_Cleanup(&kt);
 		m_pKatanga = nullptr;
+	}
+	// NV3D-Lib shutter teardown while GL context + D3D9Ex device are both live.
+	if (m_pNV3DGlasses)
+	{
+		NV3DGlassesOGLContext* nv = (NV3DGlassesOGLContext*)m_pNV3DGlasses;
+		NV3DGlassesOGL_Cleanup(&nv);
+		m_pNV3DGlasses = nullptr;
 	}
 	if (m_TextureID[0])
 	{
@@ -809,6 +817,7 @@ BOOL	Renderer::InitializeShaders()
 		case OGL_OUTPUT_HALF_TB:
 		case OGL_OUTPUT_FULL_TB:
 		case OGL_OUTPUT_KATANGA:   // Katanga publishes elsewhere; the on-screen fallback is SBS
+		case OGL_OUTPUT_3DVISION_GLASSES:  // NV3D-Lib shutter publishes elsewhere; same on-screen fallback
 			szBackFS  = g_szRAWLeftShaderText;
 			szFrontFS = g_szRAWRightShaderText;
 			break;
@@ -1104,6 +1113,48 @@ BOOL	Renderer::SwapBuffers()
 	glBindTexture(GL_TEXTURE_2D, m_TextureID[1]);
 	wglBindTexImageARB(m_hPBuffer, bStereo ? rightEye : m_MonoBuffer);
 
+	// NV3D-Lib shutter publish runs independently of (and before) the
+	// on-screen composite. Same pattern as the Katanga block below: the
+	// game window still gets an SBS fallback so the user sees content on
+	// their monitor whether or not 3D Vision hardware is present.
+	if (gInfo.OutputMode == OGL_OUTPUT_3DVISION_GLASSES && bStereo)
+	{
+		if (!m_pNV3DGlasses && !m_bNV3DGlassesTriedInit)
+		{
+			m_bNV3DGlassesTriedInit = TRUE;
+			NV3DGlassesOGLContext* nv = nullptr;
+			HGLRC glctx = wglGetCurrentContext();
+			HDC   gldc  = wglGetCurrentDC();
+			NV3DGlassesOGL_Initialize(&nv, glctx, gldc, m_hWnd,
+				m_nWindowWidth, m_nWindowHeight, gInfo.SwapEyes != 0);
+			m_pNV3DGlasses = nv;
+
+			TCHAR path[MAX_PATH];
+			_tcscpy_s(path, MAX_PATH, gInfo.DriverDirectory);
+			_tcscat_s(path, MAX_PATH, _T("\\OpenGLQuadBufferStereo.log"));
+			FILE* f = NULL;
+			_tfopen_s(&f, path, _T("a"));
+			if (f)
+			{
+				bool fb = nv && NV3DGlassesOGL_IsFallback((NV3DGlassesOGLContext*)nv);
+				const char* status = (nv && !fb) ? "ok"
+					: fb ? "init returned fallback (no 3D Vision / NVAPI / interop) - SBS only"
+					     : "init returned false - SBS only";
+				fprintf(f, "[wiz3D-OGL diag NV3D-init] viewW=%u viewH=%u status=%s\n",
+					m_nWindowWidth, m_nWindowHeight, status);
+				fflush(f);
+				fclose(f);
+			}
+		}
+		if (m_pNV3DGlasses && !NV3DGlassesOGL_IsFallback((NV3DGlassesOGLContext*)m_pNV3DGlasses))
+		{
+			NV3DGlassesOGL_Render((NV3DGlassesOGLContext*)m_pNV3DGlasses,
+				(unsigned int)m_TextureID[0], (unsigned int)m_TextureID[1],
+				m_nWindowWidth, m_nWindowHeight,
+				gInfo.SwapEyes != 0);
+		}
+	}
+
 	// Katanga publish runs independently of (and before) the on-screen
 	// composite. The game window still gets an SBS fallback below so the
 	// user sees content whether or not a Katanga consumer is attached.
@@ -1302,7 +1353,8 @@ BOOL	Renderer::SwapBuffers()
 			 gInfo.OutputMode == OGL_OUTPUT_FULL_SBS ||
 			 gInfo.OutputMode == OGL_OUTPUT_HALF_TB ||
 			 gInfo.OutputMode == OGL_OUTPUT_FULL_TB ||
-			 gInfo.OutputMode == OGL_OUTPUT_KATANGA)   // Katanga publishes above; the on-screen fallback is SBS
+			 gInfo.OutputMode == OGL_OUTPUT_KATANGA ||          // Katanga publishes above; the on-screen fallback is SBS
+			 gInfo.OutputMode == OGL_OUTPUT_3DVISION_GLASSES)   // NV3D-Lib publishes above; same SBS fallback
 	{
 		// Split-screen modes: left eye to one half of the back buffer, right
 		// eye to the other. Half-vs-Full is identical compositor geometry —
