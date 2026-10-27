@@ -55,15 +55,19 @@
   <ImportGroup Label="ExtensionSettings" />
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\NV3DLib.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\NV3DLib.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\NV3DLib.props" />
   </ImportGroup>
   <ImportGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="PropertySheets">
     <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="..\..\NV3DLib.props" />
   </ImportGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <OutDir>$(SolutionDir)bin\$(Configuration)\$(Platform)\</OutDir>
@@ -165,6 +169,7 @@
     <ClCompile Include="eye_state.cpp" />
     <ClCompile Include="magic_header_capture.cpp" />
     <ClCompile Include="..\..\Shared\KatangaProducerDX9.cpp" />
+    <ClCompile Include="..\..\Shared\NV3DOutputDX9.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3D9Proxy.h" />
@@ -176,6 +181,7 @@
     <ClInclude Include="magic_header_capture.h" />
     <ClInclude Include="log.h" />
     <ClInclude Include="..\..\Shared\KatangaProducerDX9.h" />
+    <ClInclude Include="..\..\Shared\NV3DOutputDX9.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="d3d9.def" />

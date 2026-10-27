@@ -11,6 +11,7 @@
 #include <d3d9.h>
 
 #include "../../Shared/KatangaProducerDX9.h"
+#include "../../Shared/NV3DOutputDX9.h"
 
 namespace SimulatedReality
 {
@@ -281,6 +282,20 @@ private:
     // consumer is attached or not).
     bool RunKatanga();
     wiz3d::KatangaProducerDX9  m_katanga;
+
+    // OutputMode 11 — NV3D-Lib shutter output. Owns a wide-SBS 2W x H
+    // texture whose KMT shared handle crosses directly into NV3D-Lib's
+    // internal D3D9Ex device (native DX9 backend, no DX11 bridge). See
+    // Shared/NV3DOutputDX9.h and lib/NV3D-Lib/.../src/backends/dx9_backend.
+    bool RunNV3DGlasses();
+    void ReleaseNV3DGlasses();
+    wiz3d::NV3DOutputDX9       m_nv3d;
+    IDirect3DTexture9*         m_nv3dSBSTex    = nullptr;
+    IDirect3DSurface9*         m_nv3dSBSSurf   = nullptr;
+    HANDLE                     m_nv3dSBSHandle = nullptr;
+    UINT                       m_nv3dSBSW      = 0;
+    UINT                       m_nv3dSBSH      = 0;
+    D3DFORMAT                  m_nv3dSBSFmt    = D3DFMT_UNKNOWN;
 
     // Magic-header SBS capture (NVIDIA "stereo blit defaults" path).
     // When a game / wrapper produces a (2W × H+1) surface with the

@@ -18,6 +18,7 @@
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
 #include "..\Shared\KatangaProducerDX9.h"   // 0.5.0 Katanga shared-texture producer (DX9 variant)
+#include "..\Shared\NV3DOutputDX9.h"        // 0.5.0 NV3D-Lib shutter output (DX9 native backend)
 #include "UMDDeviceWrapper.h"
 #include "ProxyDirect9.h"
 #include "CommandDumper.h"
@@ -99,6 +100,45 @@ bool CBaseStereoRenderer::IsStereoDepthStencilTexture( UINT Width, UINT Height )
 // (one game per process). Lazy-opened on first Present with OutputMode=Katanga.
 static wiz3d::KatangaProducerDX9 g_KatangaDX9;
 
+// 0.5.0: NV3D-Lib shutter output. Mirrors the Katanga producer's layout:
+// we own a 2W x H wide-SBS tex (created with DX9's pSharedHandle out-param
+// so the KMT handle crosses to NV3D-Lib's internal D3D9Ex device), fill
+// its halves per frame from the eye RTs, and hand the handle to NV3D-Lib.
+static wiz3d::NV3DOutputDX9  g_NV3DDX9;
+static IDirect3DTexture9*    g_NV3DSBSTex      = nullptr;
+static IDirect3DSurface9*    g_NV3DSBSSurf     = nullptr;   // level-0 surface
+static HANDLE                g_NV3DSBSHandle   = nullptr;   // KMT handle
+static UINT                  g_NV3DSBSW        = 0;         // == eyeW * 2
+static UINT                  g_NV3DSBSH        = 0;
+static D3DFORMAT             g_NV3DSBSFmt      = D3DFMT_UNKNOWN;
+
+static void ReleaseNV3DSBS()
+{
+    if (g_NV3DSBSSurf) { g_NV3DSBSSurf->Release(); g_NV3DSBSSurf = nullptr; }
+    if (g_NV3DSBSTex)  { g_NV3DSBSTex->Release();  g_NV3DSBSTex  = nullptr; }
+    g_NV3DSBSHandle = nullptr;
+    g_NV3DSBSW = g_NV3DSBSH = 0;
+    g_NV3DSBSFmt = D3DFMT_UNKNOWN;
+}
+
+static bool EnsureNV3DSBS(IDirect3DDevice9* dev, UINT eyeW, UINT eyeH, D3DFORMAT fmt)
+{
+    const UINT wantW = eyeW * 2;
+    if (g_NV3DSBSTex && g_NV3DSBSW == wantW && g_NV3DSBSH == eyeH && g_NV3DSBSFmt == fmt)
+        return true;
+    ReleaseNV3DSBS();
+    HANDLE h = nullptr;
+    HRESULT hr = dev->CreateTexture(wantW, eyeH, 1, D3DUSAGE_RENDERTARGET, fmt,
+                                     D3DPOOL_DEFAULT, &g_NV3DSBSTex, &h);
+    if (FAILED(hr) || !g_NV3DSBSTex || !h) { ReleaseNV3DSBS(); return false; }
+    if (FAILED(g_NV3DSBSTex->GetSurfaceLevel(0, &g_NV3DSBSSurf))) { ReleaseNV3DSBS(); return false; }
+    g_NV3DSBSHandle = h;
+    g_NV3DSBSW      = wantW;
+    g_NV3DSBSH      = eyeH;
+    g_NV3DSBSFmt    = fmt;
+    return true;
+}
+
 HRESULT CBaseStereoRenderer::DoPresent( CBaseSwapChain* pSwapChain, HWND hDestWindowOverride, CONST RECT * pSourceRect, CONST RECT * pDestRect,
 									   CONST RGNDATA * pDirtyRegion, DWORD dwFlags, bool bExMode )
 {
@@ -130,6 +170,40 @@ HRESULT CBaseStereoRenderer::DoPresent( CBaseSwapChain* pSwapChain, HWND hDestWi
 				g_KatangaDX9.OnBackbufferReady(realDev, bbd.Width, bbd.Height, bbd.Format);
 			}
 			g_KatangaDX9.PublishFrame(realDev, leftRT, rightRT, gInfo.Input.SwapEyes != 0);
+		}
+	}
+
+	// 0.5.0 NV3D-Lib shutter publish. OutputMode==11 (OUTMODE_3DVISION_GLASSES).
+	// Owns a wide-SBS 2W x H texture whose KMT shared handle crosses directly
+	// into NV3D-Lib's internal D3D9Ex device -- no DX11 bridge needed. StretchRect
+	// per-eye halves into the shared tex, then NV3D-Lib's AUTOMATIC-mode signature
+	// path drives shutter output. Falls through: the normal on-screen composite
+	// still runs below so the user sees SBS whether or not 3D Vision hardware
+	// is present.
+	if (gInfo.OutputMode == 11 && pSwapChain && pSwapChain->IsStereoActive())
+	{
+		IDirect3DSurface9* leftRT  = pSwapChain->GetViewRT(TRUE);
+		IDirect3DSurface9* rightRT = pSwapChain->GetViewRT(FALSE);
+		IDirect3DDevice9*  realDev = m_Direct3DDevice.GetReal();
+		if (leftRT && rightRT && realDev)
+		{
+			D3DSURFACE_DESC eyed = {};
+			leftRT->GetDesc(&eyed);
+			if (EnsureNV3DSBS(realDev, eyed.Width, eyed.Height, eyed.Format))
+			{
+				const bool swap = (gInfo.Input.SwapEyes != 0);
+				LONG halfW = (LONG)eyed.Width;
+				RECT dstL = { 0,     0, halfW,                     (LONG)eyed.Height };
+				RECT dstR = { halfW, 0, (LONG)g_NV3DSBSW,          (LONG)eyed.Height };
+				IDirect3DSurface9* srcL = swap ? rightRT : leftRT;
+				IDirect3DSurface9* srcR = swap ? leftRT  : rightRT;
+				realDev->StretchRect(srcL, NULL, g_NV3DSBSSurf, &dstL, D3DTEXF_POINT);
+				realDev->StretchRect(srcR, NULL, g_NV3DSBSSurf, &dstR, D3DTEXF_POINT);
+				if (!g_NV3DDX9.IsReady())
+					g_NV3DDX9.TryInit(realDev, NULL, swap);
+				if (g_NV3DDX9.IsReady())
+					g_NV3DDX9.Present(g_NV3DSBSHandle, g_NV3DSBSW, g_NV3DSBSH, g_NV3DSBSFmt);
+			}
 		}
 	}
 

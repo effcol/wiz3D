@@ -119,6 +119,8 @@ Device9Proxy::~Device9Proxy()
     ReleaseShaderPipeline();
     ReleaseShadow();
     ReleaseBackBufferReference();
+    ReleaseNV3DGlasses();
+    m_nv3d.Shutdown();
 }
 
 void Device9Proxy::ReleaseShadow()
@@ -728,6 +730,60 @@ bool Device9Proxy::RunKatanga()
     return m_katanga.PublishFrame(m_real, m_leftEyeSurf, m_rightEyeSurf, swap);
 }
 
+// NV3D-Lib shutter output. Mirrors RunKatanga's shape: own a wide-SBS tex
+// whose KMT handle NV3D-Lib opens, StretchRect per-eye halves in, Present.
+// Native DX9 backend -- no DX11 bridge.
+bool Device9Proxy::RunNV3DGlasses()
+{
+    if (!m_real || !m_leftEyeSurf || !m_rightEyeSurf) return false;
+
+    D3DSURFACE_DESC eyeDesc = {};
+    m_leftEyeSurf->GetDesc(&eyeDesc);
+    const UINT wantW = eyeDesc.Width * 2;
+    if (!m_nv3dSBSTex || m_nv3dSBSW != wantW || m_nv3dSBSH != eyeDesc.Height || m_nv3dSBSFmt != eyeDesc.Format)
+    {
+        ReleaseNV3DGlasses();
+        HANDLE h = nullptr;
+        HRESULT hr = m_real->CreateTexture(wantW, eyeDesc.Height, 1,
+                                            D3DUSAGE_RENDERTARGET, eyeDesc.Format,
+                                            D3DPOOL_DEFAULT, &m_nv3dSBSTex, &h);
+        if (FAILED(hr) || !m_nv3dSBSTex || !h) { ReleaseNV3DGlasses(); return false; }
+        if (FAILED(m_nv3dSBSTex->GetSurfaceLevel(0, &m_nv3dSBSSurf))) { ReleaseNV3DGlasses(); return false; }
+        m_nv3dSBSHandle = h;
+        m_nv3dSBSW      = wantW;
+        m_nv3dSBSH      = eyeDesc.Height;
+        m_nv3dSBSFmt    = eyeDesc.Format;
+    }
+
+    const bool swap = (NvDM_SwapEyes() != 0);
+    const LONG halfW = (LONG)eyeDesc.Width;
+    RECT dstL = { 0,     0, halfW,         (LONG)eyeDesc.Height };
+    RECT dstR = { halfW, 0, (LONG)wantW,   (LONG)eyeDesc.Height };
+    IDirect3DSurface9* srcL = swap ? m_rightEyeSurf : m_leftEyeSurf;
+    IDirect3DSurface9* srcR = swap ? m_leftEyeSurf  : m_rightEyeSurf;
+    m_real->StretchRect(srcL, NULL, m_nv3dSBSSurf, &dstL, D3DTEXF_POINT);
+    m_real->StretchRect(srcR, NULL, m_nv3dSBSSurf, &dstR, D3DTEXF_POINT);
+
+    if (!m_nv3d.IsReady())
+    {
+        m_nv3d.TryInit(m_real, NULL, swap);
+        if (m_nv3d.IsReady())
+            LOG_VERBOSE("  d3d9 RunNV3DGlasses: InterfaceDX9 up (SBS %ux%u, swapEyes=%d)\n",
+                        m_nv3dSBSW, m_nv3dSBSH, (int)swap);
+    }
+    if (!m_nv3d.IsReady()) return false;
+    return m_nv3d.Present(m_nv3dSBSHandle, m_nv3dSBSW, m_nv3dSBSH, m_nv3dSBSFmt);
+}
+
+void Device9Proxy::ReleaseNV3DGlasses()
+{
+    if (m_nv3dSBSSurf) { m_nv3dSBSSurf->Release(); m_nv3dSBSSurf = nullptr; }
+    if (m_nv3dSBSTex)  { m_nv3dSBSTex->Release();  m_nv3dSBSTex  = nullptr; }
+    m_nv3dSBSHandle = nullptr;
+    m_nv3dSBSW = m_nv3dSBSH = 0;
+    m_nv3dSBSFmt = D3DFMT_UNKNOWN;
+}
+
 void Device9Proxy::CompositeAndPresent()
 {
     if (!m_real || !m_pTrackedBackBuffer) return;
@@ -743,6 +799,8 @@ void Device9Proxy::CompositeAndPresent()
     int mode = NvDM_OutputMode();
     if (mode == 12 && m_leftEyeSurf && m_rightEyeSurf)
         RunKatanga();            // publish + fall through to the SBS StretchRect path
+    if (mode == 11 && m_leftEyeSurf && m_rightEyeSurf)
+        RunNV3DGlasses();        // NV3D-Lib shutter publish; same fall-through pattern
     if (mode == 9 && m_leftEyeSurf && m_rightEyeSurf && RunSRWeave())
         return;
     if (mode >= 5 && mode <= 8 && m_leftEyeSurf && m_rightEyeSurf &&
@@ -882,6 +940,7 @@ HRESULT Device9Proxy::Reset(D3DPRESENT_PARAMETERS* p)
     ReleaseShadow();
     ReleaseBackBufferReference();
     m_katanga.OnResize();      // drop the shared texture; keep mutex/mapped file open across Reset
+    ReleaseNV3DGlasses();      // drop our wide-SBS tex; NV3D-Lib re-imports on next frame
 
     D3DPRESENT_PARAMETERS modified;
     UINT logicalW = 0, logicalH = 0;
