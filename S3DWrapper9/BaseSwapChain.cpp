@@ -20,28 +20,6 @@
 #include "..\S3DAPI\ScalingAgent.h"
 #include "..\S3DAPI\ScalingHook.h"
 #include "..\Shared\PanelNativeSize.h"       // 0.5.0 task #77: sub-native-fullscreen auto-enable
-
-// 0.5.0 task #77 diagnostic log. Always-on file write (not gated on
-// CollectDebugInformation / FINAL_RELEASE) so we can trace the actual
-// render-target routing with the game running in a shipping build. Writes
-// to %GameDir%/wiz3D_Logs/<App>/_task77_subnative.log.
-static FILE* g_Task77Log = nullptr;
-static void Task77Log(const char* fmt, ...)
-{
-    if (!g_Task77Log)
-    {
-        TCHAR path[MAX_PATH];
-        _tcscpy_s(path, MAX_PATH, gInfo.LogFileDirectory);
-        PathAppend(path, _T("_task77_subnative.log"));
-        _tfopen_s(&g_Task77Log, path, _T("w"));
-        if (g_Task77Log) fprintf(g_Task77Log, "=== wiz3D task #77 sub-native diagnostic log ===\n");
-    }
-    if (!g_Task77Log) return;
-    va_list ap; va_start(ap, fmt);
-    vfprintf(g_Task77Log, fmt, ap);
-    va_end(ap);
-    fflush(g_Task77Log);
-}
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
 #include "..\S3DAPI\Utils.h"
@@ -628,55 +606,19 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 		break;
 	}
 
-	// 0.5.0 task #77: auto-enable GPU scaling for sub-native fullscreen.
-	// SCALED (2) instead of SCALEDASPECT (4) -- the latter runs ColorFill(black)
-	// on the post-scale RT in DoScaling() which wipes any game content that
-	// landed there bypassing the pre-scale RT. SCALED skips the ColorFill
-	// and StretchRects full pre-scale -> full post-scale, so correct content
-	// is preserved whether the game rendered to pre-scale (expected: full
-	// stretched output) or to post-scale (fallback: top-left game content
-	// stretched over itself, acceptable fallback).
-	//
-	// First attempt (4437181d, SCALEDASPECT) produced "top-left weave + rest
-	// black" on Antichamber because the ColorFill wiped game content from
-	// the post-scale RT before DoScaling could stretch anything from the
-	// (potentially empty) pre-scale RT. SCALED has no such clear step.
-	Task77Log("InitializeMode entry: gInfo.OutputMode=%u DisplayScalingMode=%u Windowed=%d BB=%ux%u DisplayNative=%ux%u\n",
-		gInfo.OutputMode, gInfo.DisplayScalingMode,
-		(int)m_PresentationParameters[0].Windowed,
-		m_PresentationParameters[0].BackBufferWidth,
-		m_PresentationParameters[0].BackBufferHeight,
-		gInfo.DisplayNativeWidth, gInfo.DisplayNativeHeight);
-	if (gInfo.DisplayScalingMode == 0 &&
-		!m_PresentationParameters[0].Windowed &&
-		m_PresentationParameters[0].BackBufferWidth  > 1 &&
-		m_PresentationParameters[0].BackBufferHeight > 1)
-	{
-		HWND focus = m_PresentationParameters[0].hDeviceWindow;
-		int panelW = 0, panelH = 0;
-		bool qok = focus && wiz3d::QueryPanelNativeSize(focus, panelW, panelH);
-		Task77Log("auto-enable probe: focus=%p QueryPanelNativeSize ok=%d panel=%dx%d\n",
-			(void*)focus, (int)qok, panelW, panelH);
-		if (qok && panelW > 0 && panelH > 0 &&
-			((UINT)panelW != m_PresentationParameters[0].BackBufferWidth ||
-			 (UINT)panelH != m_PresentationParameters[0].BackBufferHeight))
-		{
-			gInfo.DisplayNativeWidth  = (UINT)panelW;
-			gInfo.DisplayNativeHeight = (UINT)panelH;
-			gInfo.DisplayScalingMode  = DISPLAY_SCALING_SCALED;    // 2 -- stretch to fill, no ColorFill wipe
-			Task77Log("auto-enabled SCALED: BB %ux%u -> panel %dx%d\n",
-				m_PresentationParameters[0].BackBufferWidth,
-				m_PresentationParameters[0].BackBufferHeight,
-				panelW, panelH);
-		}
-	}
-
-	Task77Log("post-scaling-block: m_bScalingEnabled=%d m_BackBufferSize=%ldx%ld m_BackBufferSizeBeforeScaling=%ldx%ld PresentationParams.BB=%ux%u DisplayScalingMode=%u\n",
-		(int)m_bScalingEnabled, m_BackBufferSize.cx, m_BackBufferSize.cy,
-		m_BackBufferSizeBeforeScaling.cx, m_BackBufferSizeBeforeScaling.cy,
-		m_PresentationParameters[0].BackBufferWidth,
-		m_PresentationParameters[0].BackBufferHeight,
-		gInfo.DisplayScalingMode);
+	// NOTE: 0.5.0 task #77 auto-enable WAS attempted here but reverted. Setting
+	// DisplayScalingMode=SCALEDASPECT at swap-chain init made DoScaling()
+	// ColorFill the post-scale RT to black then StretchRect from an empty
+	// pre-scale RT. The game, through its hooked SetRenderTarget, ended up
+	// writing directly to the panel-sized post-scale RT with a game-dim
+	// viewport (top-left region only), DoScaling wiped it, and SR Weave read
+	// an empty intermediate -- producing the "top-left corner weave + rest
+	// black" symptom reported by Antichamber 2026-10-27. See
+	// Testing/Logs/DX9/x86/antichamber. The fix needs the game's
+	// SetRenderTarget routing to actually land on m_pStereoBBLeft (pre-scale)
+	// before DoScaling can bridge pre-scale -> post-scale correctly; that
+	// routing isn't fully wired on the modern code path. Left for a
+	// follow-up with proper SetRenderTarget tracing.
 
 	//--- enable GPU scaling ---
 	m_bScalingEnabled = false;
@@ -705,37 +647,6 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 			}
 
 			m_ScalingHook = ScalingAgent::Instance()->InitializeHook( TDisplayScalingMode(gInfo.DisplayScalingMode), m_BackBufferSizeBeforeScaling, m_BackBufferSize );
-
-			// 0.5.0 task #77: resize the game's device/focus window to the
-			// panel-native dim before Reset() creates the swap chain at
-			// panel-native. Without this, the OS compositor only shows the
-			// top-left game-dim region of the panel-sized BB (observed in
-			// Antichamber/UDK: BB=1920x1200, panel=3840x2160, windowRect
-			// stayed at 1920x1200 -> woven output clipped to top-left).
-			HWND hDev   = m_PresentationParameters[0].hDeviceWindow;
-			HWND hFocus = GetAppWindow();
-			HWND hResize[2] = { hDev, (hFocus && hFocus != hDev) ? hFocus : nullptr };
-			for (int i = 0; i < 2; ++i)
-			{
-				if (!hResize[i]) continue;
-				RECT before = {};
-				GetWindowRect(hResize[i], &before);
-				// SWP_NOSENDCHANGING: suppress WM_WINDOWPOSCHANGING so UDK
-				// (and other engines that clamp the proposed size back to
-				// their configured resolution in that message handler) can't
-				// cancel the resize. First attempt (beca0e44) saw ok=1 but
-				// before==after on Antichamber -- classic WM_WINDOWPOSCHANGING
-				// clamp.
-				BOOL ok = SetWindowPos(hResize[i], HWND_TOP,
-					0, 0, (int)width, (int)height,
-					SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOSENDCHANGING);
-				RECT after = {};
-				GetWindowRect(hResize[i], &after);
-				Task77Log("resize hWnd[%d]=%p: SetWindowPos(0,0,%u,%u) ok=%d before=(%ld,%ld,%ld,%ld) after=(%ld,%ld,%ld,%ld)\n",
-					i, (void*)hResize[i], width, height, (int)ok,
-					before.left, before.top, before.right, before.bottom,
-					after.left,  after.top,  after.right,  after.bottom);
-			}
 		}
 		else {
 			m_ScalingHook.reset();
@@ -1780,13 +1691,6 @@ HRESULT STDMETHODCALLTYPE CBaseSwapChain::GetBackBuffer(THIS_ UINT iBackBuffer,D
 {
 	m_pLeftBackBufferBeforeScaling->AddRef();
 	*ppBackBuffer = m_pLeftBackBufferBeforeScaling;
-	static int s_logN = 0;
-	if (s_logN < 10)
-	{
-		++s_logN;
-		Task77Log("CBaseSwapChain::GetBackBuffer iBB=%u -> m_pLeftBackBufferBeforeScaling=%p (preScale)\n",
-			iBackBuffer, (void*)m_pLeftBackBufferBeforeScaling);
-	}
 	DEBUG_TRACE2(_T("GetBackBuffer %s\n"), GetObjectName(m_pLeftBackBufferBeforeScaling));
 	return S_OK;
 }
@@ -2018,31 +1922,14 @@ HRESULT CBaseSwapChain::DoScaling()
 	if(!m_bScalingEnabled)
 		return hResult;
 
-	static int s_logCount = 0;
-	const bool bLog = (s_logCount++ < 5);
-	if (bLog)
-	{
-		Task77Log("DoScaling: src=L%p R%p dst=L%p R%p srcL=(%ld,%ld,%ld,%ld) dstL=(%ld,%ld,%ld,%ld) srcR=(%ld,%ld,%ld,%ld) dstR=(%ld,%ld,%ld,%ld) stereo=%d sameLR=%d mode=%u\n",
-			(void*)m_pLeftBackBufferBeforeScaling, (void*)m_pRightBackBufferBeforeScaling,
-			(void*)m_pLeftBackBuffer, (void*)m_pRightBackBuffer,
-			m_SrcLeft.left, m_SrcLeft.top, m_SrcLeft.right, m_SrcLeft.bottom,
-			m_DstLeft.left, m_DstLeft.top, m_DstLeft.right, m_DstLeft.bottom,
-			m_SrcRight.left, m_SrcRight.top, m_SrcRight.right, m_SrcRight.bottom,
-			m_DstRight.left, m_DstRight.top, m_DstRight.right, m_DstRight.bottom,
-			(int)IsStereoActive(), (int)(m_pRightBackBuffer == m_pLeftBackBuffer),
-			gInfo.DisplayScalingMode);
-	}
-
 	if(gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALED && gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALEDASPECTEX)
 		GetD3D9Device().ColorFill(m_pLeftBackBuffer, NULL, 0);
-	HRESULT hrL = GetD3D9Device().StretchRect(m_pLeftBackBufferBeforeScaling, &m_SrcLeft, m_pLeftBackBuffer, &m_DstLeft, D3DTEXF_LINEAR);
-	if (bLog) Task77Log("DoScaling L StretchRect hr=0x%08lX\n", hrL);
+	NSCALL(GetD3D9Device().StretchRect(m_pLeftBackBufferBeforeScaling, &m_SrcLeft, m_pLeftBackBuffer, &m_DstLeft, D3DTEXF_LINEAR));
 	if(IsStereoActive())
 	{
 		if(m_pRightBackBuffer != m_pLeftBackBuffer && (gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALED && gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALEDASPECTEX))
 			GetD3D9Device().ColorFill(m_pRightBackBuffer, NULL, 0);
-		HRESULT hrR = GetD3D9Device().StretchRect(m_pRightBackBufferBeforeScaling, &m_SrcRight, 	m_pRightBackBuffer, &m_DstRight, D3DTEXF_LINEAR);
-		if (bLog) Task77Log("DoScaling R StretchRect hr=0x%08lX\n", hrR);
+		NSCALL(GetD3D9Device().StretchRect(m_pRightBackBufferBeforeScaling, &m_SrcRight, 	m_pRightBackBuffer, &m_DstRight, D3DTEXF_LINEAR));
 	}
 	return hResult;
 }
