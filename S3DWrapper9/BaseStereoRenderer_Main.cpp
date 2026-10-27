@@ -17,6 +17,7 @@
 #include "..\S3DAPI\EnumToString.h"
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
+#include "..\Shared\KatangaProducerDX9.h"   // 0.5.0 Katanga shared-texture producer (DX9 variant)
 #include "UMDDeviceWrapper.h"
 #include "ProxyDirect9.h"
 #include "CommandDumper.h"
@@ -94,7 +95,11 @@ bool CBaseStereoRenderer::IsStereoDepthStencilTexture( UINT Width, UINT Height )
 	}
 }
 
-HRESULT CBaseStereoRenderer::DoPresent( CBaseSwapChain* pSwapChain, HWND hDestWindowOverride, CONST RECT * pSourceRect, CONST RECT * pDestRect, 
+// 0.5.0: Katanga output -- single shared-texture producer for the DX9 wrapper
+// (one game per process). Lazy-opened on first Present with OutputMode=Katanga.
+static wiz3d::KatangaProducerDX9 g_KatangaDX9;
+
+HRESULT CBaseStereoRenderer::DoPresent( CBaseSwapChain* pSwapChain, HWND hDestWindowOverride, CONST RECT * pSourceRect, CONST RECT * pDestRect,
 									   CONST RGNDATA * pDirtyRegion, DWORD dwFlags, bool bExMode )
 {
 	INSIDE;
@@ -105,6 +110,26 @@ HRESULT CBaseStereoRenderer::DoPresent( CBaseSwapChain* pSwapChain, HWND hDestWi
 	if (m_bRenderScene) {
 		DEBUG_TRACE3(_T("ERROR: EndScene() not called before Present()\n"));
 		return hrPresent;
+	}
+
+	// 0.5.0 Katanga publish. OutputMode==12 (OUTMODE_KATANGA) -> hand both eye
+	// surfaces to Katanga's shared-handle producer. Normal composite path
+	// still runs afterwards so the user also sees SBS on the real BB. If
+	// Katanga isn't running, TryInit() returns false and this is a no-op.
+	if (gInfo.OutputMode == 12 && pSwapChain && pSwapChain->IsStereoActive())
+	{
+		IDirect3DSurface9* leftRT  = pSwapChain->GetViewRT(TRUE);
+		IDirect3DSurface9* rightRT = pSwapChain->GetViewRT(FALSE);
+		if (leftRT && rightRT && g_KatangaDX9.TryInit())
+		{
+			if (!g_KatangaDX9.IsReady())
+			{
+				D3DSURFACE_DESC bbd = {};
+				leftRT->GetDesc(&bbd);
+				g_KatangaDX9.OnBackbufferReady(&m_Direct3DDevice, bbd.Width, bbd.Height, bbd.Format);
+			}
+			g_KatangaDX9.PublishFrame(&m_Direct3DDevice, leftRT, rightRT, gInfo.Input.SwapEyes != 0);
+		}
 	}
 
 	HRESULT hResult = S_OK;
