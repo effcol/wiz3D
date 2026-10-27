@@ -6,7 +6,7 @@
  * HD3D AmdQbProxy, 3DV Direct DX11). Wraps NV3D::InterfaceDX11 behind a
  * compact RAII shell matching the pattern of KatangaProducer / SRWeave.
  *
- * What NV3D-Lib does (lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib/include/NV3D.hpp):
+ * What NV3D-Lib does (ThirdPartyLibs/NV3D-Lib/include/NV3D.hpp; upstream oneup03/NV3D-Lib):
  *   Creates a hidden D3D9Ex device in NVAPI_STEREO_DRIVER_MODE_DIRECT and
  *   per-eye SetActiveEye + StretchRects each half of a 2W x H SBS source
  *   into its back buffer, then PresentEx -- shutter glasses light up via

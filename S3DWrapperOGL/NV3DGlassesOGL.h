@@ -5,8 +5,8 @@
  * NV3D::InterfaceOGL owns its own hidden D3D9Ex device + the GL/DX
  * interop plumbing internally; we just build a plain 2W x H GL texture
  * each frame (FBO-blit left + right eye textures into the two halves)
- * and hand it to SetInputTexture + Present. See lib/NV3D-Lib/
- * NV3D-Lib-fresh/NV3DLib/include/NV3D.hpp.
+ * and hand it to SetInputTexture + Present. See
+ * ThirdPartyLibs/NV3D-Lib/include/NV3D.hpp (upstream oneup03/NV3D-Lib).
  *
  * Runtime fallback: on any failure (no NVIDIA GPU / nvapi / no 3D
  * Vision hardware / WGL_NV_DX_interop2 unsupported inside NV3D-Lib),

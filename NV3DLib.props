@@ -6,15 +6,17 @@
   NV3DLib-mtd.lib (Debug) for the current platform, matching the project's
   MultiThreaded CRT choice from Release.props / Debug.props.
 
-  All four lib artifacts live under lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib/lib/.
-  Rebuild them from lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib.sln if missing.
+  All four lib artifacts live under ThirdPartyLibs/NV3D-Lib/lib/.
+  To refresh: clone oneup03/NV3D-Lib locally, build NV3DLib.sln, copy the
+  resulting NV3DLib-{md,mt}{d,}.lib files into
+  ThirdPartyLibs/NV3D-Lib/lib/{x32,x64}/{Debug,Release}-MT/.
 -->
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <!-- Resolve relative to THIS props file (wiz3D repo root) so the imports work from
        any solution (S3DDriver.sln, NvDirectMode.sln, standalone proxies). -->
   <PropertyGroup>
-    <NV3DLibRoot>$(MSBuildThisFileDirectory)lib\NV3D-Lib\NV3D-Lib-fresh\NV3DLib</NV3DLibRoot>
-    <NV3DNvapiDir>$(MSBuildThisFileDirectory)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi</NV3DNvapiDir>
+    <NV3DLibRoot>$(MSBuildThisFileDirectory)ThirdPartyLibs\NV3D-Lib</NV3DLibRoot>
+    <NV3DNvapiDir>$(MSBuildThisFileDirectory)ThirdPartyLibs\NV3D-Lib\external\nvapi</NV3DNvapiDir>
   </PropertyGroup>
   <!-- Platform-specific .lib paths. Debug configs pull in -mtd (static CRT debug); Release/Final Release pull in -mt. -->
   <PropertyGroup Condition="'$(Platform)'=='Win32' and '$(Configuration)'=='Debug'">

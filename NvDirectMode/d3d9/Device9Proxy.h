@@ -286,7 +286,7 @@ private:
     // OutputMode 11 — NV3D-Lib shutter output. Owns a wide-SBS 2W x H
     // texture whose KMT shared handle crosses directly into NV3D-Lib's
     // internal D3D9Ex device (native DX9 backend, no DX11 bridge). See
-    // Shared/NV3DOutputDX9.h and lib/NV3D-Lib/.../src/backends/dx9_backend.
+    // Shared/NV3DOutputDX9.h and oneup03/NV3D-Lib src/backends/dx9_backend.
     bool RunNV3DGlasses();
     void ReleaseNV3DGlasses();
     wiz3d::NV3DOutputDX9       m_nv3d;

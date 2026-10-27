@@ -3,7 +3,7 @@
  * Copyright (C) wiz3D contributors 2026
  */
 #include "NV3DOutputDX9.h"
-#include "../lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib/include/NV3D.hpp"
+#include "NV3D.hpp"    // from ThirdPartyLibs/NV3D-Lib/include/ via NV3DLib.props
 
 namespace wiz3d {
 

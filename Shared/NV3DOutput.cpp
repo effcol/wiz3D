@@ -6,7 +6,7 @@
  * contract and the Vision Restoration cooperation story.
  */
 #include "NV3DOutput.h"
-#include "../lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib/include/NV3D.hpp"
+#include "NV3D.hpp"    // from ThirdPartyLibs/NV3D-Lib/include/ via NV3DLib.props
 
 #include <d3d11.h>
 

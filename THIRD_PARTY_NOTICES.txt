@@ -402,18 +402,21 @@ OutputMode=3DVisionGlasses on every wiz3D wrapper via NV3D-Lib's
 InterfaceDX9 / InterfaceDX11 / InterfaceOGL backends.
 
 Distributed under the GNU Lesser General Public License, version 2.1.
-See lib/NV3D-Lib/NV3D-Lib-fresh/LICENSE for the full text.
+See ThirdPartyLibs/NV3D-Lib/LICENSE for the full text.
 
-Source is bundled in this repository under lib/NV3D-Lib/NV3D-Lib-fresh/
-(its own git tree, upstream at the URL above). Each wiz3D release
-reproduces that source tree, including the exact commits linked at
-build time, so users can relink wiz3D's binaries against a modified
-version of NV3DLib per LGPL v2.1 clause 6.
+The static libraries used at link time (NV3DLib-{md,mt}{d,}.lib) are
+vendored into this repository under ThirdPartyLibs/NV3D-Lib/, together
+with the public header (include/NV3D.hpp) and the NVAPI import libs
+NVIDIA ships with NV3D-Lib (external/nvapi/). The upstream source lives
+at the URL above; wiz3D does not redistribute it in this tree, but the
+build artifacts here are reproducible from the exact upstream commits
+each wiz3D release links against, so users can relink wiz3D's binaries
+against a modified version of NV3DLib per LGPL v2.1 clause 6.
 
 LGPLv2.1 Section 6 compliance: a user wishing to replace NV3DLib with
-a modified version may build NV3DLib.sln under lib/NV3D-Lib/
-NV3D-Lib-fresh/, drop the resulting NV3DLib-{md,mt}{d,}.lib into
-lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib/lib/{x32,x64}/{Release,Debug}-{MD,MT}/,
+a modified version may clone oneup03/NV3D-Lib, build NV3DLib.sln,
+drop the resulting NV3DLib-{md,mt}{d,}.lib files into
+ThirdPartyLibs/NV3D-Lib/lib/{x32,x64}/{Release,Debug}-{MD,MT}/,
 and rebuild the relevant wiz3D DLLs from their vcxproj files.
 
 The wiz3D project authored the NV3DLib native-DX9 backend
