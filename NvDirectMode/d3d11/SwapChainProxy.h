@@ -33,6 +33,7 @@
 #include <dxgi.h>
 #include <dxgi1_2.h>
 #include <d3d11.h>
+#include "..\..\Shared\KatangaProducer.h"   // 0.5.0 Katanga shared-texture producer
 
 namespace SimulatedReality
 {
@@ -213,6 +214,14 @@ private:
     UINT                      m_srSBSW;            // == m_logicalW * 2
     UINT                      m_srSBSH;            // == m_logicalH
     DXGI_FORMAT               m_srSBSFmt;
+
+    // Katanga output: bo3b's open-source stereo viewer. Reuses the SR
+    // SBS-building CopySubresourceRegion pattern -- L eye to [0..W),
+    // R eye to [W..2W) -- then PublishFrame hands the result to Katanga's
+    // shared-handle protocol. See Shared/KatangaProducer.h for details.
+    bool RunKatanga();
+    void ReleaseKatanga();
+    wiz3d::KatangaProducer    m_Katanga;
 };
 
 } // namespace NvDirectMode

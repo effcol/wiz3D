@@ -311,6 +311,7 @@ SwapChainProxy::~SwapChainProxy()
     LeaveCriticalSection(&g_primaryLock);
 
     ReleaseSRPipeline();
+    ReleaseKatanga();
     ReleaseCompositePipeline();
     ReleaseEyeFrames();
     ReleaseShadowBB();
@@ -959,6 +960,63 @@ bool SwapChainProxy::RunSRWeave()
     return true;
 }
 
+// Katanga publish for 3DV Direct DX11. Called from RunCompositePass when
+// NvDM_OutputMode()==12. Reuses the SR Weave SBS pipeline to build a wide
+// 2W x H texture from the captured L/R eye frames, then hands it to Katanga
+// via the shared-handle protocol. Returns false if Katanga isn't running --
+// caller falls through to the normal SBS compositor so the user still sees
+// stereo on-screen.
+bool SwapChainProxy::RunKatanga()
+{
+    if (!m_Katanga.TryInit()) return false;
+    if (!EnsureSRSBSTexture()) return false;
+    if (!m_leftEyeFrame || !m_rightEyeFrame || !m_srSBSTex) return false;
+
+    ID3D11Device* dev = m_parent ? m_parent->GetReal() : nullptr;
+    if (!dev) return false;
+    ID3D11DeviceContext* ctx = nullptr;
+    dev->GetImmediateContext(&ctx);
+    if (!ctx) return false;
+
+    // Blit each eye into its half of the wide SBS tex. m_srSBSTex is 2W x H;
+    // left eye goes to [0..W), right to [W..2W).
+    D3D11_TEXTURE2D_DESC eyeDesc = {};
+    m_leftEyeFrame->GetDesc(&eyeDesc);
+    const UINT eyeW = eyeDesc.Width;
+    const UINT eyeH = eyeDesc.Height;
+    D3D11_BOX box = { 0, 0, 0, eyeW, eyeH, 1 };
+    const bool swap = (NvDM_SwapEyes() != 0);
+    ctx->CopySubresourceRegion(m_srSBSTex, 0, 0,    0, 0, swap ? m_rightEyeFrame : m_leftEyeFrame,  0, &box);
+    ctx->CopySubresourceRegion(m_srSBSTex, 0, eyeW, 0, 0, swap ? m_leftEyeFrame  : m_rightEyeFrame, 0, &box);
+
+    // First-time publish: give Katanga the single-eye desc so its producer
+    // doubles width internally into the shared tex.
+    if (!m_Katanga.IsReady())
+    {
+        D3D11_TEXTURE2D_DESC bbd = eyeDesc;
+        bbd.BindFlags &= ~D3D11_BIND_RENDER_TARGET;
+        if (!m_Katanga.OnBackbufferReady(dev, bbd))
+        {
+            ctx->Release();
+            return false;
+        }
+    }
+    m_Katanga.PublishFrame(ctx, m_srSBSTex);
+
+    static int s_logged = 0;
+    if (s_logged < 3) { ++s_logged;
+        NvDM_Log("  d3d11 RunKatanga: published SBS %ux%u -> shared tex (eye %ux%u)\n",
+                 eyeW * 2, eyeH, eyeW, eyeH); }
+
+    ctx->Release();
+    return true;
+}
+
+void SwapChainProxy::ReleaseKatanga()
+{
+    m_Katanga.Shutdown();
+}
+
 void SwapChainProxy::UpdateAnaglyphCB()
 {
     if (!m_anaglyphCB || !m_parent) return;
@@ -1062,6 +1120,11 @@ bool SwapChainProxy::RunCompositePass()
         // SBS for the rest of the session.
         NVDM_TRACE_FIRST_N(1, "  RunCompositePass: SR weave unavailable, falling back to SBS\n");
     }
+    // Katanga (OM_KATANGA = 12): publish wide SBS to Katanga's shared tex if
+    // the app is running. Falls through unconditionally -- SBS still goes to
+    // the real BB so the user sees stereo on-screen whether Katanga picked
+    // up the texture or not.
+    if (mode == 12) { RunKatanga(); }
     ID3D11PixelShader* ps = m_compositePS_SBS;
     ID3D11SamplerState* sampler = m_compositeSampler;
     bool needsAnaglyphCB = false;
@@ -1222,6 +1285,7 @@ HRESULT STDMETHODCALLTYPE SwapChainProxy::ResizeBuffers(
     // and SRVs (eye frames may also need re-allocation if format changed).
     if (m_realBBRTV) { m_realBBRTV->Release(); m_realBBRTV = nullptr; }
     ReleaseEyeFrames();
+    ReleaseKatanga();   // shared tex dims may change; force re-publish next frame
     ReleaseShadowBB();
     return m_real->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
 }

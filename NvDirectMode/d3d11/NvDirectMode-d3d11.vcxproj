@@ -161,6 +161,7 @@
     <ClCompile Include="Device11Proxy.cpp" />
     <ClCompile Include="Context11Proxy.cpp" />
     <ClCompile Include="SwapChainProxy.cpp" />
+    <ClCompile Include="..\..\Shared\KatangaProducer.cpp" />
     <ClCompile Include="DXGIDeviceProxy.cpp" />
     <ClCompile Include="DXGIAdapterProxy.cpp" />
     <ClCompile Include="swapchain_helpers.cpp" />
