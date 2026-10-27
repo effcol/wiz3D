@@ -705,6 +705,31 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 			}
 
 			m_ScalingHook = ScalingAgent::Instance()->InitializeHook( TDisplayScalingMode(gInfo.DisplayScalingMode), m_BackBufferSizeBeforeScaling, m_BackBufferSize );
+
+			// 0.5.0 task #77: resize the game's device/focus window to the
+			// panel-native dim before Reset() creates the swap chain at
+			// panel-native. Without this, the OS compositor only shows the
+			// top-left game-dim region of the panel-sized BB (observed in
+			// Antichamber/UDK: BB=1920x1200, panel=3840x2160, windowRect
+			// stayed at 1920x1200 -> woven output clipped to top-left).
+			HWND hDev   = m_PresentationParameters[0].hDeviceWindow;
+			HWND hFocus = GetAppWindow();
+			HWND hResize[2] = { hDev, (hFocus && hFocus != hDev) ? hFocus : nullptr };
+			for (int i = 0; i < 2; ++i)
+			{
+				if (!hResize[i]) continue;
+				RECT before = {};
+				GetWindowRect(hResize[i], &before);
+				BOOL ok = SetWindowPos(hResize[i], HWND_TOP,
+					0, 0, (int)width, (int)height,
+					SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+				RECT after = {};
+				GetWindowRect(hResize[i], &after);
+				Task77Log("resize hWnd[%d]=%p: SetWindowPos(0,0,%u,%u) ok=%d before=(%ld,%ld,%ld,%ld) after=(%ld,%ld,%ld,%ld)\n",
+					i, (void*)hResize[i], width, height, (int)ok,
+					before.left, before.top, before.right, before.bottom,
+					after.left,  after.top,  after.right,  after.bottom);
+			}
 		}
 		else {
 			m_ScalingHook.reset();
