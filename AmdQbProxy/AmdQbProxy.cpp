@@ -31,6 +31,7 @@
 #include <windows.h>
 #include "..\Shared\version.h"
 #include "..\Shared\OutputModeNames.h"       // ResolveOutputModeName (unified naming)
+#include "..\Shared\KatangaProducer.h"       // Katanga shared-texture producer (OutputMode=Katanga)
 #include <new>
 #include <stdio.h>
 #include <d3d11.h>
@@ -113,6 +114,7 @@ enum OutputMode {
     OM_CHECKERBOARD        = 8,  // Checkerboard            (alternating pixels, DLP projectors)
     OM_SR_WEAVE            = 9,  // Simulated Reality Weave (Leia/Samsung Odyssey Moving Lightfield displays)
     OM_STEREO_MIRROR       = 10, // Stereo mirror           (reserved; HD3D doesn't implement yet)
+    OM_KATANGA             = 12, // 0.5.0: Katanga shared-texture producer (bo3b's open-source stereo viewer)
 };
 // Unified default = SR Weave. SR runtime failure (no LeiaSR installed, no SR
 // display connected, blacklisted exe) downgrades to OM_SBS_HALF via the sticky
@@ -327,6 +329,11 @@ static ID3D11ShaderResourceView* g_pSRSBSSRV     = nullptr;
 static UINT                      g_nSRSBSW       = 0;
 static UINT                      g_nSRSBSH       = 0;
 static DXGI_FORMAT               g_SRSBSFmt      = DXGI_FORMAT_UNKNOWN;
+
+// Katanga output -- shared-texture producer for bo3b's open-source stereo
+// viewer. Reuses g_pSRSBSTex as the wide-SBS composite source; see
+// Shared/KatangaProducer.h for the protocol.
+static wiz3d::KatangaProducer    g_Katanga;
 
 // Shadow fixup resources — for engines (Hitman/EGO/Tomb Raider 2013) where the
 // game only renders content into the TOP HALF of each eye's shadow slot. Before
@@ -2016,6 +2023,7 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
                             g_OutputMode == OM_CHECKERBOARD);
     bool anaglyphMode    = (g_OutputMode == OM_ANAGLYPH);
     bool srWeaveMode     = (g_OutputMode == OM_SR_WEAVE);
+    bool katangaMode     = (g_OutputMode == OM_KATANGA);
 
     // Compositor: the shadow texture holds the game's T&B content (left eye=top,
     // right eye=bottom).  The pixel shader samples each eye's half and draws it
@@ -2041,6 +2049,37 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
             char buf[200];
             wsprintfA(buf, "[AmdQbProxy] Viewport: mode=%d realBB=%ux%u origH=%u shadow=%ux%u\n",
                       g_OutputMode, W, H, origH, W, shadowH);
+            WriteLog(buf);
+        }
+    }
+
+    // Katanga: produce a wide-SBS shared texture for bo3b's open-source viewer.
+    // Runs BEFORE the main compositor chain so Katanga mode falls through to
+    // the SBS branch below for the on-screen Half-SBS draw -- user sees stereo
+    // on-screen as the fallback whether Katanga is running or not.
+    if (katangaMode && g_Katanga.TryInit() && EnsureSRSBSTexture(W, H, bbDesc.Format))
+    {
+        ID3D11ShaderResourceView* pNullSRV = nullptr;
+        g_pContext->PSSetShaderResources(0, 1, &pNullSRV);
+        D3D11_BOX srcLeft  = { 0, 0,      0, W,     origH, 1 };
+        D3D11_BOX srcRight = { 0, origH,  0, W, origH * 2, 1 };
+        g_pContext->CopySubresourceRegion(g_pSRSBSTex, 0, 0, 0, 0, pShadowTex, 0, crosseyed ? &srcRight : &srcLeft);
+        g_pContext->CopySubresourceRegion(g_pSRSBSTex, 0, W, 0, 0, pShadowTex, 0, crosseyed ? &srcLeft  : &srcRight);
+        if (!g_Katanga.IsReady())
+        {
+            D3D11_TEXTURE2D_DESC d = {};
+            g_pSRSBSTex->GetDesc(&d);
+            d.Width = W;   // single-eye width; producer doubles internally
+            d.BindFlags &= ~D3D11_BIND_RENDER_TARGET;
+            g_Katanga.OnBackbufferReady(g_pDevice11, d);
+        }
+        g_Katanga.PublishFrame(g_pContext, g_pSRSBSTex);
+        static bool s_bKatangaOnceLog = false;
+        if (!s_bKatangaOnceLog)
+        {
+            s_bKatangaOnceLog = true;
+            char buf[200];
+            wsprintfA(buf, "[AmdQbProxy] Katanga: first PublishFrame (SBS %ux%u -> shared tex)\n", W * 2, H);
             WriteLog(buf);
         }
     }
@@ -2860,6 +2899,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         MH_Uninitialize();
         CleanupSRWeaver();
         CleanupShadowFixup();
+        g_Katanga.Shutdown();
         for (auto& kv : g_scShadow) kv.second.Release();
         g_scShadow.clear();
         if (g_pReadbackTex){ g_pReadbackTex->Release();g_pReadbackTex = nullptr; }
