@@ -164,6 +164,7 @@
     <ClCompile Include="device_vtable_hooks.cpp" />
     <ClCompile Include="eye_state.cpp" />
     <ClCompile Include="magic_header_capture.cpp" />
+    <ClCompile Include="..\..\Shared\KatangaProducerDX9.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3D9Proxy.h" />
@@ -174,6 +175,7 @@
     <ClInclude Include="eye_state.h" />
     <ClInclude Include="magic_header_capture.h" />
     <ClInclude Include="log.h" />
+    <ClInclude Include="..\..\Shared\KatangaProducerDX9.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="d3d9.def" />

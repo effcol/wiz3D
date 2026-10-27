@@ -708,6 +708,26 @@ bool Device9Proxy::RunSRWeave()
     return true;
 }
 
+bool Device9Proxy::RunKatanga()
+{
+    // Lazy-connect to Katanga. If it isn't running we still want the normal
+    // SBS StretchRect fallback to execute, so this returns silently without
+    // flagging failure.
+    if (!m_real || !m_leftEyeSurf || !m_rightEyeSurf) return false;
+    if (!m_katanga.TryInit())    return false;
+
+    if (!m_katanga.IsReady())
+    {
+        D3DSURFACE_DESC eyeDesc = {};
+        m_leftEyeSurf->GetDesc(&eyeDesc);
+        if (!m_katanga.OnBackbufferReady(m_real, eyeDesc.Width, eyeDesc.Height, eyeDesc.Format))
+            return false;
+    }
+
+    const bool swap = NvDM_SwapEyes() != 0;
+    return m_katanga.PublishFrame(m_real, m_leftEyeSurf, m_rightEyeSurf, swap);
+}
+
 void Device9Proxy::CompositeAndPresent()
 {
     if (!m_real || !m_pTrackedBackBuffer) return;
@@ -716,12 +736,13 @@ void Device9Proxy::CompositeAndPresent()
     if (currentEye == NvDirectMode::kEyeLeft || currentEye == NvDirectMode::kEyeRight)
         CaptureEye(currentEye);
 
-    // Unified numbering: 5=Anaglyph, 6=Row, 7=Column, 8=Checker, 9=SR weave.
-    // Shader composite handles 5-8; SR weave handles 9. Both fall through
-    // to the legacy StretchRect path below if their resources aren't
-    // available (no d3dcompiler, runtime compile failure, SR runtime not
-    // installed, SR Service down, blacklisted exe, etc.).
+    // Unified numbering: 5=Anaglyph, 6=Row, 7=Column, 8=Checker, 9=SR weave,
+    // 12=Katanga. Shader composite handles 5-8; SR weave handles 9; Katanga
+    // publishes to the shared texture and falls through so the real BB still
+    // gets a sensible SBS fallback whether Katanga is attached or not.
     int mode = NvDM_OutputMode();
+    if (mode == 12 && m_leftEyeSurf && m_rightEyeSurf)
+        RunKatanga();            // publish + fall through to the SBS StretchRect path
     if (mode == 9 && m_leftEyeSurf && m_rightEyeSurf && RunSRWeave())
         return;
     if (mode >= 5 && mode <= 8 && m_leftEyeSurf && m_rightEyeSurf &&
@@ -860,6 +881,7 @@ HRESULT Device9Proxy::Reset(D3DPRESENT_PARAMETERS* p)
     ReleaseShaderPipeline();
     ReleaseShadow();
     ReleaseBackBufferReference();
+    m_katanga.OnResize();      // drop the shared texture; keep mutex/mapped file open across Reset
 
     D3DPRESENT_PARAMETERS modified;
     UINT logicalW = 0, logicalH = 0;

@@ -10,6 +10,8 @@
 #include <windows.h>
 #include <d3d9.h>
 
+#include "../../Shared/KatangaProducerDX9.h"
+
 namespace SimulatedReality
 {
 	class SRInterfaceDX9;  // forward declaration to avoid including SR.hpp in header
@@ -260,13 +262,25 @@ private:
     void ReleaseSRPipeline();
     bool RunSRWeave();
     bool                              m_srFailed;
-    SimulatedReality::SRInterfaceDX9* m_srInterfaceDX9; 
-                                                
+    SimulatedReality::SRInterfaceDX9* m_srInterfaceDX9;
+
     IDirect3DTexture9*    m_srSBSTex;
     IDirect3DSurface9*    m_srSBSSurf;         // surface-level-0 of m_srSBSTex, cached
     UINT                  m_srSBSW;            // == m_logicalWidth * 2
     UINT                  m_srSBSH;            // == m_logicalHeight
     D3DFORMAT             m_srSBSFmt;
+
+    // OutputMode 12 — Katanga shared-texture publisher. One per device;
+    // the producer helper owns the Katanga mutex / mapped file / shared
+    // texture lifecycle. See Shared/KatangaProducerDX9.h for the protocol.
+    //
+    // Hooked from CompositeAndPresent before the shader/weave/stretchrect
+    // chain: if OutputMode==12 and both eye surfaces are populated we
+    // publish an SBS frame and fall through to the normal SBS StretchRect
+    // path (so the real BB still has sensible content whether a Katanga
+    // consumer is attached or not).
+    bool RunKatanga();
+    wiz3d::KatangaProducerDX9  m_katanga;
 
     // Magic-header SBS capture (NVIDIA "stereo blit defaults" path).
     // When a game / wrapper produces a (2W × H+1) surface with the
