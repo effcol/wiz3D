@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  NV3DLib linker helper. Import from any wiz3D DLL that calls into the
+  NV3D::Interface* API (SwapChain11Proxy, AmdQbProxy, 3DV-Direct DX11,
+  S3DWrapperOGL). The props resolve to NV3DLib-mt.lib (Release) or
+  NV3DLib-mtd.lib (Debug) for the current platform, matching the project's
+  MultiThreaded CRT choice from Release.props / Debug.props.
+
+  All four lib artifacts live under lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib/lib/.
+  Rebuild them from lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib.sln if missing.
+-->
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <NV3DLibRoot>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\NV3DLib</NV3DLibRoot>
+  </PropertyGroup>
+  <!-- Platform-specific .lib paths. Debug configs pull in -mtd (static CRT debug); Release/Final Release pull in -mt. -->
+  <PropertyGroup Condition="'$(Platform)'=='Win32' and '$(Configuration)'=='Debug'">
+    <NV3DLibLib>$(NV3DLibRoot)\lib\x32\Debug-MT\NV3DLib-mtd.lib</NV3DLibLib>
+    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\x86\nvapi.lib</NV3DLibNvapi>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Platform)'=='Win32' and '$(Configuration)'!='Debug'">
+    <NV3DLibLib>$(NV3DLibRoot)\lib\x32\Release-MT\NV3DLib-mt.lib</NV3DLibLib>
+    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\x86\nvapi.lib</NV3DLibNvapi>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Platform)'=='x64' and '$(Configuration)'=='Debug'">
+    <NV3DLibLib>$(NV3DLibRoot)\lib\x64\Debug-MT\NV3DLib-mtd.lib</NV3DLibLib>
+    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\amd64\nvapi64.lib</NV3DLibNvapi>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Platform)'=='x64' and '$(Configuration)'!='Debug'">
+    <NV3DLibLib>$(NV3DLibRoot)\lib\x64\Release-MT\NV3DLib-mt.lib</NV3DLibLib>
+    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\amd64\nvapi64.lib</NV3DLibNvapi>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <AdditionalIncludeDirectories>$(NV3DLibRoot)\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <!-- NV3DLib statically links its callers' NVAPI + D3D9 symbols; include the per-arch nvapi
+           lib + d3d9.lib so the final DLL resolves them. -->
+      <AdditionalDependencies>$(NV3DLibLib);$(NV3DLibNvapi);d3d9.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+</Project>

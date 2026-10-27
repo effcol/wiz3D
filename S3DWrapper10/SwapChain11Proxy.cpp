@@ -95,6 +95,7 @@ SwapChain11Proxy::~SwapChain11Proxy()
     if (m_laser) { delete m_laser; m_laser = nullptr; }
     ReleaseSRWeave(true);
     ReleaseKatanga();
+    ReleaseNV3DGlasses();
     ReleaseStereoBackBuffer();
     ReleaseComposite();
     if (m_real4)  { m_real4->Release();  m_real4  = nullptr; }
@@ -755,7 +756,8 @@ void SwapChain11Proxy::DoComposite()
     // If Katanga isn't running / init fails, fall through to the compositor
     // below so the user still sees Half-SBS on their screen (sensible fallback).
     const bool katangaHandled = (mode == OM_KATANGA && RunKatanga(ctx));
-    if (!katangaHandled && !(mode == OM_SR_WEAVE && RunSRWeave(ctx)))
+    const bool nv3dHandled    = (!katangaHandled && mode == OM_3DVISION_GLASSES && RunNV3DGlasses(ctx));
+    if (!katangaHandled && !nv3dHandled && !(mode == OM_SR_WEAVE && RunSRWeave(ctx)))
         DrawCompositePass(ctx, m_realBBRTV, m_realBBW, m_realBBH, mode);
     // OSD overlay (status / FPS / hotkey help) drawn after the stereo
     // composite but before we restore the game's context state. Lazy-
@@ -949,6 +951,7 @@ SwapChain11Proxy::OutputMode SwapChain11Proxy::SelectedOutputMode() const
     if (WeaveSelected()) return OM_SR_WEAVE;
     const DWORD m = gInfo.OutputMode;
     if (m >= OM_HALF_SBS && m <= OM_SR_WEAVE) return static_cast<OutputMode>(m);
+    if (m == OM_3DVISION_GLASSES) return OM_3DVISION_GLASSES;
     if (m == OM_KATANGA) return OM_KATANGA;
     return OM_HALF_SBS;
 }
@@ -1193,6 +1196,52 @@ void SwapChain11Proxy::ReleaseKatanga()
     m_katangaSBSW = m_katangaSBSH = 0;
     m_katangaSBSFmt = DXGI_FORMAT_UNKNOWN;
     m_Katanga.Shutdown();
+}
+
+bool SwapChain11Proxy::RunNV3DGlasses(ID3D11DeviceContext* ctx)
+{
+    // Reuse the Katanga wide-SBS compositor target -- see RunKatanga for
+    // the dims/format logic. (Katanga and NV3D-Lib never run in the same
+    // session so sharing the target is safe.)
+    if (FAILED(EnsureKatangaSBSTexture())) return false;
+    DrawCompositePass(ctx, m_katangaSBSRTV, m_katangaSBSW, m_katangaSBSH, OM_HALF_SBS);
+
+    // Lazy-create the NV3D InterfaceDX11 on the parent device + the real
+    // HWND. host_hwnd=real so audio routing + cursor stay native. On a
+    // system without 3D Vision support (no NVAPI, no shutter display),
+    // TryInit returns false and we fall through to the normal composite.
+    if (!m_NV3D.IsReady())
+    {
+        ID3D11Device* dev = m_parent ? m_parent->GetReal() : nullptr;
+        if (!dev) return false;
+
+        HWND hwnd = nullptr;
+        DXGI_SWAP_CHAIN_DESC sd = {};
+        if (m_real && SUCCEEDED(m_real->GetDesc(&sd))) hwnd = sd.OutputWindow;
+
+        const bool swap = (gInfo.Input.SwapEyes != 0);
+        if (!m_NV3D.TryInit(dev, hwnd, swap)) return false;
+
+        static int s_logged = 0;
+        if (s_logged < 3)
+        {
+            ++s_logged;
+            DDILog("SwapChain11Proxy::RunNV3DGlasses: NV3D-Lib InterfaceDX11 up (SBS %ux%u, hwnd=%p, swapEyes=%d)\n",
+                   m_katangaSBSW, m_katangaSBSH, (void*)hwnd, (int)swap);
+        }
+    }
+
+    // Feed and present. NV3D-Lib owns the shutter output; we also draw the
+    // composite into the real BB below so the host window still shows SBS
+    // in case the FSE popup is minimised or the user Alt-Tabs out.
+    (void)m_NV3D.Present(m_katangaSBSTex);
+    DrawCompositePass(ctx, m_realBBRTV, m_realBBW, m_realBBH, OM_HALF_SBS);
+    return true;
+}
+
+void SwapChain11Proxy::ReleaseNV3DGlasses()
+{
+    m_NV3D.Shutdown();
 }
 
 HRESULT STDMETHODCALLTYPE SwapChain11Proxy::GetBuffer(UINT Buffer, REFIID riid, void** ppSurface)

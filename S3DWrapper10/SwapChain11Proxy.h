@@ -31,6 +31,7 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // see DXGIDeviceProxy.h — bundled
 #include <dxgi1_5.h>   // IDXGISwapChain2/3/4
 #include "ShiftFinder11.h"           // 0.4.1 AutoFocus / LaserSight image correlator
 #include "..\Shared\KatangaProducer.h" // 0.5.0 Katanga shared-texture producer
+#include "..\Shared\NV3DOutput.h"      // 0.5.0 NV3D-Lib shutter-glass output
 
 // SR-Lib (ThirdPartyLibs/SR-Lib_v2.0.0): lightfield weave for Simulated
 // Reality displays. Forward-declared so only the .cpp includes SR.hpp.
@@ -184,6 +185,7 @@ private:
         OM_COLUMN_INTERLEAVED = 7,  // Column interleaved -- follow-up commit
         OM_CHECKERBOARD       = 8,  // Checkerboard (DLP-Link projectors) -- follow-up commit
         OM_SR_WEAVE           = 9,  // Simulated Reality Weave (Leia/Samsung Odyssey 3D)
+        OM_3DVISION_GLASSES   = 11, // 0.5.0: NV3D-Lib DIRECT-mode shutter glasses (Vision Restoration coop)
         OM_KATANGA            = 12, // 0.5.0: produce shared wide-SBS DX11 tex, Katanga app displays it
     };
     // Reads gInfo.OutputMode and the legacy OutputMethodDll string, returning
@@ -219,6 +221,14 @@ private:
     HRESULT EnsureKatangaSBSTexture();
     bool    RunKatanga(ID3D11DeviceContext* ctx);
     void    ReleaseKatanga();
+
+    // NV3D-Lib output -- hands the compositor's wide SBS source to NV3D::InterfaceDX11
+    // which drives shutter glasses via its own D3D9Ex DIRECT-mode presenter.
+    // Reuses m_katangaSBSTex for the SBS source: a session picks EITHER Katanga
+    // OR NV3D-Lib, never both, so sharing the compositor target is safe.
+    // See Shared/NV3DOutput.h for the Vision Restoration cooperation story.
+    bool    RunNV3DGlasses(ID3D11DeviceContext* ctx);
+    void    ReleaseNV3DGlasses();
 
     IDXGISwapChain*  m_real;     // owned (released in dtor)
     IDXGISwapChain1* m_real1;    // optional, owned, nullable
@@ -293,6 +303,10 @@ private:
     // our side's wide-SBS scratch that the compositor fills before we hand
     // the result to Katanga via CopyResource.
     wiz3d::KatangaProducer    m_Katanga;
+
+    // NV3D-Lib output. Owns an NV3D::InterfaceDX11 (hidden D3D9Ex FSE
+    // popup); SBS source is the Katanga one shared above.
+    wiz3d::NV3DOutputDX11     m_NV3D;
     ID3D11Texture2D*          m_katangaSBSTex = nullptr;
     ID3D11RenderTargetView*   m_katangaSBSRTV = nullptr;
     UINT                      m_katangaSBSW   = 0;

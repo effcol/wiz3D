@@ -236,17 +236,20 @@ enum EventId
 	DECREASE_PRESENTER_SLEEP_TIME,
 	INCREASE_PRESENTER_FLUSH_TIME,
 	DECREASE_PRESENTER_FLUSH_TIME,
+	// 0.4.3: ConvergenceShift ungated for shipping release so Alt+Num +/-
+	// is wired in Final Release builds. The other DEBUG events here remain
+	// gated (dev-only).
+	INCREASE_CONVERGENCE_SHIFT,
+	DECREASE_CONVERGENCE_SHIFT,
 #ifndef FINAL_RELEASE
 	// DEBUG events!!!
-	INCREASE_ZNEAR,	
+	INCREASE_ZNEAR,
 	DECREASE_ZNEAR,
 	INCREASE_MULTIPLIER,
 	DECREASE_MULTIPLIER,
-	INCREASE_CONVERGENCE_SHIFT,
-	DECREASE_CONVERGENCE_SHIFT,
 	SWITCH_DEBUG_INFO_PAGE,
 #endif
-	MAX_EVENTS 
+	MAX_EVENTS
 };
 
 struct HotKeyInfo
@@ -609,13 +612,14 @@ public:
 			{ "PresenterSleepTimeDecrease", DECREASE_PRESENTER_SLEEP_TIME,  219 },  //--- [				        ---
 			{ "PresenterFlushTimeIncrease", INCREASE_PRESENTER_FLUSH_TIME,	186 },  //--- ;				        ---
 			{ "PresenterFlushTimeDecrease", DECREASE_PRESENTER_FLUSH_TIME,	76 },   //--- l				        ---
+			// 0.4.3: ConvergenceShift bindings ungated for Final Release.
+			{ "ConvergenceShiftIncrease", INCREASE_CONVERGENCE_SHIFT,       1131 },	//--- Alt + Num +			---
+			{ "ConvergenceShiftDecrease", DECREASE_CONVERGENCE_SHIFT,       1133 },	//--- Alt + Num -			---
 #ifndef FINAL_RELEASE
 			{ "ZNearIncrease", INCREASE_ZNEAR,                              875 },	//--- Ctrl + Shift + Num +  ---
 			{ "ZNearDecrease", DECREASE_ZNEAR,                              877 },	//--- Ctrl + Shift + Num -  ---
 			{ "MultiplierIncrease", INCREASE_MULTIPLIER,                    619 }, 	//--- Ctrl + Num +			---
 			{ "MultiplierDecrease", DECREASE_MULTIPLIER,                    621 }, 	//--- Ctrl + Num 	-		---
-			{ "ConvergenceShiftIncrease", INCREASE_CONVERGENCE_SHIFT,       1131 },	//--- Alt + Num +			---
-			{ "ConvergenceShiftDecrease", DECREASE_CONVERGENCE_SHIFT,       1133 },	//--- Alt + Num -			---
 			{ "ShowDebugInfo", SWITCH_DEBUG_INFO_PAGE,                      618 },	//--- Ctrl + *		        ---
 #endif
 		};

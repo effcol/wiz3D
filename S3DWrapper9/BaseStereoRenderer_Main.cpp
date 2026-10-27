@@ -122,13 +122,14 @@ HRESULT CBaseStereoRenderer::DoPresent( CBaseSwapChain* pSwapChain, HWND hDestWi
 		IDirect3DSurface9* rightRT = pSwapChain->GetViewRT(FALSE);
 		if (leftRT && rightRT && g_KatangaDX9.TryInit())
 		{
+			IDirect3DDevice9* realDev = m_Direct3DDevice.GetReal();
 			if (!g_KatangaDX9.IsReady())
 			{
 				D3DSURFACE_DESC bbd = {};
 				leftRT->GetDesc(&bbd);
-				g_KatangaDX9.OnBackbufferReady(&m_Direct3DDevice, bbd.Width, bbd.Height, bbd.Format);
+				g_KatangaDX9.OnBackbufferReady(realDev, bbd.Width, bbd.Height, bbd.Format);
 			}
-			g_KatangaDX9.PublishFrame(&m_Direct3DDevice, leftRT, rightRT, gInfo.Input.SwapEyes != 0);
+			g_KatangaDX9.PublishFrame(realDev, leftRT, rightRT, gInfo.Input.SwapEyes != 0);
 		}
 	}
 

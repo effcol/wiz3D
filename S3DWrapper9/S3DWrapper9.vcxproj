@@ -490,7 +490,9 @@
     <ClCompile Include="BaseStereoRenderer_Hook.cpp" />
     <ClCompile Include="BaseStereoRenderer_InternalClasses.cpp" />
     <ClCompile Include="BaseStereoRenderer_Main.cpp" />
-    <ClCompile Include="..\Shared\KatangaProducerDX9.cpp" />
+    <ClCompile Include="..\Shared\KatangaProducerDX9.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="BaseStereoRenderer_Modified.cpp">
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Final Release|Win32'">false</WholeProgramOptimization>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Final Release|Win32'">
