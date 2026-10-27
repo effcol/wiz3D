@@ -606,19 +606,40 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 		break;
 	}
 
-	// NOTE: 0.5.0 task #77 auto-enable WAS attempted here but reverted. Setting
-	// DisplayScalingMode=SCALEDASPECT at swap-chain init made DoScaling()
-	// ColorFill the post-scale RT to black then StretchRect from an empty
-	// pre-scale RT. The game, through its hooked SetRenderTarget, ended up
-	// writing directly to the panel-sized post-scale RT with a game-dim
-	// viewport (top-left region only), DoScaling wiped it, and SR Weave read
-	// an empty intermediate -- producing the "top-left corner weave + rest
-	// black" symptom reported by Antichamber 2026-10-27. See
-	// Testing/Logs/DX9/x86/antichamber. The fix needs the game's
-	// SetRenderTarget routing to actually land on m_pStereoBBLeft (pre-scale)
-	// before DoScaling can bridge pre-scale -> post-scale correctly; that
-	// routing isn't fully wired on the modern code path. Left for a
-	// follow-up with proper SetRenderTarget tracing.
+	// 0.5.0 task #77: auto-enable GPU scaling for sub-native fullscreen.
+	// SCALED (2) instead of SCALEDASPECT (4) -- the latter runs ColorFill(black)
+	// on the post-scale RT in DoScaling() which wipes any game content that
+	// landed there bypassing the pre-scale RT. SCALED skips the ColorFill
+	// and StretchRects full pre-scale -> full post-scale, so correct content
+	// is preserved whether the game rendered to pre-scale (expected: full
+	// stretched output) or to post-scale (fallback: top-left game content
+	// stretched over itself, acceptable fallback).
+	//
+	// First attempt (4437181d, SCALEDASPECT) produced "top-left weave + rest
+	// black" on Antichamber because the ColorFill wiped game content from
+	// the post-scale RT before DoScaling could stretch anything from the
+	// (potentially empty) pre-scale RT. SCALED has no such clear step.
+	if (gInfo.DisplayScalingMode == 0 &&
+		!m_PresentationParameters[0].Windowed &&
+		m_PresentationParameters[0].BackBufferWidth  > 1 &&
+		m_PresentationParameters[0].BackBufferHeight > 1)
+	{
+		HWND focus = m_PresentationParameters[0].hDeviceWindow;
+		int panelW = 0, panelH = 0;
+		if (focus && wiz3d::QueryPanelNativeSize(focus, panelW, panelH) &&
+			panelW > 0 && panelH > 0 &&
+			((UINT)panelW != m_PresentationParameters[0].BackBufferWidth ||
+			 (UINT)panelH != m_PresentationParameters[0].BackBufferHeight))
+		{
+			gInfo.DisplayNativeWidth  = (UINT)panelW;
+			gInfo.DisplayNativeHeight = (UINT)panelH;
+			gInfo.DisplayScalingMode  = DISPLAY_SCALING_SCALED;    // 2 -- stretch to fill, no ColorFill wipe
+			DEBUG_MESSAGE(_T("DX9 task #77: auto-enabling SCALED panel-native for sub-native fullscreen BB %ux%u -> panel %dx%d\n"),
+				m_PresentationParameters[0].BackBufferWidth,
+				m_PresentationParameters[0].BackBufferHeight,
+				panelW, panelH);
+		}
+	}
 
 	//--- enable GPU scaling ---
 	m_bScalingEnabled = false;
