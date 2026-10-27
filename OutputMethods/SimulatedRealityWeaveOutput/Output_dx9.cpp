@@ -256,6 +256,22 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
     // Route weaved output to the primary back buffer
     m_pd3dDevice->SetRenderTarget(0, pSwapChain->m_pPrimaryBackBuffer);
 
+    // 0.5.0 task #77: explicitly reset the viewport + scissor rect to the
+    // full primary BB. D3D9's spec says SetRenderTarget resets viewport to
+    // the new RT's full dims, but in sub-native-fullscreen scaling mode
+    // the game's game-dim viewport (e.g. 1920x1200 on a 3840x2160 panel)
+    // was observed to persist through the weave call, clipping the woven
+    // output to the top-left game-sized region of the panel BB. Explicit
+    // reset here guarantees the weaver sees the panel-sized target.
+    D3DSURFACE_DESC primaryDesc = {};
+    if (SUCCEEDED(pSwapChain->m_pPrimaryBackBuffer->GetDesc(&primaryDesc)))
+    {
+        D3DVIEWPORT9 vp = { 0, 0, primaryDesc.Width, primaryDesc.Height, 0.0f, 1.0f };
+        m_pd3dDevice->SetViewport(&vp);
+        RECT scissor = { 0, 0, (LONG)primaryDesc.Width, (LONG)primaryDesc.Height };
+        m_pd3dDevice->SetScissorRect(&scissor);
+    }
+
     // State-block save/restore: the Dimenco/LeiaSR DX9 weaver mutates D3D9
     // device state (shaders, samplers, render states, vertex decl) and does
     // not restore it. Re-applying our D3DSBT_ALL state block after weave()
