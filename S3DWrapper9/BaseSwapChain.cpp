@@ -19,6 +19,7 @@
 #include "PresenterMultiThread.h"
 #include "..\S3DAPI\ScalingAgent.h"
 #include "..\S3DAPI\ScalingHook.h"
+#include "..\Shared\PanelNativeSize.h"       // 0.5.0 task #77: sub-native-fullscreen auto-enable
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
 #include "..\S3DAPI\Utils.h"
@@ -603,6 +604,37 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 	default:
 		ModifyParamsByOutput();
 		break;
+	}
+
+	//--- 0.5.0 task #77: auto-enable GPU scaling for sub-native fullscreen ---
+	// Mirrors the DX11 Stereo-Injector's task #32 pattern (SwapChain11Proxy::
+	// EnsureStereoBackBuffer): when the game picks a sub-native fullscreen BB
+	// and no scaling mode is configured, override to SCALEDASPECT with panel-
+	// native dims so SR Weave (and other per-panel-pixel output modes) land
+	// 1:1 on the display. ScalingHook handles the game-side lies about
+	// window/cursor coords. QueryPanelNativeSize prefers the LeiaSR Displays
+	// SDK and falls back to the OS monitor the focus window lives on, so
+	// multi-monitor games on secondary panels get the right target dims.
+	if (gInfo.DisplayScalingMode == 0 &&
+		!m_PresentationParameters[0].Windowed &&
+		m_PresentationParameters[0].BackBufferWidth  > 1 &&
+		m_PresentationParameters[0].BackBufferHeight > 1)
+	{
+		HWND focus = m_PresentationParameters[0].hDeviceWindow;
+		int panelW = 0, panelH = 0;
+		if (focus && wiz3d::QueryPanelNativeSize(focus, panelW, panelH) &&
+			panelW > 0 && panelH > 0 &&
+			((UINT)panelW != m_PresentationParameters[0].BackBufferWidth ||
+			 (UINT)panelH != m_PresentationParameters[0].BackBufferHeight))
+		{
+			gInfo.DisplayNativeWidth  = (UINT)panelW;
+			gInfo.DisplayNativeHeight = (UINT)panelH;
+			gInfo.DisplayScalingMode  = DISPLAY_SCALING_SCALEDASPECT;   // stretch preserving aspect; letterbox otherwise
+			DEBUG_MESSAGE(_T("DX9 task #77: auto-enabling panel-native scaling for sub-native fullscreen BB %ux%u -> panel %dx%d\n"),
+				m_PresentationParameters[0].BackBufferWidth,
+				m_PresentationParameters[0].BackBufferHeight,
+				panelW, panelH);
+		}
 	}
 
 	//--- enable GPU scaling ---

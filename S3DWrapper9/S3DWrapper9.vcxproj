@@ -505,6 +505,9 @@
     <ClCompile Include="..\Shared\DpiAwareness.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="..\Shared\PanelNativeSize.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="BaseStereoRenderer_Modified.cpp">
       <WholeProgramOptimization Condition="'$(Configuration)|$(Platform)'=='Final Release|Win32'">false</WholeProgramOptimization>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Final Release|Win32'">
