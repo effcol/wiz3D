@@ -16,6 +16,7 @@
 #include "../proxy_version.h"
 #include "proxy_factory.h"
 #include "../../Shared/OutputModeNames.h"
+#include "../../Shared/DpiAwareness.h"
 
 // Forward-declared instead of #included: device_vtable_hooks.h drags in
 // d3d9.h, which redeclares D3DPERF_* with different linkage than our
@@ -533,6 +534,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     case DLL_PROCESS_ATTACH:
         g_hProxy = hModule;
         DisableThreadLibraryCalls(hModule);
+        wiz3d::SetProcessDpiAware();   // 0.5.0: before game window / swap chain
         LoadConfig(hModule);
         LogOpen();
         g_hVEH = AddVectoredExceptionHandler(1, VectoredCrashHandler);

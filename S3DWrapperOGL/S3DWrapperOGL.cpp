@@ -22,6 +22,7 @@
 #include <shlwapi.h>
 #include "Trace.h"
 #include "ProductNames.h"
+#include "..\Shared\DpiAwareness.h"
 #include "../CommonUtils/StringUtils.h"
 #include "../CommonUtils/CommonResourceFolders.h"
 
@@ -65,6 +66,8 @@ BOOL APIENTRY DllMain( HMODULE hModule,
 	{
 	case DLL_PROCESS_ATTACH:
 		DisableThreadLibraryCalls(hModule);
+		// 0.5.0: process DPI awareness before the game creates its GL window.
+		wiz3d::SetProcessDpiAware();
 		_CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
 		_CrtSetReportHookW2( _CRT_RPTHOOK_INSTALL, zlog::VldReportHook );
 		//_CrtSetBreakAlloc(82291);

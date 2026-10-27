@@ -170,6 +170,7 @@
     <ClCompile Include="magic_header_capture.cpp" />
     <ClCompile Include="..\..\Shared\KatangaProducerDX9.cpp" />
     <ClCompile Include="..\..\Shared\NV3DOutputDX9.cpp" />
+    <ClCompile Include="..\..\Shared\DpiAwareness.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D3D9Proxy.h" />

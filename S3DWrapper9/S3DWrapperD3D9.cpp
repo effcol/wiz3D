@@ -21,6 +21,7 @@
 #include "BaseStereoRenderer.h"
 #include "ShaderHunter9.h"
 #include "../S3DAPI/ReadData.h"
+#include "../Shared/DpiAwareness.h"
 //#include <vld.h>
 
 BOOL (WINAPI *Original_SetDeviceGammaRamp)(HDC hDC, LPVOID lpRamp);
@@ -167,6 +168,11 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD dwReason, LPVOID lpvReserved)
 	case DLL_PROCESS_ATTACH:
 		{
 			DisableThreadLibraryCalls(hinstDLL);
+			// 0.5.0: process DPI awareness BEFORE the game creates its window
+			// or swap chain. Prevents OS from DPI-virtualising our window on
+			// scaled displays, which would collapse SR weave + any per-panel-
+			// pixel output mode. See Shared/DpiAwareness.h.
+			wiz3d::SetProcessDpiAware();
 			_CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
 			_CrtSetReportHookW2( _CRT_RPTHOOK_INSTALL, zlog::VldReportHook );
 			gData.hModule = hinstDLL;

@@ -33,6 +33,7 @@
 #include "..\Shared\OutputModeNames.h"       // ResolveOutputModeName (unified naming)
 #include "..\Shared\KatangaProducer.h"       // Katanga shared-texture producer (OutputMode=Katanga)
 #include "..\Shared\NV3DOutput.h"            // NV3D-Lib shutter-glass output (OutputMode=3DVisionGlasses)
+#include "..\Shared\DpiAwareness.h"          // process DPI awareness (per-monitor-V2)
 #include <new>
 #include <stdio.h>
 #include <d3d11.h>
@@ -2904,6 +2905,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     case DLL_PROCESS_ATTACH:
         g_hSelf = hModule;
         DisableThreadLibraryCalls(hModule);
+        // 0.5.0: process DPI awareness before anything else creates a window.
+        wiz3d::SetProcessDpiAware();
         LoadConfig();
         MH_Initialize();   // still needed for the IDXGIFactory::CreateSwapChain hook
 

@@ -242,6 +242,9 @@
     <ClCompile Include="..\Shared\NV3DOutput.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="..\Shared\DpiAwareness.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AmdQbInterfaces.h" />

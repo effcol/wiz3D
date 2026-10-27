@@ -21,6 +21,7 @@
 #include "SRWeaveOGL.h"
 #include "KatangaOGL.h"
 #include "NV3DGlassesOGL.h"
+#include "../Shared/DpiAwareness.h"
 
 std::vector<Renderer>	g_RendererList;
 static HWND	m_hFrontWnd;
@@ -1229,6 +1230,10 @@ BOOL	Renderer::SwapBuffers()
 				fclose(f);
 			}
 		}
+		// SR service's one-shot DPI-unaware resize correction (see
+		// oneup03/3D-Skills leiasr-integration SKILL.md pitfall #11). Cheap
+		// probe; no-op unless the host window is actually oversized.
+		wiz3d::FixDpiUnawareExternalResize(m_hWnd);
 		bool srOk = false;
 		if (m_pSRWeave && !SRWeaveOGL_IsFallback((SRWeaveOGLContext*)m_pSRWeave))
 		{

@@ -23,6 +23,7 @@ namespace wiz3d { void MaybeReloadProfileBetweenFrames(); }
 #include <Shlobj.h>
 #include <d3dcompiler.h>
 #include "SR.hpp"                    // Simulated Reality weave (delay-loaded runtime)
+#include "..\Shared\DpiAwareness.h"  // SR-service DPI-unaware resize fix
 #include "SRDisplayInfo.h"           // LeiaSR Displays runtime: recommended views-texture dimensions
 
 #pragma comment(lib, "dxguid.lib")
@@ -1052,6 +1053,17 @@ bool SwapChain11Proxy::RunSRWeave(ID3D11DeviceContext* ctx)
 {
     if (!EnsureSRWeaver()) return false;
     if (FAILED(EnsureSRSBSTexture())) return false;
+
+    // SR service's one-shot DPI-unaware resize: ~1 s after SR init it issues
+    // SetWindowPos from a DPI-UNAWARE thread, which (on >100% display scale)
+    // inflates a fullscreen 3840x2160 window to 5760x3240 and the weave
+    // stops landing 1:1 on panel pixels. Cheap probe + correction here --
+    // the fix is a no-op unless the window is actually oversized, so
+    // calling it every frame is safe. See Shared/DpiAwareness.h and
+    // oneup03/3D-Skills leiasr-integration SKILL.md pitfall #11.
+    DXGI_SWAP_CHAIN_DESC scDesc = {};
+    if (m_real && SUCCEEDED(m_real->GetDesc(&scDesc)) && scDesc.OutputWindow)
+        wiz3d::FixDpiUnawareExternalResize(scDesc.OutputWindow);
 
     // SR Weave reads a Half-SBS input texture; the compositor fills it in
     // the format SR-Lib's Weave() expects, regardless of the user's

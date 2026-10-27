@@ -167,6 +167,7 @@
     <ClCompile Include="SwapChainProxy.cpp" />
     <ClCompile Include="..\..\Shared\KatangaProducer.cpp" />
     <ClCompile Include="..\..\Shared\NV3DOutput.cpp" />
+    <ClCompile Include="..\..\Shared\DpiAwareness.cpp" />
     <ClCompile Include="DXGIDeviceProxy.cpp" />
     <ClCompile Include="DXGIAdapterProxy.cpp" />
     <ClCompile Include="swapchain_helpers.cpp" />

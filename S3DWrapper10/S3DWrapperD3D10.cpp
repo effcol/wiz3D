@@ -11,6 +11,7 @@
 #include "..\S3DAPI\ShaderProfileData.h"    // g_ProfileData (reload clears + repopulates)
 #include "../S3DAPI/ShutterAPI.h"
 #include "AdapterFunctions.h"               // DDILog for profile-reload traces
+#include "..\Shared\DpiAwareness.h"
 #include <atomic>
 #include "DXGIFactoryWrapper.h"
 #include "ShaderHunter.h"           // 0.5.0 hunt-mode plumbing
@@ -203,6 +204,10 @@ BOOL WINAPI DllMain( HMODULE hModule,
 	case DLL_PROCESS_ATTACH:
 	{
 		DisableThreadLibraryCalls(hModule);
+		// 0.5.0: process DPI awareness BEFORE game window / swap chain exists.
+		// See Shared/DpiAwareness.h for the rationale (SR weave + any
+		// per-panel-pixel output mode needs 1:1 panel-pixel landing).
+		wiz3d::SetProcessDpiAware();
 		_CrtSetDbgFlag( _CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF );
 		_CrtSetReportHookW2( _CRT_RPTHOOK_INSTALL, zlog::VldReportHook );
 		//VLDSetReportHook( VLD_RPTHOOK_INSTALL, zlog::VldReportHook );

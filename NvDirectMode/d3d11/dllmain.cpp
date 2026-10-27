@@ -18,6 +18,7 @@
 #include "proxy_factory.h"
 #include "swapchain_helpers.h"
 #include "../../Shared/OutputModeNames.h"
+#include "../../Shared/DpiAwareness.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -829,6 +830,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
     case DLL_PROCESS_ATTACH:
         g_hProxy = hModule;
         DisableThreadLibraryCalls(hModule);
+        wiz3d::SetProcessDpiAware();   // 0.5.0: before game window / swap chain
         LoadConfig(hModule);   // sets g_loggingEnabled / g_verboseEnabled / g_swapEyes
         LogOpen();
         g_hVEH = AddVectoredExceptionHandler(1, VectoredCrashHandler);

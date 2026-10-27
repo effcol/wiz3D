@@ -392,7 +392,8 @@ SOFTWARE.
 11. NV3DLib
 ============================================================================
 NV3DLib — NVIDIA 3D Vision shutter-glasses output library
-(upstream URL: set your canonical fork in this notice before 0.5.0 release)
+https://github.com/oneup03/NV3D-Lib
+Author: oneup03
 
 Used in: S3DWrapperD3D9.dll, S3DWrapperD3D10.dll (DX10/11), atidxx32.dll,
 atidxx64.dll (HD3D), S3DWrapperOGL.dll, NvDirectMode d3d9.dll /
@@ -419,7 +420,7 @@ The wiz3D project authored the NV3DLib native-DX9 backend
 (src/backends/dx9_backend.{h,cpp} + the InterfaceDX9 API in
 include/NV3D.hpp), contributed back upstream under the same LGPLv2.1.
 
-Copyright (C) NV3DLib contributors.
+Copyright (C) oneup03 and NV3DLib contributors.
 Copyright (C) wiz3D contributors (DX9 backend contribution).
 
                   GNU LESSER GENERAL PUBLIC LICENSE
