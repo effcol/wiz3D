@@ -606,36 +606,19 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 		break;
 	}
 
-	//--- 0.5.0 task #77: auto-enable GPU scaling for sub-native fullscreen ---
-	// Mirrors the DX11 Stereo-Injector's task #32 pattern (SwapChain11Proxy::
-	// EnsureStereoBackBuffer): when the game picks a sub-native fullscreen BB
-	// and no scaling mode is configured, override to SCALEDASPECT with panel-
-	// native dims so SR Weave (and other per-panel-pixel output modes) land
-	// 1:1 on the display. ScalingHook handles the game-side lies about
-	// window/cursor coords. QueryPanelNativeSize prefers the LeiaSR Displays
-	// SDK and falls back to the OS monitor the focus window lives on, so
-	// multi-monitor games on secondary panels get the right target dims.
-	if (gInfo.DisplayScalingMode == 0 &&
-		!m_PresentationParameters[0].Windowed &&
-		m_PresentationParameters[0].BackBufferWidth  > 1 &&
-		m_PresentationParameters[0].BackBufferHeight > 1)
-	{
-		HWND focus = m_PresentationParameters[0].hDeviceWindow;
-		int panelW = 0, panelH = 0;
-		if (focus && wiz3d::QueryPanelNativeSize(focus, panelW, panelH) &&
-			panelW > 0 && panelH > 0 &&
-			((UINT)panelW != m_PresentationParameters[0].BackBufferWidth ||
-			 (UINT)panelH != m_PresentationParameters[0].BackBufferHeight))
-		{
-			gInfo.DisplayNativeWidth  = (UINT)panelW;
-			gInfo.DisplayNativeHeight = (UINT)panelH;
-			gInfo.DisplayScalingMode  = DISPLAY_SCALING_SCALEDASPECT;   // stretch preserving aspect; letterbox otherwise
-			DEBUG_MESSAGE(_T("DX9 task #77: auto-enabling panel-native scaling for sub-native fullscreen BB %ux%u -> panel %dx%d\n"),
-				m_PresentationParameters[0].BackBufferWidth,
-				m_PresentationParameters[0].BackBufferHeight,
-				panelW, panelH);
-		}
-	}
+	// NOTE: 0.5.0 task #77 auto-enable WAS attempted here but reverted. Setting
+	// DisplayScalingMode=SCALEDASPECT at swap-chain init made DoScaling()
+	// ColorFill the post-scale RT to black then StretchRect from an empty
+	// pre-scale RT. The game, through its hooked SetRenderTarget, ended up
+	// writing directly to the panel-sized post-scale RT with a game-dim
+	// viewport (top-left region only), DoScaling wiped it, and SR Weave read
+	// an empty intermediate -- producing the "top-left corner weave + rest
+	// black" symptom reported by Antichamber 2026-10-27. See
+	// Testing/Logs/DX9/x86/antichamber. The fix needs the game's
+	// SetRenderTarget routing to actually land on m_pStereoBBLeft (pre-scale)
+	// before DoScaling can bridge pre-scale -> post-scale correctly; that
+	// routing isn't fully wired on the modern code path. Left for a
+	// follow-up with proper SetRenderTarget tracing.
 
 	//--- enable GPU scaling ---
 	m_bScalingEnabled = false;
