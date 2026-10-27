@@ -131,37 +131,26 @@ HRESULT SimulatedRealityWeaveOutput::InitializeSCData(CBaseSwapChain* pSwapChain
         m_ViewHeight = desc.Height;
         m_ViewFormat = desc.Format;
 
-        // 0.5.0 task #77 diagnostic -- write to same log the DX9 wrapper uses.
-        // Path: <GameExeDir>\wiz3D_Logs\<App>\_task77_subnative.log
-        // gInfo isn't exported from the wrapper, so we rebuild the path from
-        // GetModuleFileName(NULL).
+        // 0.5.0 task #77 diagnostic. Hardcoded path to the game dir's
+        // wiz3D_Logs/UDK subdir (the DX9 wrapper creates it) + a FIXED
+        // filename, narrow fopen so we're not fighting WCHAR CRT state.
         {
-            WCHAR exePath[MAX_PATH] = {};
-            GetModuleFileNameW(NULL, exePath, MAX_PATH);
-            WCHAR* slash = wcsrchr(exePath, L'\\');
-            if (slash) *slash = 0;
-            WCHAR* exeName = slash ? (slash + 1) : exePath;
-            // Extract app base name from the ORIGINAL exePath+filename
-            WCHAR appBase[MAX_PATH] = {};
+            char line[256];
+            _snprintf_s(line, _TRUNCATE,
+                "SR_Weave InitializeSCData: primary BB %ux%u fmt=%u -> m_ViewWidth=%u m_ViewHeight=%u (SBS tex %ux%u)\n",
+                desc.Width, desc.Height, (unsigned)desc.Format,
+                m_ViewWidth, m_ViewHeight, m_ViewWidth * 2, m_ViewHeight);
+            OutputDebugStringA(line);
+            char exeDir[MAX_PATH] = {};
+            GetModuleFileNameA(NULL, exeDir, MAX_PATH);
+            char* slash = strrchr(exeDir, '\\');
             if (slash) {
-                WCHAR tmp[MAX_PATH];
-                wcscpy_s(tmp, MAX_PATH, slash + 1);
-                WCHAR* dot = wcsrchr(tmp, L'.');
-                if (dot) *dot = 0;
-                wcscpy_s(appBase, MAX_PATH, tmp);
+                *slash = 0;
+                char path[MAX_PATH];
+                _snprintf_s(path, _TRUNCATE, "%s\\wiz3D_Logs\\_srweave_dx9.log", exeDir);
+                FILE* f = fopen(path, "a");
+                if (f) { fputs(line, f); fclose(f); }
             }
-            WCHAR logPath[MAX_PATH];
-            swprintf_s(logPath, MAX_PATH, L"%s\\wiz3D_Logs\\%s\\_task77_subnative.log",
-                exePath, appBase);
-            FILE* f = nullptr;
-            _wfopen_s(&f, logPath, L"a");
-            if (f) {
-                fprintf(f, "SR_Weave InitializeSCData: primary BB %ux%u fmt=%u -> m_ViewWidth=%u m_ViewHeight=%u (SBS tex %ux%u)\n",
-                    desc.Width, desc.Height, (unsigned)desc.Format,
-                    m_ViewWidth, m_ViewHeight, m_ViewWidth * 2, m_ViewHeight);
-                fclose(f);
-            }
-            (void)exeName;
         }
 
         // SBS texture: left eye occupies [0, ViewWidth), right eye [ViewWidth, ViewWidth*2)
@@ -274,7 +263,8 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
     if (!pLeft || !pRight)
         return S_OK;
 
-    // 0.5.0 task #77: diagnostic -- log pLeft/pRight dims + the rects we read from
+    // 0.5.0 task #77: diagnostic. Same hardcoded path approach as
+    // InitializeSCData above -- game dir + _srweave_dx9.log, narrow fopen.
     static int s_logN = 0;
     if (s_logN < 3)
     {
@@ -283,29 +273,25 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
         pLeft->GetDesc(&lDesc);
         pRight->GetDesc(&rDesc);
         pSwapChain->m_pPrimaryBackBuffer->GetDesc(&pDesc);
-        WCHAR exePath[MAX_PATH] = {};
-        GetModuleFileNameW(NULL, exePath, MAX_PATH);
-        WCHAR* slash = wcsrchr(exePath, L'\\');
-        WCHAR appBase[MAX_PATH] = {};
+        char line[512];
+        _snprintf_s(line, _TRUNCATE,
+            "SR_Weave Output #%d: primaryBB=%ux%u pLeft=%p (%ux%u) pRight=%p (%ux%u) pLeftRect=(%ld,%ld,%ld,%ld) pRightRect=(%ld,%ld,%ld,%ld) m_ViewWidth=%u m_ViewHeight=%u sameLR=%d\n",
+            s_logN, pDesc.Width, pDesc.Height,
+            (void*)pLeft, lDesc.Width, lDesc.Height,
+            (void*)pRight, rDesc.Width, rDesc.Height,
+            pLeftRect->left, pLeftRect->top, pLeftRect->right, pLeftRect->bottom,
+            pRightRect->left, pRightRect->top, pRightRect->right, pRightRect->bottom,
+            m_ViewWidth, m_ViewHeight, (int)(pLeft == pRight));
+        OutputDebugStringA(line);
+        char exeDir[MAX_PATH] = {};
+        GetModuleFileNameA(NULL, exeDir, MAX_PATH);
+        char* slash = strrchr(exeDir, '\\');
         if (slash) {
             *slash = 0;
-            wcscpy_s(appBase, MAX_PATH, slash + 1);
-            WCHAR* dot = wcsrchr(appBase, L'.');
-            if (dot) *dot = 0;
-        }
-        WCHAR logPath[MAX_PATH];
-        swprintf_s(logPath, MAX_PATH, L"%s\\wiz3D_Logs\\%s\\_task77_subnative.log", exePath, appBase);
-        FILE* f = nullptr;
-        _wfopen_s(&f, logPath, L"a");
-        if (f) {
-            fprintf(f, "SR_Weave Output #%d: primaryBB=%ux%u pLeft=%p (%ux%u) pRight=%p (%ux%u) pLeftRect=(%ld,%ld,%ld,%ld) pRightRect=(%ld,%ld,%ld,%ld) m_ViewWidth=%u m_ViewHeight=%u sameLR=%d\n",
-                s_logN, pDesc.Width, pDesc.Height,
-                (void*)pLeft, lDesc.Width, lDesc.Height,
-                (void*)pRight, rDesc.Width, rDesc.Height,
-                pLeftRect->left, pLeftRect->top, pLeftRect->right, pLeftRect->bottom,
-                pRightRect->left, pRightRect->top, pRightRect->right, pRightRect->bottom,
-                m_ViewWidth, m_ViewHeight, (int)(pLeft == pRight));
-            fclose(f);
+            char path[MAX_PATH];
+            _snprintf_s(path, _TRUNCATE, "%s\\wiz3D_Logs\\_srweave_dx9.log", exeDir);
+            FILE* f = fopen(path, "a");
+            if (f) { fputs(line, f); fclose(f); }
         }
     }
 
@@ -347,6 +333,51 @@ HRESULT SimulatedRealityWeaveOutput::Output(CBaseSwapChain* pSwapChain)
     // wrapper's post-Present code sees the same state it set up.
     IDirect3DStateBlock9* pSavedState = nullptr;
     HRESULT hrSB = m_pd3dDevice->CreateStateBlock(D3DSBT_ALL, &pSavedState);
+
+    // 0.5.0 task #77: snapshot the actual device viewport + hWnd client rect
+    // immediately before Weave() to see what the SR Weaver really sees.
+    // The IWeaverBase1 contract says Weave() uses current viewport + scissor,
+    // but there is strong evidence it's clipping to hWnd client size instead.
+    static int s_vpLogN = 0;
+    if (s_vpLogN < 3)
+    {
+        ++s_vpLogN;
+        D3DVIEWPORT9 vpNow = {};
+        m_pd3dDevice->GetViewport(&vpNow);
+        RECT scisNow = {};
+        m_pd3dDevice->GetScissorRect(&scisNow);
+        IDirect3DSurface9* curRT = nullptr;
+        D3DSURFACE_DESC curRTDesc = {};
+        if (SUCCEEDED(m_pd3dDevice->GetRenderTarget(0, &curRT)) && curRT) {
+            curRT->GetDesc(&curRTDesc);
+            curRT->Release();
+        }
+        HWND hwnd = pSwapChain->GetAppWindow();
+        RECT cr = {};
+        if (hwnd) GetClientRect(hwnd, &cr);
+        RECT wr = {};
+        if (hwnd) GetWindowRect(hwnd, &wr);
+        char line[512];
+        _snprintf_s(line, _TRUNCATE,
+            "SR_Weave pre-Weave #%d: vp=(%u,%u,%ux%u) scissor=(%ld,%ld,%ld,%ld) curRT=%ux%u hWnd=%p clientRect=(%ld,%ld,%ld,%ld) windowRect=(%ld,%ld,%ld,%ld)\n",
+            s_vpLogN, vpNow.X, vpNow.Y, vpNow.Width, vpNow.Height,
+            scisNow.left, scisNow.top, scisNow.right, scisNow.bottom,
+            curRTDesc.Width, curRTDesc.Height,
+            (void*)hwnd,
+            cr.left, cr.top, cr.right, cr.bottom,
+            wr.left, wr.top, wr.right, wr.bottom);
+        OutputDebugStringA(line);
+        char exeDir[MAX_PATH] = {};
+        GetModuleFileNameA(NULL, exeDir, MAX_PATH);
+        char* slash = strrchr(exeDir, '\\');
+        if (slash) {
+            *slash = 0;
+            char path[MAX_PATH];
+            _snprintf_s(path, _TRUNCATE, "%s\\wiz3D_Logs\\_srweave_dx9.log", exeDir);
+            FILE* f = fopen(path, "a");
+            if (f) { fputs(line, f); fclose(f); }
+        }
+    }
 
     // SR-Lib builds its own clean D3D objects internally, so the old
     // wrapped-pointer crash path (Tales of Berseria, SR SDK era) should be
