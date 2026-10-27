@@ -389,6 +389,80 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ============================================================================
+11. NV3DLib
+============================================================================
+NV3DLib — NVIDIA 3D Vision shutter-glasses output library
+(upstream URL: set your canonical fork in this notice before 0.5.0 release)
+
+Used in: S3DWrapperD3D9.dll, S3DWrapperD3D10.dll (DX10/11), atidxx32.dll,
+atidxx64.dll (HD3D), S3DWrapperOGL.dll, NvDirectMode d3d9.dll /
+d3d11.dll. Statically linked (NV3DLib-mt.lib / NV3DLib-mtd.lib). Drives
+OutputMode=3DVisionGlasses on every wiz3D wrapper via NV3D-Lib's
+InterfaceDX9 / InterfaceDX11 / InterfaceOGL backends.
+
+Distributed under the GNU Lesser General Public License, version 2.1.
+See lib/NV3D-Lib/NV3D-Lib-fresh/LICENSE for the full text.
+
+Source is bundled in this repository under lib/NV3D-Lib/NV3D-Lib-fresh/
+(its own git tree, upstream at the URL above). Each wiz3D release
+reproduces that source tree, including the exact commits linked at
+build time, so users can relink wiz3D's binaries against a modified
+version of NV3DLib per LGPL v2.1 clause 6.
+
+LGPLv2.1 Section 6 compliance: a user wishing to replace NV3DLib with
+a modified version may build NV3DLib.sln under lib/NV3D-Lib/
+NV3D-Lib-fresh/, drop the resulting NV3DLib-{md,mt}{d,}.lib into
+lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib/lib/{x32,x64}/{Release,Debug}-{MD,MT}/,
+and rebuild the relevant wiz3D DLLs from their vcxproj files.
+
+The wiz3D project authored the NV3DLib native-DX9 backend
+(src/backends/dx9_backend.{h,cpp} + the InterfaceDX9 API in
+include/NV3D.hpp), contributed back upstream under the same LGPLv2.1.
+
+Copyright (C) NV3DLib contributors.
+Copyright (C) wiz3D contributors (DX9 backend contribution).
+
+                  GNU LESSER GENERAL PUBLIC LICENSE
+                       Version 2.1, February 1999
+
+This library is free software; you can redistribute it and/or modify it
+under the terms of the GNU Lesser General Public License as published by
+the Free Software Foundation; either version 2.1 of the License, or (at
+your option) any later version.
+
+This library is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
+or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Lesser General Public
+License for more details.
+
+You should have received a copy of the GNU Lesser General Public License
+along with this library; if not, write to the Free Software Foundation,
+Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+
+============================================================================
+12. Katanga shared-texture protocol (API contract only, no linked code)
+============================================================================
+Katanga — open-source NVIDIA 3D Vision content viewer
+https://github.com/bo3b/Katanga
+
+Used in: S3DWrapperD3D9.dll, S3DWrapperD3D10.dll (DX10/11), atidxx32.dll,
+atidxx64.dll (HD3D), S3DWrapperOGL.dll, NvDirectMode d3d9.dll /
+d3d11.dll. OutputMode=Katanga publishes a wide-SBS DX11 KMT shared
+texture under the "Local\KatangaMappedFile" + "KatangaSetupMutex"
+protocol that Katanga opens and displays.
+
+NO SOURCE OR BINARY IS LINKED. The Katanga producer helpers
+(Shared/KatangaProducer.{h,cpp}, Shared/KatangaProducerDX9.{h,cpp},
+S3DWrapperOGL/KatangaOGL.{h,cpp}) are wiz3D-authored implementations
+of the public shared-memory protocol; no code from Katanga's GPL-3.0
+tree is incorporated. The Katanga application itself is downloaded
+separately by the end user from the URL above and remains under its
+own GPL-3.0 licence.
+
+Credit: Bo3b Johnson for the Katanga viewer and its shared-texture
+protocol.
+
+============================================================================
 
 The WiZ3D project itself is licensed under the GNU Lesser General Public
 License v2.1. See LICENSE (LGPLv2.1) and LICENSE-iZ3D.txt (MIT) in the
