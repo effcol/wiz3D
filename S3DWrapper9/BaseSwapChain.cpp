@@ -720,9 +720,15 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 				if (!hResize[i]) continue;
 				RECT before = {};
 				GetWindowRect(hResize[i], &before);
+				// SWP_NOSENDCHANGING: suppress WM_WINDOWPOSCHANGING so UDK
+				// (and other engines that clamp the proposed size back to
+				// their configured resolution in that message handler) can't
+				// cancel the resize. First attempt (beca0e44) saw ok=1 but
+				// before==after on Antichamber -- classic WM_WINDOWPOSCHANGING
+				// clamp.
 				BOOL ok = SetWindowPos(hResize[i], HWND_TOP,
 					0, 0, (int)width, (int)height,
-					SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+					SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOSENDCHANGING);
 				RECT after = {};
 				GetWindowRect(hResize[i], &after);
 				Task77Log("resize hWnd[%d]=%p: SetWindowPos(0,0,%u,%u) ok=%d before=(%ld,%ld,%ld,%ld) after=(%ld,%ld,%ld,%ld)\n",
