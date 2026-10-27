@@ -34,6 +34,7 @@
 #include <dxgi1_2.h>
 #include <d3d11.h>
 #include "..\..\Shared\KatangaProducer.h"   // 0.5.0 Katanga shared-texture producer
+#include "..\..\Shared\NV3DOutput.h"        // 0.5.0 NV3D-Lib shutter-glasses output
 
 namespace SimulatedReality
 {
@@ -220,8 +221,15 @@ private:
     // R eye to [W..2W) -- then PublishFrame hands the result to Katanga's
     // shared-handle protocol. See Shared/KatangaProducer.h for details.
     bool RunKatanga();
+
+    // NV3D-Lib shutter output (OutputMode==11 / OM_3DVISION_GLASSES).
+    // Same CopySubresourceRegion fill of m_srSBSTex, then hand to
+    // NV3D::InterfaceDX11 which drives shutter glasses via its own
+    // D3D9Ex DIRECT-mode presenter. See Shared/NV3DOutput.h.
+    bool RunNV3DGlasses();
     void ReleaseKatanga();
     wiz3d::KatangaProducer    m_Katanga;
+    wiz3d::NV3DOutputDX11     m_NV3D;
 };
 
 } // namespace NvDirectMode

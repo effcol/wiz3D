@@ -1015,6 +1015,58 @@ bool SwapChainProxy::RunKatanga()
 void SwapChainProxy::ReleaseKatanga()
 {
     m_Katanga.Shutdown();
+    m_NV3D.Shutdown();
+}
+
+// NV3D-Lib shutter output. Same compositor target (m_srSBSTex) as the
+// Katanga path; a session picks EITHER so there's no contention. On
+// first visible-content frame, lazy-init NV3D::InterfaceDX11 against
+// the parent DX11 device + the swap chain's HWND; subsequent frames
+// just Present the already-filled wide SBS.
+bool SwapChainProxy::RunNV3DGlasses()
+{
+    if (!EnsureSRSBSTexture()) return false;
+    if (!m_leftEyeFrame || !m_rightEyeFrame || !m_srSBSTex) return false;
+
+    ID3D11Device* dev = m_parent ? m_parent->GetReal() : nullptr;
+    if (!dev) return false;
+    ID3D11DeviceContext* ctx = nullptr;
+    dev->GetImmediateContext(&ctx);
+    if (!ctx) return false;
+
+    D3D11_TEXTURE2D_DESC eyeDesc = {};
+    m_leftEyeFrame->GetDesc(&eyeDesc);
+    const UINT eyeW = eyeDesc.Width;
+    const UINT eyeH = eyeDesc.Height;
+    D3D11_BOX box = { 0, 0, 0, eyeW, eyeH, 1 };
+    const bool swap = (NvDM_SwapEyes() != 0);
+    ctx->CopySubresourceRegion(m_srSBSTex, 0, 0,    0, 0, swap ? m_rightEyeFrame : m_leftEyeFrame,  0, &box);
+    ctx->CopySubresourceRegion(m_srSBSTex, 0, eyeW, 0, 0, swap ? m_leftEyeFrame  : m_rightEyeFrame, 0, &box);
+
+    if (!m_NV3D.IsReady())
+    {
+        HWND hwnd = nullptr;
+        if (m_real)
+        {
+            DXGI_SWAP_CHAIN_DESC sd = {};
+            if (SUCCEEDED(m_real->GetDesc(&sd))) hwnd = sd.OutputWindow;
+        }
+        if (m_NV3D.TryInit(dev, hwnd, swap))
+        {
+            static int s_logged = 0;
+            if (s_logged < 3)
+            {
+                ++s_logged;
+                NvDM_Log("  d3d11 RunNV3DGlasses: InterfaceDX11 up (SBS %ux%u, hwnd=%p, swapEyes=%d)\n",
+                         eyeW * 2, eyeH, (void*)hwnd, (int)swap);
+            }
+        }
+    }
+    if (m_NV3D.IsReady())
+        m_NV3D.Present(m_srSBSTex);
+
+    ctx->Release();
+    return true;
 }
 
 void SwapChainProxy::UpdateAnaglyphCB()
@@ -1125,6 +1177,10 @@ bool SwapChainProxy::RunCompositePass()
     // the real BB so the user sees stereo on-screen whether Katanga picked
     // up the texture or not.
     if (mode == 12) { RunKatanga(); }
+    // 3D Vision Glasses (OM_3DVISION_GLASSES = 11): hand wide SBS to NV3D-Lib
+    // for shutter-glasses output via its own D3D9Ex DIRECT-mode presenter.
+    // Same fall-through pattern as Katanga.
+    if (mode == 11) { RunNV3DGlasses(); }
     ID3D11PixelShader* ps = m_compositePS_SBS;
     ID3D11SamplerState* sampler = m_compositeSampler;
     bool needsAnaglyphCB = false;

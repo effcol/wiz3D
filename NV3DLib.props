@@ -10,25 +10,28 @@
   Rebuild them from lib/NV3D-Lib/NV3D-Lib-fresh/NV3DLib.sln if missing.
 -->
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <!-- Resolve relative to THIS props file (wiz3D repo root) so the imports work from
+       any solution (S3DDriver.sln, NvDirectMode.sln, standalone proxies). -->
   <PropertyGroup>
-    <NV3DLibRoot>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\NV3DLib</NV3DLibRoot>
+    <NV3DLibRoot>$(MSBuildThisFileDirectory)lib\NV3D-Lib\NV3D-Lib-fresh\NV3DLib</NV3DLibRoot>
+    <NV3DNvapiDir>$(MSBuildThisFileDirectory)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi</NV3DNvapiDir>
   </PropertyGroup>
   <!-- Platform-specific .lib paths. Debug configs pull in -mtd (static CRT debug); Release/Final Release pull in -mt. -->
   <PropertyGroup Condition="'$(Platform)'=='Win32' and '$(Configuration)'=='Debug'">
     <NV3DLibLib>$(NV3DLibRoot)\lib\x32\Debug-MT\NV3DLib-mtd.lib</NV3DLibLib>
-    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\x86\nvapi.lib</NV3DLibNvapi>
+    <NV3DLibNvapi>$(NV3DNvapiDir)\x86\nvapi.lib</NV3DLibNvapi>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Platform)'=='Win32' and '$(Configuration)'!='Debug'">
     <NV3DLibLib>$(NV3DLibRoot)\lib\x32\Release-MT\NV3DLib-mt.lib</NV3DLibLib>
-    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\x86\nvapi.lib</NV3DLibNvapi>
+    <NV3DLibNvapi>$(NV3DNvapiDir)\x86\nvapi.lib</NV3DLibNvapi>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Platform)'=='x64' and '$(Configuration)'=='Debug'">
     <NV3DLibLib>$(NV3DLibRoot)\lib\x64\Debug-MT\NV3DLib-mtd.lib</NV3DLibLib>
-    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\amd64\nvapi64.lib</NV3DLibNvapi>
+    <NV3DLibNvapi>$(NV3DNvapiDir)\amd64\nvapi64.lib</NV3DLibNvapi>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Platform)'=='x64' and '$(Configuration)'!='Debug'">
     <NV3DLibLib>$(NV3DLibRoot)\lib\x64\Release-MT\NV3DLib-mt.lib</NV3DLibLib>
-    <NV3DLibNvapi>$(SolutionDir)lib\NV3D-Lib\NV3D-Lib-fresh\external\nvapi\amd64\nvapi64.lib</NV3DLibNvapi>
+    <NV3DLibNvapi>$(NV3DNvapiDir)\amd64\nvapi64.lib</NV3DLibNvapi>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>

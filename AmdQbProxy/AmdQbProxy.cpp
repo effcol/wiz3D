@@ -32,6 +32,7 @@
 #include "..\Shared\version.h"
 #include "..\Shared\OutputModeNames.h"       // ResolveOutputModeName (unified naming)
 #include "..\Shared\KatangaProducer.h"       // Katanga shared-texture producer (OutputMode=Katanga)
+#include "..\Shared\NV3DOutput.h"            // NV3D-Lib shutter-glass output (OutputMode=3DVisionGlasses)
 #include <new>
 #include <stdio.h>
 #include <d3d11.h>
@@ -114,6 +115,7 @@ enum OutputMode {
     OM_CHECKERBOARD        = 8,  // Checkerboard            (alternating pixels, DLP projectors)
     OM_SR_WEAVE            = 9,  // Simulated Reality Weave (Leia/Samsung Odyssey Moving Lightfield displays)
     OM_STEREO_MIRROR       = 10, // Stereo mirror           (reserved; HD3D doesn't implement yet)
+    OM_3DVISION_GLASSES    = 11, // 0.5.0: NV3D-Lib DIRECT-mode shutter glasses (Vision Restoration coop)
     OM_KATANGA             = 12, // 0.5.0: Katanga shared-texture producer (bo3b's open-source stereo viewer)
 };
 // Unified default = SR Weave. SR runtime failure (no LeiaSR installed, no SR
@@ -334,6 +336,11 @@ static DXGI_FORMAT               g_SRSBSFmt      = DXGI_FORMAT_UNKNOWN;
 // viewer. Reuses g_pSRSBSTex as the wide-SBS composite source; see
 // Shared/KatangaProducer.h for the protocol.
 static wiz3d::KatangaProducer    g_Katanga;
+
+// NV3D-Lib shutter-glasses output. Reuses g_pSRSBSTex as the SBS source
+// (a session picks ONE output mode so sharing is safe). See
+// Shared/NV3DOutput.h for the Vision Restoration coop story.
+static wiz3d::NV3DOutputDX11     g_NV3D;
 
 // Shadow fixup resources — for engines (Hitman/EGO/Tomb Raider 2013) where the
 // game only renders content into the TOP HALF of each eye's shadow slot. Before
@@ -2024,6 +2031,7 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
     bool anaglyphMode    = (g_OutputMode == OM_ANAGLYPH);
     bool srWeaveMode     = (g_OutputMode == OM_SR_WEAVE);
     bool katangaMode     = (g_OutputMode == OM_KATANGA);
+    bool nv3dMode        = (g_OutputMode == OM_3DVISION_GLASSES);
 
     // Compositor: the shadow texture holds the game's T&B content (left eye=top,
     // right eye=bottom).  The pixel shader samples each eye's half and draws it
@@ -2082,6 +2090,37 @@ static HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* pSC, UINT SyncInt
             wsprintfA(buf, "[AmdQbProxy] Katanga: first PublishFrame (SBS %ux%u -> shared tex)\n", W * 2, H);
             WriteLog(buf);
         }
+    }
+
+    // NV3D-Lib shutter-glasses output. Builds the same wide-SBS source into
+    // g_pSRSBSTex, then hands it to NV3D::InterfaceDX11 which drives shutter
+    // glasses via its own D3D9Ex DIRECT-mode presenter. SBS fallback still
+    // runs on the real BB so the host window shows content whether or not
+    // the FSE popup is up / 3D Vision hardware is present.
+    if (nv3dMode && EnsureSRSBSTexture(W, H, bbDesc.Format))
+    {
+        ID3D11ShaderResourceView* pNullSRV = nullptr;
+        g_pContext->PSSetShaderResources(0, 1, &pNullSRV);
+        D3D11_BOX srcLeft  = { 0, 0,      0, W,     origH, 1 };
+        D3D11_BOX srcRight = { 0, origH,  0, W, origH * 2, 1 };
+        g_pContext->CopySubresourceRegion(g_pSRSBSTex, 0, 0, 0, 0, pShadowTex, 0, crosseyed ? &srcRight : &srcLeft);
+        g_pContext->CopySubresourceRegion(g_pSRSBSTex, 0, W, 0, 0, pShadowTex, 0, crosseyed ? &srcLeft  : &srcRight);
+        if (!g_NV3D.IsReady())
+        {
+            // Pass hwnd=nullptr so NV3D-Lib creates its own FSE popup on the
+            // primary 3D-Vision display. HD3D doesn't track the game's swap
+            // chain output window here, and the library-owned popup is the
+            // path with the least coupling to host-side focus plumbing.
+            g_NV3D.TryInit(g_pDevice11, nullptr, crosseyed);
+            if (g_NV3D.IsReady())
+            {
+                char buf[200];
+                wsprintfA(buf, "[AmdQbProxy] NV3D-Lib: InterfaceDX11 up (SBS %ux%u, swapEyes=%d)\n", W * 2, H, (int)crosseyed);
+                WriteLog(buf);
+            }
+        }
+        if (g_NV3D.IsReady())
+            g_NV3D.Present(g_pSRSBSTex);
     }
 
     if (anaglyphMode)
@@ -2900,6 +2939,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD reason, LPVOID lpReserved)
         CleanupSRWeaver();
         CleanupShadowFixup();
         g_Katanga.Shutdown();
+        g_NV3D.Shutdown();
         for (auto& kv : g_scShadow) kv.second.Release();
         g_scShadow.clear();
         if (g_pReadbackTex){ g_pReadbackTex->Release();g_pReadbackTex = nullptr; }
