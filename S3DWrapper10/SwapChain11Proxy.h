@@ -30,6 +30,7 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // see DXGIDeviceProxy.h — bundled
 #include <dxgi1_2.h>
 #include <dxgi1_5.h>   // IDXGISwapChain2/3/4
 #include "ShiftFinder11.h"           // 0.4.1 AutoFocus / LaserSight image correlator
+#include "..\Shared\KatangaProducer.h" // 0.5.0 Katanga shared-texture producer
 
 // SR-Lib (ThirdPartyLibs/SR-Lib_v2.0.0): lightfield weave for Simulated
 // Reality displays. Forward-declared so only the .cpp includes SR.hpp.
@@ -183,6 +184,7 @@ private:
         OM_COLUMN_INTERLEAVED = 7,  // Column interleaved -- follow-up commit
         OM_CHECKERBOARD       = 8,  // Checkerboard (DLP-Link projectors) -- follow-up commit
         OM_SR_WEAVE           = 9,  // Simulated Reality Weave (Leia/Samsung Odyssey 3D)
+        OM_KATANGA            = 12, // 0.5.0: produce shared wide-SBS DX11 tex, Katanga app displays it
     };
     // Reads gInfo.OutputMode and the legacy OutputMethodDll string, returning
     // the enum. OutputMethodDll=="SimulatedRealityWeaveOutput" overrides to
@@ -209,6 +211,14 @@ private:
     HRESULT EnsureSRSBSTexture();
     bool    RunSRWeave(ID3D11DeviceContext* ctx);
     void    ReleaseSRWeave(bool releaseWeaver);
+
+    // Katanga output -- producer for bo3b's open-source stereo viewer. Produces a
+    // 2W x H shared DX11 texture (D3D11_RESOURCE_MISC_SHARED legacy KMT) that
+    // Katanga opens and displays. Falls back to Half-SBS on the real BB if
+    // Katanga isn't running. See Shared/KatangaProducer.h for the protocol.
+    HRESULT EnsureKatangaSBSTexture();
+    bool    RunKatanga(ID3D11DeviceContext* ctx);
+    void    ReleaseKatanga();
 
     IDXGISwapChain*  m_real;     // owned (released in dtor)
     IDXGISwapChain1* m_real1;    // optional, owned, nullable
@@ -277,6 +287,17 @@ private:
     UINT                      m_srSBSW    = 0;
     UINT                      m_srSBSH    = 0;
     DXGI_FORMAT               m_srSBSFmt  = DXGI_FORMAT_UNKNOWN;
+
+    // Katanga output state. m_Katanga owns the shared texture + Katanga-side
+    // mapped file + setup mutex (see Shared/KatangaProducer). m_katangaSBS* is
+    // our side's wide-SBS scratch that the compositor fills before we hand
+    // the result to Katanga via CopyResource.
+    wiz3d::KatangaProducer    m_Katanga;
+    ID3D11Texture2D*          m_katangaSBSTex = nullptr;
+    ID3D11RenderTargetView*   m_katangaSBSRTV = nullptr;
+    UINT                      m_katangaSBSW   = 0;
+    UINT                      m_katangaSBSH   = 0;
+    DXGI_FORMAT               m_katangaSBSFmt = DXGI_FORMAT_UNKNOWN;
 
     // OSD overlay (ShowOSD / ShowFPS / ShowHotKeyOSD) — self-contained
     // GDI-based text renderer. Lazily initialised at first composite;

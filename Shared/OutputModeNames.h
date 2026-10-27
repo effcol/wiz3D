@@ -46,6 +46,12 @@ enum OutputModeId
     OUTMODE_CHECKERBOARD         = 8,   // DLP-Link projectors
     OUTMODE_SR_WEAVE             = 9,   // Simulated Reality (Leia/Samsung Odyssey 3D)
     OUTMODE_STEREO_MIRROR        = 10,  // second-display mirror
+    OUTMODE_3DVISION_GLASSES     = 11,  // 0.5.0: NVIDIA 3D Vision shutter glasses auto-detect cascade
+                                        //        (NV3D-Lib + Vision Restoration + ShutterOutput). Slot
+                                        //        reserved; full wiring deferred until after team sync.
+    OUTMODE_KATANGA              = 12,  // 0.5.0: produces a shared wide-SBS DX11 texture Katanga picks
+                                        //        up and displays. bo3b's open-source stereo viewer.
+                                        //        See project_katanga_output memory for the protocol.
 };
 
 struct OutputModeEntry
@@ -100,6 +106,16 @@ static const OutputModeEntry kOutputModeTable[] =
     { OUTMODE_SR_WEAVE,             "SRWeave",                "SimulatedRealityWeaveOutput", 0 },
     { OUTMODE_STEREO_MIRROR,        "Mirror",                 "StereoMirrorOutput",          0 },
     { OUTMODE_IZ3D_DUAL,            "iZ3D",                   "S3DOutput",                   0 },
+    // 0.5.0: 3D Vision Glasses output -- reserved, implementation deferred
+    // pending bo3b + Akshay sync. See project_v043_in_flight_hotfix for the
+    // planned cascade; slot kept in the enum so the config schema is stable.
+    { OUTMODE_3DVISION_GLASSES,     "3DVisionGlasses",        "ShutterOutput",               0 },
+    // 0.5.0: Katanga output -- produce a shared wide-SBS DX11 texture bo3b's
+    // Katanga app picks up and displays. No Output DLL load; the wrapper
+    // handles the shared-handle + sync primitive directly. The DLL field
+    // here is a last-resort fallback to SideBySideOutput if the shared-
+    // handle creation fails (user still sees stereo on-screen as SBS).
+    { OUTMODE_KATANGA,              "Katanga",                "SideBySideOutput",            0 },
     // --- Ultra-short bare-mode aliases (user convenience). "SBS" means
     //     HalfSBS, "TAB" means HalfTAB -- picking the common half variants.
     { OUTMODE_HALF_SIDE_BY_SIDE,    "SBS",                    "SideBySideOutput",            0 },
@@ -115,6 +131,8 @@ static const OutputModeEntry kOutputModeTable[] =
     { OUTMODE_SR_WEAVE,             "SimulatedRealityWeave",  "SimulatedRealityWeaveOutput", 0 },
     { OUTMODE_STEREO_MIRROR,        "StereoMirror",           "StereoMirrorOutput",          0 },
     { OUTMODE_IZ3D_DUAL,            "iZ3DDualPanel",          "S3DOutput",                   0 },
+    { OUTMODE_3DVISION_GLASSES,     "3DVisionShutter",        "ShutterOutput",               0 },
+    { OUTMODE_3DVISION_GLASSES,     "ShutterGlasses",         "ShutterOutput",               0 },
     // --- Pre-0.4.1 wrong-DLL aliases (recognise so users with stale configs
     //     still land on the right DLL + submode after a 0.4.3 upgrade). ---
     { OUTMODE_HALF_TOP_AND_BOTTOM,  "TopAndBottomOutput",     "SideBySideOutput",            1 },

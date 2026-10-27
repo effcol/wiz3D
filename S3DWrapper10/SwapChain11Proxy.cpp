@@ -94,6 +94,7 @@ SwapChain11Proxy::~SwapChain11Proxy()
     if (m_osd)   { delete m_osd;   m_osd   = nullptr; }
     if (m_laser) { delete m_laser; m_laser = nullptr; }
     ReleaseSRWeave(true);
+    ReleaseKatanga();
     ReleaseStereoBackBuffer();
     ReleaseComposite();
     if (m_real4)  { m_real4->Release();  m_real4  = nullptr; }
@@ -750,7 +751,11 @@ void SwapChain11Proxy::DoComposite()
     D3D11_PRIMITIVE_TOPOLOGY gameTopology = D3D11_PRIMITIVE_TOPOLOGY_UNDEFINED;
     if (!gameState) ctx->IAGetPrimitiveTopology(&gameTopology);
     const OutputMode mode = SelectedOutputMode();
-    if (!(mode == OM_SR_WEAVE && RunSRWeave(ctx)))
+    // Katanga: produce the wide-SBS composite and publish to the shared tex.
+    // If Katanga isn't running / init fails, fall through to the compositor
+    // below so the user still sees Half-SBS on their screen (sensible fallback).
+    const bool katangaHandled = (mode == OM_KATANGA && RunKatanga(ctx));
+    if (!katangaHandled && !(mode == OM_SR_WEAVE && RunSRWeave(ctx)))
         DrawCompositePass(ctx, m_realBBRTV, m_realBBW, m_realBBH, mode);
     // OSD overlay (status / FPS / hotkey help) drawn after the stereo
     // composite but before we restore the game's context state. Lazy-
@@ -944,6 +949,7 @@ SwapChain11Proxy::OutputMode SwapChain11Proxy::SelectedOutputMode() const
     if (WeaveSelected()) return OM_SR_WEAVE;
     const DWORD m = gInfo.OutputMode;
     if (m >= OM_HALF_SBS && m <= OM_SR_WEAVE) return static_cast<OutputMode>(m);
+    if (m == OM_KATANGA) return OM_KATANGA;
     return OM_HALF_SBS;
 }
 
@@ -1081,6 +1087,112 @@ void SwapChain11Proxy::ReleaseSRWeave(bool releaseWeaver)
         m_srInterface->Delete();
         m_srInterface = nullptr;
     }
+}
+
+// Katanga output ----------------------------------------------------------
+// Produces a wide-SBS DX11 texture Katanga reads via its shared-handle
+// protocol. See Shared/KatangaProducer.h for the full protocol.
+// Fallback: if Katanga isn't running, RunKatanga() returns false and the
+// Present path falls through to the normal compositor (Half-SBS on real BB).
+
+HRESULT SwapChain11Proxy::EnsureKatangaSBSTexture()
+{
+    // Our local scratch wide-SBS tex -- fills via DrawCompositePass, then
+    // we CopyResource into the shared tex that Katanga reads. Sized to the
+    // GAME BB (not the real/panel BB) so Katanga receives the game's native
+    // aspect ratio.
+    const UINT        wantW   = m_bbWidth * 2;
+    const UINT        wantH   = m_bbHeight;
+    const DXGI_FORMAT wantFmt = m_bbFormat;
+    if (!wantW || !wantH || wantFmt == DXGI_FORMAT_UNKNOWN) return E_FAIL;
+    if (m_katangaSBSTex && m_katangaSBSW == wantW && m_katangaSBSH == wantH && m_katangaSBSFmt == wantFmt)
+        return S_OK;
+
+    if (m_katangaSBSRTV) { m_katangaSBSRTV->Release(); m_katangaSBSRTV = nullptr; }
+    if (m_katangaSBSTex) { m_katangaSBSTex->Release(); m_katangaSBSTex = nullptr; }
+
+    ID3D11Device* dev = m_parent ? m_parent->GetReal() : nullptr;
+    if (!dev) return E_FAIL;
+
+    D3D11_TEXTURE2D_DESC td = {};
+    td.Width            = wantW;
+    td.Height           = wantH;
+    td.MipLevels        = 1;
+    td.ArraySize        = 1;
+    td.Format           = wantFmt;
+    td.SampleDesc.Count = 1;
+    td.Usage            = D3D11_USAGE_DEFAULT;
+    td.BindFlags        = D3D11_BIND_RENDER_TARGET;  // we only render into it; Katanga's shared tex gets the copy
+    HRESULT hr = dev->CreateTexture2D(&td, nullptr, &m_katangaSBSTex);
+    if (FAILED(hr)) return hr;
+    hr = dev->CreateRenderTargetView(m_katangaSBSTex, nullptr, &m_katangaSBSRTV);
+    if (FAILED(hr)) { m_katangaSBSTex->Release(); m_katangaSBSTex = nullptr; return hr; }
+
+    m_katangaSBSW   = wantW;
+    m_katangaSBSH   = wantH;
+    m_katangaSBSFmt = wantFmt;
+    return S_OK;
+}
+
+bool SwapChain11Proxy::RunKatanga(ID3D11DeviceContext* ctx)
+{
+    // Open Katanga's named mutex + mapped file. If Katanga isn't running
+    // this fails cleanly and we return false so the Present path falls
+    // through to the normal compositor.
+    if (!m_Katanga.TryInit()) return false;
+
+    // (Re)create the shared texture against the current real BB desc.
+    // KatangaProducer tracks changes internally and only recreates when
+    // dims/format differ from what it last published.
+    if (m_katangaSBSFmt == DXGI_FORMAT_UNKNOWN || !m_katangaSBSW)
+    {
+        if (FAILED(EnsureKatangaSBSTexture())) return false;
+    }
+    if (!m_Katanga.IsReady())
+    {
+        // First-time publish: feed Katanga a texture matching our scratch dims.
+        D3D11_TEXTURE2D_DESC bbd = {};
+        m_katangaSBSTex->GetDesc(&bbd);
+        // KatangaProducer::OnBackbufferReady wants the SINGLE-eye BB desc; it
+        // doubles the width internally. Pass back the undoubled version.
+        bbd.Width = m_bbWidth;
+        bbd.BindFlags &= ~D3D11_BIND_RENDER_TARGET;
+        ID3D11Device* dev = m_parent ? m_parent->GetReal() : nullptr;
+        if (!dev || !m_Katanga.OnBackbufferReady(dev, bbd)) return false;
+    }
+
+    if (FAILED(EnsureKatangaSBSTexture())) return false;
+
+    // Compositor: fill our scratch wide-SBS tex with Half-SBS layout (left
+    // eye [0..W), right [W..2W)) at full BB-x2 width. Katanga reads this.
+    DrawCompositePass(ctx, m_katangaSBSRTV, m_katangaSBSW, m_katangaSBSH, OM_HALF_SBS);
+
+    // Publish: CopyResource under setup-mutex guard inside the producer.
+    if (!m_Katanga.PublishFrame(ctx, m_katangaSBSTex))
+        return false;
+
+    // Also render the composite to the real BB so the user sees SBS on-screen
+    // in addition to Katanga's 3D view. Matches the HalfSBS presentation mode
+    // visually -- user can watch either.
+    DrawCompositePass(ctx, m_realBBRTV, m_realBBW, m_realBBH, OM_HALF_SBS);
+
+    static int s_logged = 0;
+    if (s_logged < 3)
+    {
+        ++s_logged;
+        DDILog("SwapChain11Proxy::RunKatanga: published SBS %ux%u -> Katanga shared tex (BB %ux%u)\n",
+               m_katangaSBSW, m_katangaSBSH, m_bbWidth, m_bbHeight);
+    }
+    return true;
+}
+
+void SwapChain11Proxy::ReleaseKatanga()
+{
+    if (m_katangaSBSRTV) { m_katangaSBSRTV->Release(); m_katangaSBSRTV = nullptr; }
+    if (m_katangaSBSTex) { m_katangaSBSTex->Release(); m_katangaSBSTex = nullptr; }
+    m_katangaSBSW = m_katangaSBSH = 0;
+    m_katangaSBSFmt = DXGI_FORMAT_UNKNOWN;
+    m_Katanga.Shutdown();
 }
 
 HRESULT STDMETHODCALLTYPE SwapChain11Proxy::GetBuffer(UINT Buffer, REFIID riid, void** ppSurface)
@@ -1440,6 +1552,7 @@ HRESULT STDMETHODCALLTYPE SwapChain11Proxy::ResizeBuffers(
     DDILog("SwapChain11Proxy::ResizeBuffers: count=%u %ux%u fmt=%d flags=0x%X\n",
            BufferCount, Width, Height, (int)NewFormat, SwapChainFlags);
     ReleaseSRWeave(false);
+    ReleaseKatanga();   // force re-publish of shared tex on next frame (dims may change)
     ReleaseStereoBackBuffer();
     HRESULT hr = m_real->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
     DDILog("SwapChain11Proxy::ResizeBuffers -> hr=0x%08lX\n", hr);

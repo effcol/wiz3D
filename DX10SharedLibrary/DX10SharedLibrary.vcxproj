@@ -276,6 +276,7 @@
     <ClCompile Include="..\S3DWrapper10\SwapChain10Proxy.cpp" />
     <ClCompile Include="..\S3DWrapper10\DXGIDevice10Proxy.cpp" />
     <ClCompile Include="..\S3DWrapper10\SwapChain11Proxy.cpp" />
+    <ClCompile Include="..\Shared\KatangaProducer.cpp" />
     <ClCompile Include="..\S3DWrapper10\OSDRenderer.cpp" />
     <ClCompile Include="..\S3DWrapper10\LaserSightRenderer.cpp" />
     <ClCompile Include="..\S3DWrapper10\AutoFocus.cpp" />
