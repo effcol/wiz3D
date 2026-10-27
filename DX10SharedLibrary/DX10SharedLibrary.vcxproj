@@ -291,6 +291,9 @@
     <ClCompile Include="..\Shared\DpiAwareness.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
+    <ClCompile Include="..\Shared\PanelNativeSize.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="..\S3DWrapper10\OSDRenderer.cpp" />
     <ClCompile Include="..\S3DWrapper10\LaserSightRenderer.cpp" />
     <ClCompile Include="..\S3DWrapper10\AutoFocus.cpp" />

@@ -24,7 +24,7 @@ namespace wiz3d { void MaybeReloadProfileBetweenFrames(); }
 #include <d3dcompiler.h>
 #include "SR.hpp"                    // Simulated Reality weave (delay-loaded runtime)
 #include "..\Shared\DpiAwareness.h"  // SR-service DPI-unaware resize fix
-#include "SRDisplayInfo.h"           // LeiaSR Displays runtime: recommended views-texture dimensions
+#include "..\Shared\PanelNativeSize.h"  // LeiaSR Displays runtime + OS monitor fallback
 
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "d3dcompiler.lib")

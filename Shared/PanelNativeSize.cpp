@@ -3,8 +3,7 @@
 * Copyright (C) wiz3D contributors 2026
 */
 
-#include "StdAfx.h"
-#include "SRDisplayInfo.h"
+#include "PanelNativeSize.h"
 #include <windows.h>
 
 namespace wiz3d

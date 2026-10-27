@@ -303,7 +303,6 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="S3DWrapperD3D10.cpp" />
-    <ClCompile Include="SRDisplayInfo.cpp" />
     <ClCompile Include="Wiz3DStereoApi.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
@@ -320,7 +319,6 @@
   <ItemGroup>
     <ClInclude Include="Commands\SetDestResouceType.h" />
     <ClInclude Include="resource.h" />
-    <ClInclude Include="SRDisplayInfo.h" />
     <ClInclude Include="Wiz3DStereoApi.h" />
     <ClInclude Include="stdafx.h" />
   </ItemGroup>
