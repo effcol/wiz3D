@@ -314,15 +314,23 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
     m_realBBW  = m_bbWidth;
     m_realBBH  = m_bbHeight;
 
-    // SR Weave output needs the real BB at panel-native pixel pitch so the
-    // interlace pattern lines up with the lenslets. QueryPanelNativeSize
+    // Sub-native fullscreen / windowed support: resize the real BB to the
+    // display panel's native pitch regardless of OutputMode, so games that
+    // choose a lower resolution than the panel still get their stereo
+    // composite landing 1:1 on physical panel pixels. QueryPanelNativeSize
     // tries the LeiaSR Displays runtime first, then falls back to the OS
-    // monitor the game window lives on -- so sub-native fullscreen games
-    // get a lenticular-aligned weave even without the Displays SDK installed.
-    // m_bbWidth/m_bbHeight stay at the game's requested dims so GetDesc /
-    // m_leftBB / m_rightBB keep the game-side view intact; the compositor
-    // and weave write at m_realBBW/m_realBBH.
-    if (SelectedOutputMode() == OM_SR_WEAVE)
+    // monitor the game window lives on. m_bbWidth/m_bbHeight stay at the
+    // game's requested dims so GetDesc / m_leftBB / m_rightBB keep the
+    // game-side view intact; the compositor writes at m_realBBW/m_realBBH
+    // and the fullscreen-quad stretch takes care of game dims -> panel
+    // dims. For SR Weave this preserves lenslet alignment (task #32); for
+    // interlaced / checkerboard / shutter output modes it preserves per-
+    // panel-pixel landing; for Half-SBS / TAB / anaglyph it just gives a
+    // sharper output than DWM bilinear.
+    //
+    // Historical note: this used to be gated on OM_SR_WEAVE only (task
+    // #32, commit 929239e0). Lifting the gate extends the same mechanism
+    // to every output mode (task #77).
     {
         int panelW = 0, panelH = 0;
         if (wiz3d::QueryPanelNativeSize(desc.OutputWindow, panelW, panelH)
@@ -391,11 +399,11 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
                 targetMode.ScanlineOrdering = desc.BufferDesc.ScanlineOrdering;
                 targetMode.Scaling          = desc.BufferDesc.Scaling;
                 HRESULT thr = m_real->ResizeTarget(&targetMode);
-                DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: SR Weave FSE ResizeTarget -> %dx%d hr=0x%08lX\n",
-                       panelW, panelH, thr);
+                DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: FSE ResizeTarget -> %dx%d hr=0x%08lX (OutputMode=%d)\n",
+                       panelW, panelH, thr, (int)SelectedOutputMode());
             }
-            DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: SR Weave; resizing real BB %ux%u -> panel-native %dx%d (hWnd=%p, fullscreen=%d)\n",
-                   m_bbWidth, m_bbHeight, panelW, panelH, (void*)desc.OutputWindow, (int)!desc.Windowed);
+            DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: panel-native resize real BB %ux%u -> %dx%d (hWnd=%p, fullscreen=%d, OutputMode=%d)\n",
+                   m_bbWidth, m_bbHeight, panelW, panelH, (void*)desc.OutputWindow, (int)!desc.Windowed, (int)SelectedOutputMode());
             HRESULT rhr = m_real->ResizeBuffers(0, (UINT)panelW, (UINT)panelH, DXGI_FORMAT_UNKNOWN, desc.Flags);
             if (SUCCEEDED(rhr))
             {
@@ -409,8 +417,8 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
         }
         else
         {
-            DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: SR Weave; panel-native query returned %dx%d (no resize; already matches BB or query failed)\n",
-                   panelW, panelH);
+            DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: panel-native query returned %dx%d (no resize; already matches BB or query failed; OutputMode=%d)\n",
+                   panelW, panelH, (int)SelectedOutputMode());
         }
     }
 
