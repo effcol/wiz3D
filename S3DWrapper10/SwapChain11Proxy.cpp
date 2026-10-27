@@ -370,8 +370,32 @@ HRESULT SwapChain11Proxy::EnsureStereoBackBuffer()
                 }
             }
 
-            DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: SR Weave; resizing real BB %ux%u -> panel-native %dx%d (hWnd=%p)\n",
-                   m_bbWidth, m_bbHeight, panelW, panelH, (void*)desc.OutputWindow);
+            // Fullscreen fix (task #32 follow-up): resizing just the back
+            // buffer is not enough -- in fullscreen DXGI also needs the
+            // DISPLAY MODE to match, otherwise scanout downsamples our
+            // panel-native BB back into the game-chosen sub-native mode
+            // and the display scaler re-upsamples, destroying lenslet
+            // alignment. ResizeTarget sets the fullscreen display mode;
+            // on a windowed chain it resizes the window instead, which
+            // the windowed branch above has already handled -- so gate
+            // this on !Windowed. Call ORDER matters: ResizeTarget first
+            // (updates mode + sends WM_SIZE), then ResizeBuffers (per
+            // the DXGI docs for a fullscreen mode change).
+            if (!desc.Windowed)
+            {
+                DXGI_MODE_DESC targetMode = {};
+                targetMode.Width            = (UINT)panelW;
+                targetMode.Height           = (UINT)panelH;
+                targetMode.Format           = desc.BufferDesc.Format;
+                targetMode.RefreshRate      = desc.BufferDesc.RefreshRate;
+                targetMode.ScanlineOrdering = desc.BufferDesc.ScanlineOrdering;
+                targetMode.Scaling          = desc.BufferDesc.Scaling;
+                HRESULT thr = m_real->ResizeTarget(&targetMode);
+                DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: SR Weave FSE ResizeTarget -> %dx%d hr=0x%08lX\n",
+                       panelW, panelH, thr);
+            }
+            DDILog("SwapChain11Proxy::EnsureStereoBackBuffer: SR Weave; resizing real BB %ux%u -> panel-native %dx%d (hWnd=%p, fullscreen=%d)\n",
+                   m_bbWidth, m_bbHeight, panelW, panelH, (void*)desc.OutputWindow, (int)!desc.Windowed);
             HRESULT rhr = m_real->ResizeBuffers(0, (UINT)panelW, (UINT)panelH, DXGI_FORMAT_UNKNOWN, desc.Flags);
             if (SUCCEEDED(rhr))
             {
