@@ -20,6 +20,28 @@
 #include "..\S3DAPI\ScalingAgent.h"
 #include "..\S3DAPI\ScalingHook.h"
 #include "..\Shared\PanelNativeSize.h"       // 0.5.0 task #77: sub-native-fullscreen auto-enable
+
+// 0.5.0 task #77 diagnostic log. Always-on file write (not gated on
+// CollectDebugInformation / FINAL_RELEASE) so we can trace the actual
+// render-target routing with the game running in a shipping build. Writes
+// to %GameDir%/wiz3D_Logs/<App>/_task77_subnative.log.
+static FILE* g_Task77Log = nullptr;
+static void Task77Log(const char* fmt, ...)
+{
+    if (!g_Task77Log)
+    {
+        TCHAR path[MAX_PATH];
+        _tcscpy_s(path, MAX_PATH, gInfo.LogFileDirectory);
+        PathAppend(path, _T("_task77_subnative.log"));
+        _tfopen_s(&g_Task77Log, path, _T("w"));
+        if (g_Task77Log) fprintf(g_Task77Log, "=== wiz3D task #77 sub-native diagnostic log ===\n");
+    }
+    if (!g_Task77Log) return;
+    va_list ap; va_start(ap, fmt);
+    vfprintf(g_Task77Log, fmt, ap);
+    va_end(ap);
+    fflush(g_Task77Log);
+}
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
 #include "..\S3DAPI\Utils.h"
@@ -619,6 +641,12 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 	// black" on Antichamber because the ColorFill wiped game content from
 	// the post-scale RT before DoScaling could stretch anything from the
 	// (potentially empty) pre-scale RT. SCALED has no such clear step.
+	Task77Log("InitializeMode entry: gInfo.OutputMode=%u DisplayScalingMode=%u Windowed=%d BB=%ux%u DisplayNative=%ux%u\n",
+		gInfo.OutputMode, gInfo.DisplayScalingMode,
+		(int)m_PresentationParameters[0].Windowed,
+		m_PresentationParameters[0].BackBufferWidth,
+		m_PresentationParameters[0].BackBufferHeight,
+		gInfo.DisplayNativeWidth, gInfo.DisplayNativeHeight);
 	if (gInfo.DisplayScalingMode == 0 &&
 		!m_PresentationParameters[0].Windowed &&
 		m_PresentationParameters[0].BackBufferWidth  > 1 &&
@@ -626,20 +654,29 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 	{
 		HWND focus = m_PresentationParameters[0].hDeviceWindow;
 		int panelW = 0, panelH = 0;
-		if (focus && wiz3d::QueryPanelNativeSize(focus, panelW, panelH) &&
-			panelW > 0 && panelH > 0 &&
+		bool qok = focus && wiz3d::QueryPanelNativeSize(focus, panelW, panelH);
+		Task77Log("auto-enable probe: focus=%p QueryPanelNativeSize ok=%d panel=%dx%d\n",
+			(void*)focus, (int)qok, panelW, panelH);
+		if (qok && panelW > 0 && panelH > 0 &&
 			((UINT)panelW != m_PresentationParameters[0].BackBufferWidth ||
 			 (UINT)panelH != m_PresentationParameters[0].BackBufferHeight))
 		{
 			gInfo.DisplayNativeWidth  = (UINT)panelW;
 			gInfo.DisplayNativeHeight = (UINT)panelH;
 			gInfo.DisplayScalingMode  = DISPLAY_SCALING_SCALED;    // 2 -- stretch to fill, no ColorFill wipe
-			DEBUG_MESSAGE(_T("DX9 task #77: auto-enabling SCALED panel-native for sub-native fullscreen BB %ux%u -> panel %dx%d\n"),
+			Task77Log("auto-enabled SCALED: BB %ux%u -> panel %dx%d\n",
 				m_PresentationParameters[0].BackBufferWidth,
 				m_PresentationParameters[0].BackBufferHeight,
 				panelW, panelH);
 		}
 	}
+
+	Task77Log("post-scaling-block: m_bScalingEnabled=%d m_BackBufferSize=%ldx%ld m_BackBufferSizeBeforeScaling=%ldx%ld PresentationParams.BB=%ux%u DisplayScalingMode=%u\n",
+		(int)m_bScalingEnabled, m_BackBufferSize.cx, m_BackBufferSize.cy,
+		m_BackBufferSizeBeforeScaling.cx, m_BackBufferSizeBeforeScaling.cy,
+		m_PresentationParameters[0].BackBufferWidth,
+		m_PresentationParameters[0].BackBufferHeight,
+		gInfo.DisplayScalingMode);
 
 	//--- enable GPU scaling ---
 	m_bScalingEnabled = false;
@@ -1712,6 +1749,13 @@ HRESULT STDMETHODCALLTYPE CBaseSwapChain::GetBackBuffer(THIS_ UINT iBackBuffer,D
 {
 	m_pLeftBackBufferBeforeScaling->AddRef();
 	*ppBackBuffer = m_pLeftBackBufferBeforeScaling;
+	static int s_logN = 0;
+	if (s_logN < 10)
+	{
+		++s_logN;
+		Task77Log("CBaseSwapChain::GetBackBuffer iBB=%u -> m_pLeftBackBufferBeforeScaling=%p (preScale)\n",
+			iBackBuffer, (void*)m_pLeftBackBufferBeforeScaling);
+	}
 	DEBUG_TRACE2(_T("GetBackBuffer %s\n"), GetObjectName(m_pLeftBackBufferBeforeScaling));
 	return S_OK;
 }
@@ -1943,14 +1987,31 @@ HRESULT CBaseSwapChain::DoScaling()
 	if(!m_bScalingEnabled)
 		return hResult;
 
+	static int s_logCount = 0;
+	const bool bLog = (s_logCount++ < 5);
+	if (bLog)
+	{
+		Task77Log("DoScaling: src=L%p R%p dst=L%p R%p srcL=(%ld,%ld,%ld,%ld) dstL=(%ld,%ld,%ld,%ld) srcR=(%ld,%ld,%ld,%ld) dstR=(%ld,%ld,%ld,%ld) stereo=%d sameLR=%d mode=%u\n",
+			(void*)m_pLeftBackBufferBeforeScaling, (void*)m_pRightBackBufferBeforeScaling,
+			(void*)m_pLeftBackBuffer, (void*)m_pRightBackBuffer,
+			m_SrcLeft.left, m_SrcLeft.top, m_SrcLeft.right, m_SrcLeft.bottom,
+			m_DstLeft.left, m_DstLeft.top, m_DstLeft.right, m_DstLeft.bottom,
+			m_SrcRight.left, m_SrcRight.top, m_SrcRight.right, m_SrcRight.bottom,
+			m_DstRight.left, m_DstRight.top, m_DstRight.right, m_DstRight.bottom,
+			(int)IsStereoActive(), (int)(m_pRightBackBuffer == m_pLeftBackBuffer),
+			gInfo.DisplayScalingMode);
+	}
+
 	if(gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALED && gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALEDASPECTEX)
 		GetD3D9Device().ColorFill(m_pLeftBackBuffer, NULL, 0);
-	NSCALL(GetD3D9Device().StretchRect(m_pLeftBackBufferBeforeScaling, &m_SrcLeft, m_pLeftBackBuffer, &m_DstLeft, D3DTEXF_LINEAR));
+	HRESULT hrL = GetD3D9Device().StretchRect(m_pLeftBackBufferBeforeScaling, &m_SrcLeft, m_pLeftBackBuffer, &m_DstLeft, D3DTEXF_LINEAR);
+	if (bLog) Task77Log("DoScaling L StretchRect hr=0x%08lX\n", hrL);
 	if(IsStereoActive())
 	{
 		if(m_pRightBackBuffer != m_pLeftBackBuffer && (gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALED && gInfo.DisplayScalingMode != DISPLAY_SCALING_SCALEDASPECTEX))
 			GetD3D9Device().ColorFill(m_pRightBackBuffer, NULL, 0);
-		NSCALL(GetD3D9Device().StretchRect(m_pRightBackBufferBeforeScaling, &m_SrcRight, 	m_pRightBackBuffer, &m_DstRight, D3DTEXF_LINEAR));
+		HRESULT hrR = GetD3D9Device().StretchRect(m_pRightBackBufferBeforeScaling, &m_SrcRight, 	m_pRightBackBuffer, &m_DstRight, D3DTEXF_LINEAR);
+		if (bLog) Task77Log("DoScaling R StretchRect hr=0x%08lX\n", hrR);
 	}
 	return hResult;
 }
