@@ -56,7 +56,15 @@
         <!-- 6 == "RowIL"      Row interleaved (passive 3D TVs) -->
         <!-- 7 == "ColumnIL"   Column interleaved -->
         <!-- 8 == "Checker"    Checkerboard (DLP-Link projectors) -->
-        <!-- 9 == "SRWeave"    Simulated Reality Weave (Leia / Samsung Odyssey 3D) -->
+        <!-- 9 == "SRWeave"           Simulated Reality Weave (Leia / Samsung Odyssey 3D) -->
+        <!-- 11 == "3DVisionGlasses"  NVIDIA 3D Vision shutter output via NV3D-Lib. Requires 3D Vision -->
+        <!--                          hardware (IR emitter + shutter glasses + 120Hz 3D Vision Ready panel) -->
+        <!--                          AND a legacy NVIDIA driver (R417 or earlier) OR Oscar's Vision -->
+        <!--                          Restoration patch for modern drivers. Falls back to Half SBS when -->
+        <!--                          the runtime detects the hardware/driver chain is incomplete. -->
+        <!-- 12 == "Katanga"          Produces a shared wide-SBS DX11 texture for bo3b's Katanga external -->
+        <!--                          stereo viewer (standalone process). Launch Katanga separately before -->
+        <!--                          starting the wrapped game; it picks up the shared handle automatically. -->
         <OutputMode Value="SRWeave"/>   <!-- or "1" / "9" / etc. -->
         <!-- SR weave auto-falls back to Half SBS when no SR runtime is installed
              or when a game crashes with SR loaded, so the default is safe
