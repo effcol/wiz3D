@@ -6,6 +6,7 @@
 #include "Texture2D10Proxy.h"
 #include "proxy_factory.h"
 #include "AdapterFunctions.h"  // DDILog
+#include "..\Shared\OutputModeNames.h"   // OUTMODE_* constants shared across wrappers
 #include <d3dcompiler.h>
 
 #pragma comment(lib, "dxguid.lib")
@@ -399,6 +400,56 @@ void SwapChain10Proxy::OnPresentBoundaryPre()
     if (!m_parent) return;
     if (m_parent->IsPresentHookActive())
         m_parent->ReplayFrameCommands(Device10Proxy::Eye::Right);
+
+    // 0.5.0: output-mode dispatch at Present boundary. DX10 currently has
+    // only the SBS composite implemented -- SR Weave, 3DVisionGlasses, and
+    // Katanga are DX11 Stereo-Injector features whose DX10 ports are
+    // pending (each needs a DX10->DX11 shared-handle bridge since the SR
+    // weaver and NV3D-Lib both take ID3D11Device inputs). This dispatch
+    // layer is the hook point where those ports will land as drop-in
+    // methods, and the diagnostic logging below answers the recurring
+    // "DX10 is still the same" test observation -- it reports which output
+    // mode was selected and what the composite inputs looked like at the
+    // first few Present calls, so a user can confirm whether DX10 is even
+    // reaching this path on a given game.
+    static int   s_logN  = 0;
+    static DWORD s_lastMode = 0xFFFFFFFF;
+    const DWORD mode = gInfo.OutputMode;
+    if (s_logN < 5 || mode != s_lastMode)
+    {
+        if (s_logN < 5) ++s_logN;
+        s_lastMode = mode;
+        DDILog("SwapChain10Proxy::OnPresentBoundaryPre: OutputMode=%u (%s) "
+               "leftSRV=%p rightSRV=%p realBBRTV=%p BB=%ux%u\n",
+               mode,
+               (mode == wiz3d::OUTMODE_HALF_SIDE_BY_SIDE)    ? "HalfSBS" :
+               (mode == wiz3d::OUTMODE_FULL_SIDE_BY_SIDE)    ? "FullSBS" :
+               (mode == wiz3d::OUTMODE_HALF_TOP_AND_BOTTOM)  ? "HalfTAB" :
+               (mode == wiz3d::OUTMODE_FULL_TOP_AND_BOTTOM)  ? "FullTAB" :
+               (mode == wiz3d::OUTMODE_ANAGLYPH)             ? "Anaglyph" :
+               (mode == wiz3d::OUTMODE_ROW_INTERLEAVED)      ? "RowIL" :
+               (mode == wiz3d::OUTMODE_COLUMN_INTERLEAVED)   ? "ColumnIL" :
+               (mode == wiz3d::OUTMODE_CHECKERBOARD)         ? "Checker" :
+               (mode == wiz3d::OUTMODE_SR_WEAVE)             ? "SRWeave" :
+               (mode == wiz3d::OUTMODE_STEREO_MIRROR)        ? "Mirror" :
+               (mode == wiz3d::OUTMODE_3DVISION_GLASSES)     ? "3DVisionGlasses" :
+               (mode == wiz3d::OUTMODE_KATANGA)              ? "Katanga" :
+               "Unknown",
+               (void*)m_leftSRV, (void*)m_rightSRV, (void*)m_realBBRTV,
+               m_bbWidth, m_bbHeight);
+
+        if (mode == wiz3d::OUTMODE_SR_WEAVE)
+            DDILog("  -> SR Weave DX10 output not yet implemented; falling back to SBS composite.\n");
+        else if (mode == wiz3d::OUTMODE_3DVISION_GLASSES)
+            DDILog("  -> 3DVisionGlasses DX10 output not yet implemented; falling back to SBS composite.\n");
+        else if (mode == wiz3d::OUTMODE_KATANGA)
+            DDILog("  -> Katanga DX10 output not yet implemented; falling back to SBS composite.\n");
+    }
+
+    // Only path currently implemented. Future output ports (SR Weave,
+    // NV3D-Lib shutter, Katanga) will add their own invocations here and
+    // skip DoComposite when they succeed, mirroring SwapChain11Proxy's
+    // RunKatanga / RunNV3DGlasses / RunSRWeave dispatch (SwapChain11Proxy.cpp:791-793).
     DoComposite();
 }
 
