@@ -120,6 +120,73 @@ static void ReadConfig()
         g_enabled ? "ENABLED" : "DISABLED");
 }
 
+// Only squeeze once we've seen at least one stereo frame (via a positive
+// GetEyePosition delta) -- otherwise we'd squeeze the main menu / splash
+// screens before 3D ever activates. Seeded true at init if CP2077's
+// UserSettings.json says 3D Mode is enabled (see SeedStereoFromUserSettings
+// below), so the pre-engine CDPR logo squeezes properly.
+static bool g_stereoEverSeen = false;
+
+// Seed g_stereoEverSeen from CP2077's persisted 3D-Mode toggle so the
+// squeeze fires on the pre-engine CDPR intro logo too (the game writes
+// a flat full-width logo frame before it activates its stereo render
+// path, so GetEyePosition hasn't fired yet and our usual "wait for first
+// stereo frame" gate stays closed -- user then sees a mono logo for
+// a couple of seconds before stereo kicks in). If the config says 3D is
+// enabled, we assume we're going to see stereo frames shortly and start
+// squeezing flat frames immediately. If the config says off / can't be
+// read, we leave the safe default (never squeeze until stereo seen).
+//
+// File: %LOCALAPPDATA%\CD Projekt Red\Cyberpunk 2077\UserSettings.json
+// Key:  "Odyssey3D_StereoEnabled" : true
+//
+// Substring scan rather than a full JSON parse -- the file is well-formed
+// CP2077 config, the key name is distinctive enough to not collide, and
+// we only need a true/false branch.
+static void SeedStereoFromUserSettings()
+{
+    WCHAR path[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(L"LOCALAPPDATA", path, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return;
+    wcscat_s(path, MAX_PATH, L"\\CD Projekt Red\\Cyberpunk 2077\\UserSettings.json");
+
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        Log("UserSettings.json not found (%ls); squeeze gated on first stereo frame\n", path);
+        return;
+    }
+    LARGE_INTEGER sz = {};
+    GetFileSizeEx(h, &sz);
+    if (sz.QuadPart <= 0 || sz.QuadPart > 4 * 1024 * 1024) { CloseHandle(h); return; }
+    char* buf = (char*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)sz.QuadPart + 1);
+    if (!buf) { CloseHandle(h); return; }
+    DWORD read = 0;
+    BOOL ok = ReadFile(h, buf, (DWORD)sz.QuadPart, &read, NULL);
+    CloseHandle(h);
+    if (!ok) { HeapFree(GetProcessHeap(), 0, buf); return; }
+    buf[read] = 0;
+
+    const char* key = strstr(buf, "Odyssey3D_StereoEnabled");
+    if (key) {
+        // Walk past the key, past the colon, past whitespace, read first
+        // non-whitespace token to classify true/false.
+        const char* p = key + strlen("Odyssey3D_StereoEnabled");
+        while (*p && *p != ':' && *p != '\n') ++p;
+        if (*p == ':') ++p;
+        while (*p == ' ' || *p == '\t' || *p == '"') ++p;
+        if (p[0] == 't' || p[0] == 'T' || p[0] == '1') {
+            g_stereoEverSeen = true;
+            Log("UserSettings.json: Odyssey3D_StereoEnabled=true -> seeding squeeze ON from frame 1 (CDPR-logo path)\n");
+        } else {
+            Log("UserSettings.json: Odyssey3D_StereoEnabled=false -> squeeze stays gated on first stereo frame\n");
+        }
+    } else {
+        Log("UserSettings.json: Odyssey3D_StereoEnabled key not found -> squeeze stays gated on first stereo frame\n");
+    }
+    HeapFree(GetProcessHeap(), 0, buf);
+}
+
 // ---------------------------------------------------------------------------
 // Globals -- single swap chain at a time (CP2077 pattern). If a game
 // creates multiple swap chains we track the first and let the rest pass.
@@ -152,7 +219,7 @@ static unsigned                   g_allocIdx      = 0;
 static LONG64 g_lastEye     = 0;
 static LONG64 g_lastAvail   = 0;
 static LONG64 g_lastRect    = 0;
-static bool   g_stereoEverSeen = false;  // Only squeeze once we've seen at least one stereo frame -- otherwise we'd squeeze the main menu before 3D ever activates
+// g_stereoEverSeen declared above the config section so SeedStereoFromUserSettings can see it.
 
 // ---------------------------------------------------------------------------
 // Vtable patch helper -- raw pointer swap guarded by VirtualProtect so we
@@ -627,6 +694,7 @@ void MenuSqueezeInit()
     g_lockInit = true;
     LogInit();
     ReadConfig();
+    SeedStereoFromUserSettings();
     Log("MenuSqueezeInit\n");
 }
 
