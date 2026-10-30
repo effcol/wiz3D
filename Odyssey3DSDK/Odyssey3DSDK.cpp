@@ -225,15 +225,25 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
         return false;
     }
 
-    // Enable late-latching + 1-frame latency compensation. Without this
-    // LeiaSR uses a static eye position and never activates its webcam /
-    // IR emitter -- user sees stereo but with no head-tracked parallax
-    // adjustment, and the panel's tracker light stays off. This mirrors
-    // the SR-Lib / S3DWrapper10 DX11 pattern (SR.cpp lines 139-140 in
-    // SR-lib-master).
-    g_srWeaver->setLatencyInFrames(1);
-    g_srWeaver->enableLateLatching(true);
-    SrLog("SR: late-latching enabled + latencyInFrames=1 (eye tracker should activate)\n");
+    // Late-latching activates LeiaSR's eye-tracking pipeline (and the
+    // panel's webcam light / IR emitter). But first test run showed it
+    // also broke stereo output -- content came through mono rather than
+    // weaved. Likely LeiaSR requires either a working tracker, a precise
+    // once-per-frame weave cadence, or specific input-texture lifetime
+    // guarantees that our forwarder doesn't yet meet. Default: OFF
+    // (match the first working test). Enable via WIZ3D_SR_LATE_LATCH=1
+    // when we're ready to debug the stereo-breaks-with-latching path.
+    char llEnv[8] = {};
+    DWORD llN = GetEnvironmentVariableA("WIZ3D_SR_LATE_LATCH", llEnv, sizeof(llEnv));
+    bool wantLateLatch = (llN > 0 && llEnv[0] == '1');
+    if (wantLateLatch) {
+        g_srWeaver->setLatencyInFrames(1);
+        g_srWeaver->enableLateLatching(true);
+        SrLog("SR: late-latching ENABLED via WIZ3D_SR_LATE_LATCH=1 (tracker will activate; stereo may regress)\n");
+    } else {
+        SrLog("SR: late-latching DISABLED (default; stereo output path, tracker will stay inactive). "
+              "Set WIZ3D_SR_LATE_LATCH=1 to enable tracker + head-position parallax.\n");
+    }
 
     // Tiny CPU-visible RTV heap, 1 slot, for binding the game's output FB.
     D3D12_DESCRIPTOR_HEAP_DESC hd = {};
