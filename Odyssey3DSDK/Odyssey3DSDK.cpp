@@ -218,6 +218,19 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
         return false;
     }
 
+    // Register SystemSense BEFORE CreateDX12Weaver.  The LeiaSR DX11 and
+    // DX12 example main.cpp both register SystemSense first, THEN call
+    // CreateXxxWeaver, THEN initialize().  SR-Lib's SR.cpp uses a
+    // different order (create weaver first), but SR-Lib clients already
+    // have their SystemSense registered upstream; we don't.  Doing it
+    // before weaver creation lets the weaver see the sense when it
+    // interrogates the context.
+    __try {
+        SR::SystemSense::create(*g_srContext);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        SrLog("SR: SystemSense::create threw (continuing without system events)\n");
+    }
+
     WeaverErrorCode err = SR::CreateDX12Weaver(g_srContext, device, hwnd, &g_srWeaver);
     if (err != WeaverSuccess || !g_srWeaver) {
         SrLog("SR: CreateDX12Weaver err=%d; falling back to no-op\n", (int)err);
@@ -226,31 +239,10 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
         return false;
     }
 
-    // SR-Lib (SR.cpp) does setLatency+enableLateLatching+initialize after
-    // CreateXxxWeaver in DX11/DX9/OGL. BUT -- SR-Lib's clients already
-    // registered the needed senses (SystemSense / EyeTracker) before
-    // reaching SR-Lib. We're a drop-in stand-in library, so we must
-    // register them ourselves. Reference: LeiaSR SDK's DX11/DX12 example
-    // main.cpp both call SystemSense::create(context) before weaver and
-    // before initialize().
-    //
-    // Without the sense registrations, LeiaSR's eye-tracker stays dormant
-    // (even with the camera physically on) and getPredictedEyePositions
-    // reports the "face lost" fallback (0, 100, 600) for BOTH eyes -- which
-    // produces mono output through the weaver (both eyes at same position
-    // = no disparity). The CP2077 launcher-menu-subtitles-are-mono symptom
-    // we saw was exactly this: tracker running but no face detected ->
-    // fallback eye positions -> mono weave.
-    __try {
-        SR::SystemSense::create(*g_srContext);
-    } __except(EXCEPTION_EXECUTE_HANDLER) {
-        SrLog("SR: SystemSense::create threw (continuing without system events)\n");
-    }
-
     g_srWeaver->setLatencyInFrames(1);
     g_srWeaver->enableLateLatching(true);
     g_srContext->initialize();
-    SrLog("SR: SystemSense registered, context initialized, late-latching enabled\n");
+    SrLog("SR: SystemSense registered, Weaver created, context initialized, late-latching enabled\n");
 
     // Tiny CPU-visible RTV heap, 1 slot, for binding the game's output FB.
     D3D12_DESCRIPTOR_HEAP_DESC hd = {};
@@ -513,9 +505,43 @@ static CallCounter g_cc_Destroy        = { 0, "Device::Destroy"        };
 static float* __stdcall DevGetEyePosition(Device* self, float out[3], int eye)
 {
     NoteCall(g_cc_GetEyePosition);
-    // mm units; right-handed; x = ±IPD/2, y = 0, z = eye_z_mm (nominal view distance).
-    // In phase 4 we'll replace this with an OpenTrack UDP feed so any webcam/IR
-    // tracker can drive native-stereo view position for games that use it.
+
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+    // When LeiaSR's eye tracker is active, hand the game REAL tracked
+    // positions instead of hardcoded IPD-based constants.  The game uses
+    // these for its own stereo rendering (camera offsets).  Returning
+    // real positions means the game's rendered SBS matches the real
+    // viewer, which is what we want when SR Weave re-samples per real
+    // eye at display time.
+    //
+    // Without this, there was a hidden mismatch: game rendered stereo
+    // with fake fixed-IPD cameras, weaver then rebuilt per-eye based on
+    // real tracker -- small per-frame disparity delta probably messed
+    // with CP2077's screen-space effects (TAA / DLSS reprojection).
+    if (g_srActive && g_srWeaver && out)
+    {
+        float lEye[3] = {0}, rEye[3] = {0};
+        bool gotEyes = false;
+        __try {
+            g_srWeaver->getPredictedEyePositions(lEye, rEye);
+            gotEyes = true;
+        } __except(EXCEPTION_EXECUTE_HANDLER) {
+            // Fall through to the fake-IPD path below.
+        }
+        if (gotEyes) {
+            const float* eyeV = (eye == 0) ? lEye : rEye;
+            out[0] = eyeV[0];
+            out[1] = eyeV[1];
+            out[2] = eyeV[2];
+            return out;
+        }
+    }
+#endif
+
+    // Fallback (SR not active, or tracker failed): hardcoded IPD/2 at a
+    // nominal view distance.  mm units; right-handed; x = ±IPD/2, y = 0,
+    // z = eye_z_mm.  Phase 4 will add an OpenTrack UDP feed so non-SR
+    // paths can drive this from any webcam/IR tracker.
     const float x = (eye == 0 ? -1.0f : +1.0f) * (g_cfg.ipd_mm * 0.5f);
     if (out)
     {
@@ -676,10 +702,29 @@ static void __stdcall WeaverSetOutputFrameBuffer(Weaver* self, void* tex)
         if (d.Format != g_srBoundOutputFmt) {
             g_srWeaver->setOutputFormat(d.Format);
             g_srBoundOutputFmt = d.Format;
+
+            // Tell LeiaSR whether to do shader-side sRGB conversion based
+            // on the output format.  Per IWeaverBase1 doc comments:
+            //   "When input is already linear or set for hardware
+            //    conversion, set read to false."
+            //   "When output is treated as linear (set for hardware
+            //    conversion), set write to false."
+            // _SRGB-suffixed DXGI formats are "set for hardware
+            // conversion" -- the GPU does the gamma on sample/store.  If
+            // we don't tell LeiaSR, its shader also does gamma and we
+            // double-convert.  CP2077 uses format 29 (R8G8B8A8_UNORM_SRGB)
+            // so this applies.
+            bool isSrgb =
+                d.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB    ||
+                d.Format == DXGI_FORMAT_B8G8R8A8_UNORM_SRGB    ||
+                d.Format == DXGI_FORMAT_B8G8R8X8_UNORM_SRGB;
+            g_srWeaver->setShaderSRGBConversion(!isSrgb, !isSrgb);
+
             static int logged = 0;
             if (logged++ < 3)
-                SrLog("SR Weaver::SetOutputFrameBuffer: tex=%p fmt=%d (fwd setOutputFormat)\n",
-                      tex, (int)d.Format);
+                SrLog("SR Weaver::SetOutputFrameBuffer: tex=%p fmt=%d (fwd setOutputFormat; "
+                      "ShaderSRGBConversion=%s)\n",
+                      tex, (int)d.Format, isSrgb ? "false,false (HW gamma)" : "true,true (shader gamma)");
         }
         // Create / refresh RTV so later SetCommandList's cmd-list can bind the
         // right RT. We re-create unconditionally -- cheap, 1 slot, every bind

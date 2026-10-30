@@ -430,78 +430,71 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             // weaver handles flat frames natively).
             //
             // Mode-selection precedence (highest wins):
-            //   1. WIZ3D_SR_MODE env var     (dev override, bypasses config)
+            //   1. WIZ3D_SR_MODE env var             (dev override)
             //      - sbsdebug -> SBSDebug path, no LeiaSR
-            //      - srweave  -> SR Weave path (soft-fail to no-op if runtime absent)
+            //      - srweave  -> SR Weave path (soft-fail to SBSDebug if
+            //                    runtime absent)
             //      - leiasr   -> deprecated alias for "srweave"
             //   2. wiz3D_Config.xml OutputMode next to this DLL
-            //      - "HalfSBS" / "SBSDebug" -> SBSDebug path
-            //      - "SRWeave" / "LeiaSR"   -> SR Weave path (soft-fail)
-            //      - "Auto" (or missing)    -> probe LeiaSR, pick based on result
-            //   3. Default = Auto
+            //      - "SRWeave" / "LeiaSR"   -> SR Weave with soft fallback
+            //      - "HalfSBS" / "SBSDebug" -> SBSDebug directly
+            //   3. Default = SRWeave (same semantics as (2) SRWeave)
+            //
+            // Pattern matches the other wiz3D wrappers' OutputMode:
+            // request your preferred path, with a sensible fallback if the
+            // runtime it depends on isn't on the user's machine.
             char modeEnv[16] = {};
             DWORD modeLen = GetEnvironmentVariableA("WIZ3D_SR_MODE", modeEnv, sizeof(modeEnv));
             bool forceSbsDebug = (modeLen > 0 && _stricmp(modeEnv, "sbsdebug") == 0);
-            bool forceSrWeave  = (modeLen > 0 && (_stricmp(modeEnv, "srweave") == 0 ||
+            bool wantSrWeave   = (modeLen > 0 && (_stricmp(modeEnv, "srweave") == 0 ||
                                                    _stricmp(modeEnv, "leiasr")  == 0));
+            bool wantSrDefault = (modeLen == 0);    // no env override
 
-            if (!forceSbsDebug && !forceSrWeave) {
+            if (!forceSbsDebug && !wantSrWeave) {
                 const char* cfgMode = ReadConfigOutputMode();
                 if (cfgMode) {
                     if (_stricmp(cfgMode, "HalfSBS")  == 0 ||
                         _stricmp(cfgMode, "SBSDebug") == 0) {
                         forceSbsDebug = true;
+                        wantSrDefault = false;
                         Log("Config OutputMode=\"%s\" -> SBSDebug path\n", cfgMode);
                     } else if (_stricmp(cfgMode, "SRWeave") == 0 ||
                                _stricmp(cfgMode, "LeiaSR")  == 0) {
-                        forceSrWeave = true;
-                        Log("Config OutputMode=\"%s\" -> SR Weave passthrough\n", cfgMode);
-                    } else if (_stricmp(cfgMode, "Auto") != 0) {
-                        Log("Config OutputMode=\"%s\" unrecognized; defaulting to Auto\n", cfgMode);
+                        wantSrWeave = true;
+                        wantSrDefault = false;
+                        Log("Config OutputMode=\"%s\" -> SR Weave (fallback to SBSDebug if runtime missing)\n",
+                            cfgMode);
+                    } else {
+                        Log("Config OutputMode=\"%s\" unrecognized; using default (SRWeave with SBSDebug fallback)\n",
+                            cfgMode);
                     }
                 }
             }
+            // wantSrWeave: user asked for it (explicit).
+            // wantSrDefault: nobody asked for anything (default to SR with
+            //                soft fallback to SBSDebug).
+            // Both end up probing the LeiaSR runtime.
+            bool trySrWeave = wantSrWeave || wantSrDefault;
 
-            // Only probe the LeiaSR runtime when SRWeave is explicitly
-            // requested. Auto defaults to HalfSBS -- it works on every panel
-            // that reads SBS content (Acer SpatialLabs, lenticular hardware
-            // weavers in general, 3DTVs, external viewers like SR-Loom and
-            // Katanga). SRWeave is only useful on displays that need
-            // software weaving (Samsung Odyssey 3D-style), and the SR SDK
-            // integration path currently has unresolved stability issues
-            // for CP2077 scene-load, so making it opt-in avoids crashes
-            // for users with hardware-weaving panels (the common case).
             HMODULE srRuntime = nullptr;
-            if (forceSrWeave) {
+            if (!forceSbsDebug && trySrWeave) {
                 srRuntime = LoadLibraryW(L"SimulatedRealityDirectX.dll");
                 if (srRuntime) {
-                    Log("SRWeave requested; LeiaSR runtime loaded (SimulatedRealityDirectX.dll)\n");
+                    Log("LeiaSR runtime loaded (SimulatedRealityDirectX.dll) -- SRWeave active\n");
                     SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
-                } else {
+                } else if (wantSrWeave) {
                     Log("SRWeave requested but SimulatedRealityDirectX.dll not loadable -- "
-                        "Weaver will soft-fail to no-op if game invokes it\n");
-                    SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
+                        "falling back to SBSDebug\n");
+                } else {
+                    Log("LeiaSR runtime not detected -- falling back to SBSDebug\n");
                 }
             } else {
-                // Auto or explicit HalfSBS: use SBSDebug. We still log
-                // whether the LeiaSR runtime is around so users know it was
-                // detected (useful for diagnosing hardware setup), but we
-                // don't let its presence silently change the output mode.
-                HMODULE probe = GetModuleHandleW(L"SimulatedRealityDirectX.dll");
-                if (!probe) probe = LoadLibraryW(L"SimulatedRealityDirectX.dll");
-                if (probe) {
-                    Log("LeiaSR runtime detected (informational); OutputMode stays %s\n",
-                        forceSbsDebug ? "HalfSBS (explicit)" : "HalfSBS (Auto default)");
-                    FreeLibrary(probe);
-                } else {
-                    Log("LeiaSR runtime not detected; OutputMode %s\n",
-                        forceSbsDebug ? "HalfSBS (explicit)" : "HalfSBS (Auto default)");
-                }
+                Log("SBSDebug forced (OutputMode=HalfSBS or WIZ3D_SR_MODE=sbsdebug)\n");
             }
 
-            // Drop the CP2077 REDengine SBSDebug ini unless we're in SRWeave
-            // mode -- in SRWeave the game must hand frames to the Weaver so
-            // the real weave runs.
+            // Drop the CP2077 REDengine SBSDebug ini when NOT running the
+            // SR Weave path -- in SRWeave the game must hand frames to the
+            // Weaver, so the real weave runs.
             if (!srRuntime) {
                 WriteRedengineConfigIfCP2077(gameDir);
             } else {
