@@ -4,16 +4,18 @@
      route stereo output.
 
      OutputMode: how the game's native stereo frames leave this proxy.
-       "SRWeave"  - Pass through to the LeiaSR runtime (Samsung Odyssey 3D,
-                    Acer SpatialLabs, Lume Pad, Lenovo ThinkVision 3D, Red
-                    Magic). Soft-fails to no-op if SimulatedRealityDirectX.dll
-                    isn't installed.
        "HalfSBS"  - Drop a REDengine SBSDebug ini so the game writes its own
-                    half-SBS to the backbuffer; our Weaver stays a no-op.
-                    Easier to screenshot/diagnose, also pairs with external
-                    weavers (SR-Loom, Katanga).
-       "Auto"     - Probe for the LeiaSR runtime at startup. If it loads,
-                    pick SRWeave; otherwise fall back to HalfSBS. (Default.)
+                    half-SBS to the backbuffer. The connected display then
+                    does the weaving in hardware (Acer SpatialLabs, Lume
+                    Pad, Lenovo ThinkVision 3D, Red Magic) or you pair with
+                    an external weaver (SR-Loom, Katanga). The default
+                    "Auto" selection resolves to this.
+       "SRWeave"  - Hand frames to the LeiaSR SDK for software weaving (via
+                    SimulatedRealityDirectX.dll). Only useful on displays
+                    that need software weaving. Soft-fails to no-op if the
+                    runtime isn't installed.
+       "Auto"     - Same as "HalfSBS" today; logs whether a LeiaSR runtime
+                    is detected for diagnostic reference. (Default.)
 
      Dev override: setting the environment variable WIZ3D_SR_MODE=srweave or
      =sbsdebug wins over this file. "leiasr" is accepted as a legacy alias

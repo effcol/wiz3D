@@ -462,33 +462,50 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                 }
             }
 
+            // Only probe the LeiaSR runtime when SRWeave is explicitly
+            // requested. Auto defaults to HalfSBS -- it works on every panel
+            // that reads SBS content (Acer SpatialLabs, lenticular hardware
+            // weavers in general, 3DTVs, external viewers like SR-Loom and
+            // Katanga). SRWeave is only useful on displays that need
+            // software weaving (Samsung Odyssey 3D-style), and the SR SDK
+            // integration path currently has unresolved stability issues
+            // for CP2077 scene-load, so making it opt-in avoids crashes
+            // for users with hardware-weaving panels (the common case).
             HMODULE srRuntime = nullptr;
-            if (!forceSbsDebug) {
+            if (forceSrWeave) {
                 srRuntime = LoadLibraryW(L"SimulatedRealityDirectX.dll");
                 if (srRuntime) {
-                    Log("Detected LeiaSR runtime (SimulatedRealityDirectX.dll loaded) -- passthrough mode\n");
-                    // Communicate the decision to Odyssey3DSDK (same process)
-                    // via env var so its DllMain can read the same signal.
-                    SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
-                } else if (forceSrWeave) {
-                    Log("SRWeave forced but SimulatedRealityDirectX.dll not loadable -- "
-                        "Weaver will soft-fail to no-op if game invokes it\n");
+                    Log("SRWeave requested; LeiaSR runtime loaded (SimulatedRealityDirectX.dll)\n");
                     SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
                 } else {
-                    Log("LeiaSR runtime not detected -- falling back to SBSDebug mode\n");
+                    Log("SRWeave requested but SimulatedRealityDirectX.dll not loadable -- "
+                        "Weaver will soft-fail to no-op if game invokes it\n");
+                    SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
                 }
             } else {
-                Log("WIZ3D_SR_MODE=sbsdebug forced -- skipping LeiaSR probe\n");
+                // Auto or explicit HalfSBS: use SBSDebug. We still log
+                // whether the LeiaSR runtime is around so users know it was
+                // detected (useful for diagnosing hardware setup), but we
+                // don't let its presence silently change the output mode.
+                HMODULE probe = GetModuleHandleW(L"SimulatedRealityDirectX.dll");
+                if (!probe) probe = LoadLibraryW(L"SimulatedRealityDirectX.dll");
+                if (probe) {
+                    Log("LeiaSR runtime detected (informational); OutputMode stays %s\n",
+                        forceSbsDebug ? "HalfSBS (explicit)" : "HalfSBS (Auto default)");
+                    FreeLibrary(probe);
+                } else {
+                    Log("LeiaSR runtime not detected; OutputMode %s\n",
+                        forceSbsDebug ? "HalfSBS (explicit)" : "HalfSBS (Auto default)");
+                }
             }
 
-            // Drop the CP2077 REDengine SBSDebug ini ONLY when we're in the
-            // SBSDebug path (no LeiaSR runtime or forced sbsdebug). In
-            // passthrough mode the game must use its native Weaver so the
-            // real weave actually runs.
-            if (!srRuntime || forceSbsDebug) {
+            // Drop the CP2077 REDengine SBSDebug ini unless we're in SRWeave
+            // mode -- in SRWeave the game must hand frames to the Weaver so
+            // the real weave runs.
+            if (!srRuntime) {
                 WriteRedengineConfigIfCP2077(gameDir);
             } else {
-                Log("Skipping SBSDebug ini drop (LeiaSR passthrough mode)\n");
+                Log("Skipping SBSDebug ini drop (SRWeave passthrough mode)\n");
                 // Also remove any stale ini from a previous sbsdebug run so
                 // the game doesn't half-engage both paths.
                 WCHAR root[MAX_PATH];
