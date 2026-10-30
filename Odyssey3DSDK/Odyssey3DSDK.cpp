@@ -225,25 +225,22 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
         return false;
     }
 
-    // Late-latching activates LeiaSR's eye-tracking pipeline (and the
-    // panel's webcam light / IR emitter). But first test run showed it
-    // also broke stereo output -- content came through mono rather than
-    // weaved. Likely LeiaSR requires either a working tracker, a precise
-    // once-per-frame weave cadence, or specific input-texture lifetime
-    // guarantees that our forwarder doesn't yet meet. Default: OFF
-    // (match the first working test). Enable via WIZ3D_SR_LATE_LATCH=1
-    // when we're ready to debug the stereo-breaks-with-latching path.
-    char llEnv[8] = {};
-    DWORD llN = GetEnvironmentVariableA("WIZ3D_SR_LATE_LATCH", llEnv, sizeof(llEnv));
-    bool wantLateLatch = (llN > 0 && llEnv[0] == '1');
-    if (wantLateLatch) {
-        g_srWeaver->setLatencyInFrames(1);
-        g_srWeaver->enableLateLatching(true);
-        SrLog("SR: late-latching ENABLED via WIZ3D_SR_LATE_LATCH=1 (tracker will activate; stereo may regress)\n");
-    } else {
-        SrLog("SR: late-latching DISABLED (default; stereo output path, tracker will stay inactive). "
-              "Set WIZ3D_SR_LATE_LATCH=1 to enable tracker + head-position parallax.\n");
-    }
+    // Match SR-Lib's canonical init sequence (SR.cpp CreateSRInterfaceDX11,
+    // DX9, OGL -- all three do exactly these three calls in this order
+    // right after CreateXxxWeaver). Deviating from it broke stereo and
+    // left the tracker camera / IR emitter inactive:
+    //   1. setLatencyInFrames(1)     -- caps weaver's input-latency budget
+    //   2. enableLateLatching(true)  -- activates per-eye late-latch pipeline
+    //   3. srContext->initialize()   -- "Must be done after Weaver creation,
+    //                                    otherwise eye tracking is broken."
+    //                                    (verbatim comment from SR.cpp)
+    // Last one is the piece we were missing; without it LeiaSR's runtime
+    // never spins up the camera or publishes eye positions, which both
+    // disables the IR emitter AND regresses weave output to mono.
+    g_srWeaver->setLatencyInFrames(1);
+    g_srWeaver->enableLateLatching(true);
+    g_srContext->initialize();
+    SrLog("SR: late-latching enabled + context initialized (tracker should activate)\n");
 
     // Tiny CPU-visible RTV heap, 1 slot, for binding the game's output FB.
     D3D12_DESCRIPTOR_HEAP_DESC hd = {};
@@ -600,17 +597,9 @@ static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, i
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
     if (g_srActive && g_srWeaver) {
-        // Bind our output RTV on the command list right before weave --
-        // this guarantees the RT is set regardless of the order the game
-        // called SetCommandList vs SetOutputFrameBuffer this frame.
-        // Required because CP2077 calls SetCommandList first on frame 1,
-        // before SetOutputFrameBuffer, so there's no RTV to bind at that
-        // point. Doing it here means LeiaSR sees a valid RT when it
-        // records its weave commands.
-        if (g_srBoundCmdList && g_srRtvHeap && g_srBoundOutputFB) {
-            D3D12_CPU_DESCRIPTOR_HANDLE rtv = g_srRtvHeap->GetCPUDescriptorHandleForHeapStart();
-            g_srBoundCmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-        }
+        // RT binding is done in SetCommandList (test 1 pattern). Here we
+        // only set weave params + record LeiaSR's weave commands onto
+        // whichever cmd list we last cached.
         D3D12_VIEWPORT vp = { (float)x, (float)y, (float)w, (float)h, 0.f, 1.f };
         D3D12_RECT     sr = { x, y, x + (int)w, y + (int)h };
         g_srWeaver->setViewport(vp);
@@ -687,9 +676,20 @@ static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
     if (g_srActive && g_srWeaver && commandList) {
         ID3D12GraphicsCommandList* cl = (ID3D12GraphicsCommandList*)commandList;
         g_srWeaver->setCommandList(cl);
-        g_srBoundCmdList = cl;    // cache for RT rebind at Weave() time
+        g_srBoundCmdList = cl;
+        // Bind our RTV right here (test 1 pattern). On frame 1 the RTV
+        // descriptor is still uninitialized at this point -- CreateRTV
+        // happens later in SetOutputFrameBuffer -- but DX12 reads the
+        // descriptor's resource reference at command-list execute time,
+        // not record time, so by the time the GPU runs this binding it
+        // sees the live RTV. Moving this to Weave() broke stereo output
+        // (observed in b9012739), reverted here.
+        if (g_srRtvHeap) {
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv = g_srRtvHeap->GetCPUDescriptorHandleForHeapStart();
+            cl->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+        }
         static int logged = 0;
-        if (logged++ < 3) SrLog("SR Weaver::SetCommandList: cl=%p (fwd + cached)\n", commandList);
+        if (logged++ < 3) SrLog("SR Weaver::SetCommandList: cl=%p (fwd + RT bound)\n", commandList);
         return;
     }
 #endif
