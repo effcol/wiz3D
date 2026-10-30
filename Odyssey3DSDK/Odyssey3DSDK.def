@@ -1,0 +1,5 @@
+LIBRARY Odyssey3DSDK
+EXPORTS
+    create_odyssey3d_factory_instance    @1
+    destroy_odyssey3d_factory_instance   @2
+    braindance3d_version                 @3

@@ -1,0 +1,833 @@
+/*
+ * wiz3D - Odyssey3DSDK.dll stand-in
+ * Simulated Reality native-stereo unlock for Samsung Odyssey 3D titles.
+ *
+ * Copyright (C) 2026 wiz3D contributors.
+ * Licensed under the GNU Lesser General Public License, version 2.1.
+ * See LICENSE.txt in the repository root for the full text.
+ *
+ * Clean-room implementation of Samsung's Odyssey3DSDK.dll interface.
+ * The 3-interface / 32-slot ABI shape was reverse-engineered from public
+ * CP2077 2.5 call-sites by vl3c (vl3c/cyberpunk2077-3d-braindance-edition,
+ * MIT 2026) and reproduced here as a specification only -- no code was
+ * taken. See THIRD_PARTY_NOTICES.txt for the attribution block.
+ *
+ * What this DLL does:
+ *   Supplies a stand-in Samsung Odyssey 3D SDK that reports
+ *   "SR display present" to any game that probes for one, so games with
+ *   a Samsung-gated native stereo mode (Cyberpunk 2077, and the growing
+ *   list of Samsung-exclusive native-stereo titles) will enable their
+ *   internal half-SBS debug path and render stereo on any display.
+ *
+ * How games find us:
+ *   Game startup reads  HKCU\SOFTWARE\Samsung\Odyssey3DHub\InstallPath,
+ *   appends            \GameLauncherData\core\Odyssey3DSDK.dll,
+ *   LoadLibrary's that  path, GetProcAddress's our three exports.
+ *   The companion dxgi.dll bootstrap proxy writes that registry value
+ *   so the user never has to run an installer -- drag-and-drop only.
+ *
+ * Threading:
+ *   Game polls Device methods (GetEyePosition, GetResolution, Hint48)
+ *   from multiple threads concurrently -- ~110 Hz, ~55 Hz, 400-900 Hz
+ *   respectively per vl3c's instrumentation. All vtable slots are
+ *   therefore reentrant-safe; mutable state is guarded by
+ *   CRITICAL_SECTIONs.
+ *
+ * Logging:
+ *   All vtable calls are logged on their first invocation and periodically
+ *   thereafter.  The envvar WIZ3D_SR_LOG_SLOTS=1 enables a per-call dump
+ *   of every unmapped vtable slot, useful for discovering the vtable
+ *   shape of a new Samsung-SDK-consuming title.  Output lands in
+ *   wiz3D_Logs\wiz3D_SR.log next to the game exe.
+ */
+
+#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <stdint.h>
+
+// ----------------------------------------------------------------------------
+// Build-time constants
+// ----------------------------------------------------------------------------
+#define WIZ3D_SR_VERSION_STRING  "wiz3D Simulated Reality 0.5.0"
+#define WIZ3D_SR_LOG_FILENAME    L"wiz3D_SR.log"
+#define WIZ3D_SR_SHARED_LOG      L"wiz3D_proxy.log"
+
+// Each vtable the game sees is 32 pointer slots wide. Most are unmapped;
+// unmapped slots route to a stub that logs and returns the first argument
+// (safe for the common C-vtable idiom where arg0 is the self-pointer OR
+// an out-param pointer the caller passes in).
+static const unsigned kVtableSlots = 32;
+
+// ----------------------------------------------------------------------------
+// Logging
+// ----------------------------------------------------------------------------
+static FILE*             g_logFile = nullptr;
+static CRITICAL_SECTION  g_logLock;
+static bool              g_logInit = false;
+static bool              g_logSlotsEveryCall = false;
+
+static void SrLogInit()
+{
+    if (g_logInit) return;
+    InitializeCriticalSection(&g_logLock);
+    g_logInit = true;
+
+    WCHAR dir[MAX_PATH];
+    GetModuleFileNameW(NULL, dir, MAX_PATH);
+    WCHAR* slash = wcsrchr(dir, L'\\');
+    if (slash) *(slash + 1) = L'\0';
+    lstrcatW(dir, L"wiz3D_Logs");
+    CreateDirectoryW(dir, NULL);
+    lstrcatW(dir, L"\\" WIZ3D_SR_LOG_FILENAME);
+    g_logFile = _wfopen(dir, L"a");
+
+    // Honor WIZ3D_SR_LOG_SLOTS=1 for exhaustive per-call vtable dumps.
+    char v[8] = {};
+    DWORD n = GetEnvironmentVariableA("WIZ3D_SR_LOG_SLOTS", v, sizeof(v));
+    g_logSlotsEveryCall = (n > 0 && v[0] == '1');
+}
+
+static void SrLog(const char* fmt, ...)
+{
+    SrLogInit();
+    if (!g_logFile) return;
+    EnterCriticalSection(&g_logLock);
+    SYSTEMTIME st;
+    GetLocalTime(&st);
+    fprintf(g_logFile, "[%02u:%02u:%02u.%03u] ",
+            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    va_list ap;
+    va_start(ap, fmt);
+    vfprintf(g_logFile, fmt, ap);
+    va_end(ap);
+    fflush(g_logFile);
+    LeaveCriticalSection(&g_logLock);
+}
+
+// ----------------------------------------------------------------------------
+// Config -- read from wiz3D_Config.xml alongside the DLL, if present. For
+// phase 1 we read only the stereo basics (IPD, nominal eye-Z, forced
+// monitor rect override). The DX12 compositor + output-mode knobs land in
+// phase 2 when the output stage ports.
+// ----------------------------------------------------------------------------
+struct SrConfig
+{
+    float ipd_mm         = 64.0f;    // interpupillary distance; eye_x = ±ipd/2
+    float eye_z_mm       = 600.0f;   // nominal view distance (vl3c default)
+    bool  log_slots      = false;    // mirror of WIZ3D_SR_LOG_SLOTS envvar
+    bool  override_rect  = false;    // if true, use rect_* instead of DXGI probe
+    int64_t rect_top     = 0;
+    int64_t rect_left    = 0;
+    int64_t rect_right   = 1920;
+    int64_t rect_bottom  = 1080;
+};
+static SrConfig g_cfg;
+
+// ----------------------------------------------------------------------------
+// Monitor discovery
+//
+// vl3c's audit documented the GetMonitorRect quirk: Samsung's SDK returns
+// {top, left, right, bottom} as int64 -- NOT the standard Win32
+// {left, top, right, bottom} order. The game compares the result against
+// its own DXGI output enumeration, so returning the actual output rect
+// is correct. The int64 widening is just header-level ABI.
+// ----------------------------------------------------------------------------
+static CRITICAL_SECTION g_monLock;
+static bool             g_monInit = false;
+static int64_t          g_monRect[4] = { 0, 0, 1920, 1080 };  // {top,left,right,bottom}
+static int              g_monW = 1920;
+static int              g_monH = 1080;
+
+static void SrMonitorInit()
+{
+    if (g_monInit) return;
+    InitializeCriticalSection(&g_monLock);
+    g_monInit = true;
+
+    // Primary monitor as a safe default. The actual "game window's monitor"
+    // lookup needs the game's HWND which the Factory::CreateWeaver call
+    // supplies -- we'll refresh at that point.
+    HMONITOR hm = MonitorFromPoint({ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+    MONITORINFO mi = {};
+    mi.cbSize = sizeof(mi);
+    if (hm && GetMonitorInfoW(hm, &mi))
+    {
+        EnterCriticalSection(&g_monLock);
+        g_monRect[0] = mi.rcMonitor.top;
+        g_monRect[1] = mi.rcMonitor.left;
+        g_monRect[2] = mi.rcMonitor.right;
+        g_monRect[3] = mi.rcMonitor.bottom;
+        g_monW = mi.rcMonitor.right  - mi.rcMonitor.left;
+        g_monH = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        LeaveCriticalSection(&g_monLock);
+    }
+    SrLog("SR mon init: {top=%lld left=%lld right=%lld bottom=%lld} (%dx%d)\n",
+          (long long)g_monRect[0], (long long)g_monRect[1],
+          (long long)g_monRect[2], (long long)g_monRect[3],
+          g_monW, g_monH);
+}
+
+static void SrMonitorRefreshFromHwnd(HWND hwnd)
+{
+    if (!hwnd) return;
+    HMONITOR hm = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+    if (!hm) return;
+    MONITORINFO mi = {};
+    mi.cbSize = sizeof(mi);
+    if (!GetMonitorInfoW(hm, &mi)) return;
+    EnterCriticalSection(&g_monLock);
+    g_monRect[0] = mi.rcMonitor.top;
+    g_monRect[1] = mi.rcMonitor.left;
+    g_monRect[2] = mi.rcMonitor.right;
+    g_monRect[3] = mi.rcMonitor.bottom;
+    g_monW = mi.rcMonitor.right  - mi.rcMonitor.left;
+    g_monH = mi.rcMonitor.bottom - mi.rcMonitor.top;
+    LeaveCriticalSection(&g_monLock);
+    SrLog("SR mon from hwnd=%p: {top=%lld left=%lld right=%lld bottom=%lld} (%dx%d)\n",
+          (void*)hwnd,
+          (long long)g_monRect[0], (long long)g_monRect[1],
+          (long long)g_monRect[2], (long long)g_monRect[3],
+          g_monW, g_monH);
+}
+
+// ----------------------------------------------------------------------------
+// Call counters -- first-call logging + periodic rate dump. The game calls
+// GetEyePosition / GetResolution / Hint48 very frequently; we don't want a
+// log entry per call unless WIZ3D_SR_LOG_SLOTS is set.
+// ----------------------------------------------------------------------------
+struct CallCounter {
+    volatile LONG count = 0;
+    const char*   name  = nullptr;
+};
+
+static void NoteCall(CallCounter& c)
+{
+    LONG n = InterlockedIncrement(&c.count);
+    if (n == 1) SrLog("SR first call: %s\n", c.name ? c.name : "<unnamed>");
+    // Periodic rate dump every ~1024 calls -- cheap, keeps the log readable.
+    if ((n & 0x3FF) == 0) SrLog("SR %s: %ld calls\n", c.name ? c.name : "<unnamed>", (long)n);
+    if (g_logSlotsEveryCall)
+        SrLog("SR call: %s (#%ld)\n", c.name ? c.name : "<unnamed>", (long)n);
+}
+
+// ----------------------------------------------------------------------------
+// Interfaces -- game sees `{void** vtable, state...}` structs. We allocate
+// the vtables as static arrays of void* so they're ABI-stable per build.
+//
+// Factory  (slots 0..31)   -- 2 mapped: CreateDevice@0, CreateWeaver@2
+// Device   (slots 0..31)   -- 7 mapped: GetEyePosition@1, GetResolution@2,
+//                             GetFloat2_18@3, GetMonitorRect@6, Hint48@9,
+//                             IsAvailable@10, Destroy@12
+// Weaver   (slots 0..31)   -- 4 mapped: Weave@2, SetInputViewTexture@4,
+//                             SetOutputFrameBuffer@6, SetCommandList@7
+//
+// MSVC _Ref_count_base-shaped vtable (4 slots) is also required for the
+// SharedPtr return of Factory::CreateWeaver -- see RefCount section.
+// ----------------------------------------------------------------------------
+
+struct Factory;
+struct Device;
+struct Weaver;
+
+typedef Device**         (__stdcall *FactoryCreateDeviceFn )(Factory* self, Device** out);
+typedef struct SharedPtr {
+    Weaver*          ptr;
+    struct RefCount* rc;
+} SharedPtr;
+// d3dDevice / allocator are ID3D12Device / ID3D12CommandAllocator in practice,
+// but we never dereference them (SBSDebug path), so void* keeps us free of
+// the d3d12 header pull.
+typedef SharedPtr*       (__stdcall *FactoryCreateWeaverFn )(Factory* self, SharedPtr* retSlot,
+                                                             Device* dev, void* d3dDevice,
+                                                             void* allocator, void* arg5,
+                                                             uintptr_t arg6, uintptr_t arg7,
+                                                             HWND hwnd);
+
+typedef float*           (__stdcall *DeviceGetEyePositionFn)(Device* self, float out[3], int eye);
+typedef float*           (__stdcall *DeviceGetResolutionFn )(Device* self, float out[2]);
+typedef float*           (__stdcall *DeviceGetFloat2_18Fn  )(Device* self, float out[2]);
+typedef int64_t*         (__stdcall *DeviceGetMonitorRectFn)(Device* self, int64_t out[4]);
+typedef uintptr_t        (__stdcall *DeviceHint48Fn        )(Device* self, uintptr_t flag);
+typedef uint8_t          (__stdcall *DeviceIsAvailableFn   )(Device* self);
+typedef void*            (__stdcall *DeviceDestroyFn       )(Device* self, unsigned flags);
+
+typedef void             (__stdcall *WeaverWeaveFn               )(Weaver* self, unsigned w, unsigned h, int x, int y);
+typedef void             (__stdcall *WeaverSetInputViewTextureFn )(Weaver* self, void* tex, int dxgiFormat);
+typedef void             (__stdcall *WeaverSetOutputFrameBufferFn)(Weaver* self, void* tex);
+typedef void             (__stdcall *WeaverSetCommandListFn      )(Weaver* self, void* commandList);
+
+// ----------------------------------------------------------------------------
+// Unmapped-slot stub.
+//
+// Every unmapped slot of every vtable routes here. We don't know the real
+// signature; the safe behavior is to log the slot invocation and return
+// the first argument unchanged. That matches the game's out-param-getter
+// idiom (caller provides a pointer, callee writes to it, returns it) and
+// is a no-op pass-through for self-receivers.
+//
+// Because __stdcall callees pop the args, calling this with a mismatched
+// argument count on x86 would corrupt the stack. We therefore declare the
+// stub varargs on x86 (caller cleans up) and __fastcall-shaped on x64
+// (register-passed, callee doesn't pop). On x64 the first arg (self /
+// out-pointer) arrives in RCX and the return in RAX -- we just return
+// RCX. On x86 we return the first arg which is at the top of the stack.
+//
+// Each vtable slot thus needs its own trampoline that captures the slot
+// index, logs it, then returns the first arg. We generate those below.
+// ----------------------------------------------------------------------------
+
+#if defined(_M_X64) || defined(__x86_64__)
+    #define SR_STUB_CALLCONV
+#else
+    #define SR_STUB_CALLCONV __stdcall
+#endif
+
+static void SrLogUnmapped(const char* iface, unsigned slot, void* arg0)
+{
+    SrLog("SR UNMAPPED %s[%u] called -- returning arg0=%p (first-arg passthrough stub)\n",
+          iface, slot, arg0);
+}
+
+// One stub per slot per interface so logging reports the actual slot that
+// was hit. 32 slots * 3 interfaces = 96 stubs. We macro them out for compact
+// source; the generated code is a one-line log + return-arg0.
+//
+// On x86 __stdcall unknown-arity: unsafe to pop. We declare these naked-ish
+// and only touch arg0 (ECX in __fastcall or [ESP+4] in __stdcall). Standard
+// stdcall callees pop a size encoded in the function; since we don't know
+// the arity, we use the __cdecl variant where the CALLER pops -- then our
+// return doesn't need to adjust ESP by the arg count.
+//
+// NOTE: in practice the game never calls unmapped slots in CP2077 2.5. The
+// slots exist for future-game-compatibility and for the WIZ3D_SR_LOG_SLOTS
+// diagnostic path. If a new game DOES call an unmapped slot, that becomes a
+// bug report + a decision whether to implement it.
+//
+// For the vast majority of unmapped slots the game simply never calls them,
+// so the arity issue is moot. For the few slots where this stub DOES fire,
+// log + return-arg0 is the safest minimal response.
+
+#define SR_UNMAPPED_STUB(IFACE, SLOT)                                           \
+    static void* __cdecl SrUnmapped_##IFACE##_##SLOT(void* arg0, ...)           \
+    {                                                                           \
+        SrLogUnmapped(#IFACE, SLOT, arg0);                                      \
+        return arg0;                                                            \
+    }
+
+// Factory, Device, Weaver -- all 32 slots per interface.
+// (Compilers will DCE the unused stubs since they're referenced by vtable
+// init only -- generating all 96 keeps the macro expansion mechanical.)
+#define SR_UNMAPPED_ALL_32(IFACE)                                               \
+    SR_UNMAPPED_STUB(IFACE, 0)  SR_UNMAPPED_STUB(IFACE, 1)                      \
+    SR_UNMAPPED_STUB(IFACE, 2)  SR_UNMAPPED_STUB(IFACE, 3)                      \
+    SR_UNMAPPED_STUB(IFACE, 4)  SR_UNMAPPED_STUB(IFACE, 5)                      \
+    SR_UNMAPPED_STUB(IFACE, 6)  SR_UNMAPPED_STUB(IFACE, 7)                      \
+    SR_UNMAPPED_STUB(IFACE, 8)  SR_UNMAPPED_STUB(IFACE, 9)                      \
+    SR_UNMAPPED_STUB(IFACE, 10) SR_UNMAPPED_STUB(IFACE, 11)                     \
+    SR_UNMAPPED_STUB(IFACE, 12) SR_UNMAPPED_STUB(IFACE, 13)                     \
+    SR_UNMAPPED_STUB(IFACE, 14) SR_UNMAPPED_STUB(IFACE, 15)                     \
+    SR_UNMAPPED_STUB(IFACE, 16) SR_UNMAPPED_STUB(IFACE, 17)                     \
+    SR_UNMAPPED_STUB(IFACE, 18) SR_UNMAPPED_STUB(IFACE, 19)                     \
+    SR_UNMAPPED_STUB(IFACE, 20) SR_UNMAPPED_STUB(IFACE, 21)                     \
+    SR_UNMAPPED_STUB(IFACE, 22) SR_UNMAPPED_STUB(IFACE, 23)                     \
+    SR_UNMAPPED_STUB(IFACE, 24) SR_UNMAPPED_STUB(IFACE, 25)                     \
+    SR_UNMAPPED_STUB(IFACE, 26) SR_UNMAPPED_STUB(IFACE, 27)                     \
+    SR_UNMAPPED_STUB(IFACE, 28) SR_UNMAPPED_STUB(IFACE, 29)                     \
+    SR_UNMAPPED_STUB(IFACE, 30) SR_UNMAPPED_STUB(IFACE, 31)
+
+SR_UNMAPPED_ALL_32(Factory)
+SR_UNMAPPED_ALL_32(Device)
+SR_UNMAPPED_ALL_32(Weaver)
+
+#define SR_UNMAPPED_SLOT(IFACE, SLOT) (void*)&SrUnmapped_##IFACE##_##SLOT
+
+// ----------------------------------------------------------------------------
+// Device mapped slots
+// ----------------------------------------------------------------------------
+
+static CallCounter g_cc_GetEyePosition = { 0, "Device::GetEyePosition" };
+static CallCounter g_cc_GetResolution  = { 0, "Device::GetResolution"  };
+static CallCounter g_cc_GetFloat2_18   = { 0, "Device::GetFloat2_18"   };
+static CallCounter g_cc_GetMonitorRect = { 0, "Device::GetMonitorRect" };
+static CallCounter g_cc_Hint48         = { 0, "Device::Hint48"         };
+static CallCounter g_cc_IsAvailable    = { 0, "Device::IsAvailable"    };
+static CallCounter g_cc_Destroy        = { 0, "Device::Destroy"        };
+
+static float* __stdcall DevGetEyePosition(Device* self, float out[3], int eye)
+{
+    NoteCall(g_cc_GetEyePosition);
+    // mm units; right-handed; x = ±IPD/2, y = 0, z = eye_z_mm (nominal view distance).
+    // In phase 4 we'll replace this with an OpenTrack UDP feed so any webcam/IR
+    // tracker can drive native-stereo view position for games that use it.
+    const float x = (eye == 0 ? -1.0f : +1.0f) * (g_cfg.ipd_mm * 0.5f);
+    if (out)
+    {
+        out[0] = x;
+        out[1] = 0.0f;
+        out[2] = g_cfg.eye_z_mm;
+    }
+    return out;
+}
+
+static float* __stdcall DevGetResolution(Device* self, float out[2])
+{
+    NoteCall(g_cc_GetResolution);
+    EnterCriticalSection(&g_monLock);
+    const int w = g_monW, h = g_monH;
+    LeaveCriticalSection(&g_monLock);
+    if (out) { out[0] = (float)w; out[1] = (float)h; }
+    return out;
+}
+
+static float* __stdcall DevGetFloat2_18(Device* self, float out[2])
+{
+    NoteCall(g_cc_GetFloat2_18);
+    // vl3c's 0.2.0 (2026-10-29) switched this from {10000, 10000} (which
+    // reproduced the game's 100.0-defaulting field after the x0.01 scaling)
+    // to the real Samsung Odyssey 27" panel dims in cm (59.77 x 33.62).
+    // Their CHANGELOG notes: "world depth showed no visible change between
+    // 10000 and 120 x 67.5, so it isn't a setting" -- so this isn't a
+    // depth/scale knob, but matching the real panel is defensible defaulting
+    // in case a future game version uses it differently.
+    if (out) { out[0] = 59.77f; out[1] = 33.62f; }
+    return out;
+}
+
+static int64_t* __stdcall DevGetMonitorRect(Device* self, int64_t out[4])
+{
+    NoteCall(g_cc_GetMonitorRect);
+    EnterCriticalSection(&g_monLock);
+    if (out)
+    {
+        // {top, left, right, bottom} -- NOT standard Win32 order (see header note).
+        out[0] = g_monRect[0];
+        out[1] = g_monRect[1];
+        out[2] = g_monRect[2];
+        out[3] = g_monRect[3];
+    }
+    LeaveCriticalSection(&g_monLock);
+    return out;
+}
+
+static uintptr_t __stdcall DevHint48(Device* self, uintptr_t flag)
+{
+    NoteCall(g_cc_Hint48);
+    // 400-900 Hz hint; game ignores return. Treat as a tracking/activity poll.
+    (void)flag;
+    return 0;
+}
+
+static uint8_t __stdcall DevIsAvailable(Device* self)
+{
+    NoteCall(g_cc_IsAvailable);
+    // "Yes, an SR display is attached." No EDID check, no monitor-model probe.
+    return 1;
+}
+
+static void* __stdcall DevDestroy(Device* self, unsigned flags)
+{
+    NoteCall(g_cc_Destroy);
+    SrLog("SR Device::Destroy(self=%p, flags=0x%X)\n", (void*)self, flags);
+    if (flags & 1u) HeapFree(GetProcessHeap(), 0, self);
+    return nullptr;
+}
+
+// ----------------------------------------------------------------------------
+// Weaver mapped slots (all no-ops under SBSDebug -- the game does its own
+// SBS output; our Weaver exists to satisfy the API contract so Factory::
+// CreateWeaver can return a non-null shared_ptr).
+// ----------------------------------------------------------------------------
+
+static CallCounter g_cc_Weave        = { 0, "Weaver::Weave" };
+static CallCounter g_cc_SetInputView = { 0, "Weaver::SetInputViewTexture" };
+static CallCounter g_cc_SetOutputFB  = { 0, "Weaver::SetOutputFrameBuffer" };
+static CallCounter g_cc_SetCmdList   = { 0, "Weaver::SetCommandList" };
+
+static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, int y)
+{
+    NoteCall(g_cc_Weave);
+    // No-op. Under SBSDebug the game writes half-SBS to its own backbuffer and
+    // never relies on a weave happening here. Phase 3 would hook the game's
+    // D3D12 Present and route the half-SBS through our output stage.
+    (void)self; (void)w; (void)h; (void)x; (void)y;
+}
+
+static void __stdcall WeaverSetInputViewTexture(Weaver* self, void* tex, int dxgiFormat)
+{
+    NoteCall(g_cc_SetInputView);
+    SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (ignored under SBSDebug)\n",
+          tex, dxgiFormat);
+    (void)self;
+}
+
+static void __stdcall WeaverSetOutputFrameBuffer(Weaver* self, void* tex)
+{
+    NoteCall(g_cc_SetOutputFB);
+    SrLog("SR Weaver::SetOutputFrameBuffer: tex=%p (ignored under SBSDebug)\n", tex);
+    (void)self;
+}
+
+static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
+{
+    NoteCall(g_cc_SetCmdList);
+    SrLog("SR Weaver::SetCommandList: cl=%p (ignored under SBSDebug)\n", commandList);
+    (void)self;
+}
+
+// ----------------------------------------------------------------------------
+// Weaver + its RefCount control block (MSVC _Ref_count_base shape)
+//
+// Factory::CreateWeaver returns a std::shared_ptr<Weaver> by hidden pointer.
+// MSVC's shared_ptr is {ptr, _Ref_count_base*}; the control block has a
+// 4-slot vtable {_Destroy, _Delete_this, ~dtor, _Get_deleter} followed by
+// two volatile LONG refcounts and the managed pointer.
+// ----------------------------------------------------------------------------
+
+struct Weaver
+{
+    void** vtable;    // 32-slot
+    // No per-instance state in phase 1; the stand-in's methods are no-ops.
+    // Reserved padding keeps the struct size stable for any field access that
+    // might cast through the first bytes.
+    uint8_t reserved[64];
+};
+
+struct RefCount
+{
+    void** vtable;             // 4-slot _Ref_count_base
+    volatile LONG uses;        // strong refcount
+    volatile LONG weaks;       // weak refcount
+    Weaver*       obj;         // managed pointer
+};
+
+static void  __stdcall Rc_Destroy    (RefCount* self);
+static void  __stdcall Rc_DeleteThis (RefCount* self);
+static void* __stdcall Rc_Dtor       (RefCount* self, unsigned flags);
+static void* __stdcall Rc_GetDeleter (RefCount* self, const void* type);
+
+static void* g_RcVtable[4] = {
+    (void*)&Rc_Destroy,
+    (void*)&Rc_DeleteThis,
+    (void*)&Rc_Dtor,
+    (void*)&Rc_GetDeleter,
+};
+
+static void __stdcall Rc_Destroy(RefCount* self)
+{
+    if (!self) return;
+    SrLog("SR RefCount::_Destroy(self=%p obj=%p)\n", (void*)self, (void*)self->obj);
+    if (self->obj) {
+        HeapFree(GetProcessHeap(), 0, self->obj);
+        self->obj = nullptr;
+    }
+}
+
+static void __stdcall Rc_DeleteThis(RefCount* self)
+{
+    if (!self) return;
+    SrLog("SR RefCount::_Delete_this(self=%p)\n", (void*)self);
+    HeapFree(GetProcessHeap(), 0, self);
+}
+
+static void* __stdcall Rc_Dtor(RefCount* self, unsigned flags)
+{
+    SrLog("SR RefCount::~dtor(self=%p flags=0x%X)\n", (void*)self, flags);
+    if (self && self->obj) {
+        HeapFree(GetProcessHeap(), 0, self->obj);
+        self->obj = nullptr;
+    }
+    if ((flags & 1u) && self) HeapFree(GetProcessHeap(), 0, self);
+    return nullptr;
+}
+
+static void* __stdcall Rc_GetDeleter(RefCount* self, const void* type)
+{
+    (void)self; (void)type;
+    return nullptr;
+}
+
+static void* g_WeaverVtable[kVtableSlots];
+
+static Weaver* AllocateWeaver()
+{
+    Weaver* w = (Weaver*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(Weaver));
+    if (!w) return nullptr;
+    w->vtable = g_WeaverVtable;
+    return w;
+}
+
+static SharedPtr MakeWeaverSharedPtr()
+{
+    Weaver*   w  = AllocateWeaver();
+    RefCount* rc = (RefCount*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(RefCount));
+    if (rc) {
+        rc->vtable = g_RcVtable;
+        rc->uses   = 1;
+        rc->weaks  = 1;
+        rc->obj    = w;
+    }
+    return SharedPtr{ w, rc };
+}
+
+// ----------------------------------------------------------------------------
+// Factory mapped slots
+// ----------------------------------------------------------------------------
+
+struct Device
+{
+    void**   vtable;    // 32-slot
+    uint8_t  reserved[64];
+};
+
+struct Factory
+{
+    void**   vtable;    // 32-slot
+    uint8_t  reserved[64];
+};
+
+static void* g_DeviceVtable[kVtableSlots];
+static void* g_FactoryVtable[kVtableSlots];
+
+static Device* AllocateDevice()
+{
+    Device* d = (Device*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(Device));
+    if (!d) return nullptr;
+    d->vtable = g_DeviceVtable;
+    SrLog("SR Factory::CreateDevice: allocated Device=%p vtable=%p\n",
+          (void*)d, (void*)g_DeviceVtable);
+    return d;
+}
+
+static Device** __stdcall FacCreateDevice(Factory* self, Device** out)
+{
+    SrLog("SR Factory::CreateDevice(self=%p, out=%p)\n", (void*)self, (void*)out);
+    Device* dev = AllocateDevice();
+    if (out) *out = dev;
+    return out;
+}
+
+static SharedPtr* __stdcall FacCreateWeaver(Factory* self, SharedPtr* retSlot,
+                                            Device* dev, void* d3dDevice,
+                                            void* allocator, void* arg5,
+                                            uintptr_t arg6, uintptr_t arg7,
+                                            HWND hwnd)
+{
+    SrLog("SR Factory::CreateWeaver: dev=%p d3dDevice=%p allocator=%p arg5=%p arg6=%p arg7=%p hwnd=%p\n",
+          (void*)dev, (void*)d3dDevice, (void*)allocator,
+          arg5, (void*)arg6, (void*)arg7, (void*)hwnd);
+
+    // Game's hwnd is the Samsung-SDK path's definitive "where should stereo
+    // output land" cue. Refresh the monitor rect from it so GetMonitorRect
+    // reports the game's actual target display rather than the primary.
+    SrMonitorRefreshFromHwnd(hwnd);
+
+    SharedPtr sp = MakeWeaverSharedPtr();
+    SrLog("SR Factory::CreateWeaver: Weaver=%p RefCount=%p\n",
+          (void*)sp.ptr, (void*)sp.rc);
+    if (retSlot) *retSlot = sp;
+    return retSlot;
+}
+
+// ----------------------------------------------------------------------------
+// Vtable initialization -- runs once in DllMain(DLL_PROCESS_ATTACH)
+// ----------------------------------------------------------------------------
+
+static void InitFactoryVtable()
+{
+    for (unsigned i = 0; i < kVtableSlots; ++i) g_FactoryVtable[i] = nullptr;
+    g_FactoryVtable[0]  = (void*)&FacCreateDevice;
+    g_FactoryVtable[1]  = SR_UNMAPPED_SLOT(Factory, 1);
+    g_FactoryVtable[2]  = (void*)&FacCreateWeaver;
+    for (unsigned i = 3; i < kVtableSlots; ++i)
+    {
+        g_FactoryVtable[i] = (void*)&SrUnmapped_Factory_31;    // single fallback is fine
+    }
+    // Overwrite with per-slot stubs where we care about slot-identified logging.
+    g_FactoryVtable[3]  = SR_UNMAPPED_SLOT(Factory, 3);
+    g_FactoryVtable[4]  = SR_UNMAPPED_SLOT(Factory, 4);
+    g_FactoryVtable[5]  = SR_UNMAPPED_SLOT(Factory, 5);
+    g_FactoryVtable[6]  = SR_UNMAPPED_SLOT(Factory, 6);
+    g_FactoryVtable[7]  = SR_UNMAPPED_SLOT(Factory, 7);
+    g_FactoryVtable[8]  = SR_UNMAPPED_SLOT(Factory, 8);
+    g_FactoryVtable[9]  = SR_UNMAPPED_SLOT(Factory, 9);
+    g_FactoryVtable[10] = SR_UNMAPPED_SLOT(Factory, 10);
+    g_FactoryVtable[11] = SR_UNMAPPED_SLOT(Factory, 11);
+    g_FactoryVtable[12] = SR_UNMAPPED_SLOT(Factory, 12);
+    g_FactoryVtable[13] = SR_UNMAPPED_SLOT(Factory, 13);
+    g_FactoryVtable[14] = SR_UNMAPPED_SLOT(Factory, 14);
+    g_FactoryVtable[15] = SR_UNMAPPED_SLOT(Factory, 15);
+    g_FactoryVtable[16] = SR_UNMAPPED_SLOT(Factory, 16);
+    g_FactoryVtable[17] = SR_UNMAPPED_SLOT(Factory, 17);
+    g_FactoryVtable[18] = SR_UNMAPPED_SLOT(Factory, 18);
+    g_FactoryVtable[19] = SR_UNMAPPED_SLOT(Factory, 19);
+    g_FactoryVtable[20] = SR_UNMAPPED_SLOT(Factory, 20);
+    g_FactoryVtable[21] = SR_UNMAPPED_SLOT(Factory, 21);
+    g_FactoryVtable[22] = SR_UNMAPPED_SLOT(Factory, 22);
+    g_FactoryVtable[23] = SR_UNMAPPED_SLOT(Factory, 23);
+    g_FactoryVtable[24] = SR_UNMAPPED_SLOT(Factory, 24);
+    g_FactoryVtable[25] = SR_UNMAPPED_SLOT(Factory, 25);
+    g_FactoryVtable[26] = SR_UNMAPPED_SLOT(Factory, 26);
+    g_FactoryVtable[27] = SR_UNMAPPED_SLOT(Factory, 27);
+    g_FactoryVtable[28] = SR_UNMAPPED_SLOT(Factory, 28);
+    g_FactoryVtable[29] = SR_UNMAPPED_SLOT(Factory, 29);
+    g_FactoryVtable[30] = SR_UNMAPPED_SLOT(Factory, 30);
+    g_FactoryVtable[31] = SR_UNMAPPED_SLOT(Factory, 31);
+}
+
+static void InitDeviceVtable()
+{
+    for (unsigned i = 0; i < kVtableSlots; ++i)
+    {
+        // Default to the per-slot stub so logs identify which slot got hit.
+        switch (i) {
+            case 0:  g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 0);  break;
+            case 1:  g_DeviceVtable[i] = (void*)&DevGetEyePosition;    break;
+            case 2:  g_DeviceVtable[i] = (void*)&DevGetResolution;     break;
+            case 3:  g_DeviceVtable[i] = (void*)&DevGetFloat2_18;      break;
+            case 4:  g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 4);  break;
+            case 5:  g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 5);  break;
+            case 6:  g_DeviceVtable[i] = (void*)&DevGetMonitorRect;    break;
+            case 7:  g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 7);  break;
+            case 8:  g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 8);  break;
+            case 9:  g_DeviceVtable[i] = (void*)&DevHint48;            break;
+            case 10: g_DeviceVtable[i] = (void*)&DevIsAvailable;       break;
+            case 11: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 11); break;
+            case 12: g_DeviceVtable[i] = (void*)&DevDestroy;           break;
+            case 13: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 13); break;
+            case 14: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 14); break;
+            case 15: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 15); break;
+            case 16: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 16); break;
+            case 17: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 17); break;
+            case 18: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 18); break;
+            case 19: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 19); break;
+            case 20: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 20); break;
+            case 21: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 21); break;
+            case 22: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 22); break;
+            case 23: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 23); break;
+            case 24: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 24); break;
+            case 25: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 25); break;
+            case 26: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 26); break;
+            case 27: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 27); break;
+            case 28: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 28); break;
+            case 29: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 29); break;
+            case 30: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 30); break;
+            case 31: g_DeviceVtable[i] = SR_UNMAPPED_SLOT(Device, 31); break;
+        }
+    }
+}
+
+static void InitWeaverVtable()
+{
+    for (unsigned i = 0; i < kVtableSlots; ++i)
+    {
+        switch (i) {
+            case 0:  g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 0);  break;
+            case 1:  g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 1);  break;
+            case 2:  g_WeaverVtable[i] = (void*)&WeaverWeave;          break;
+            case 3:  g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 3);  break;
+            case 4:  g_WeaverVtable[i] = (void*)&WeaverSetInputViewTexture;    break;
+            case 5:  g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 5);  break;
+            case 6:  g_WeaverVtable[i] = (void*)&WeaverSetOutputFrameBuffer;   break;
+            case 7:  g_WeaverVtable[i] = (void*)&WeaverSetCommandList;         break;
+            case 8:  g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 8);  break;
+            case 9:  g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 9);  break;
+            case 10: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 10); break;
+            case 11: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 11); break;
+            case 12: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 12); break;
+            case 13: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 13); break;
+            case 14: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 14); break;
+            case 15: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 15); break;
+            case 16: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 16); break;
+            case 17: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 17); break;
+            case 18: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 18); break;
+            case 19: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 19); break;
+            case 20: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 20); break;
+            case 21: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 21); break;
+            case 22: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 22); break;
+            case 23: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 23); break;
+            case 24: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 24); break;
+            case 25: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 25); break;
+            case 26: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 26); break;
+            case 27: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 27); break;
+            case 28: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 28); break;
+            case 29: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 29); break;
+            case 30: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 30); break;
+            case 31: g_WeaverVtable[i] = SR_UNMAPPED_SLOT(Weaver, 31); break;
+        }
+    }
+}
+
+static Factory* AllocateFactory()
+{
+    Factory* f = (Factory*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(Factory));
+    if (!f) return nullptr;
+    f->vtable = g_FactoryVtable;
+    return f;
+}
+
+// ----------------------------------------------------------------------------
+// Exports
+// ----------------------------------------------------------------------------
+
+extern "C" __declspec(dllexport)
+Factory* create_odyssey3d_factory_instance(void)
+{
+    SrLog("SR create_odyssey3d_factory_instance() called\n");
+    // No whitelist. Universal use is the point -- we want Khazan/Stellar Blade/
+    // Lies of P/Hell is Us/Mongil to work with the same drop-in. If a title
+    // misbehaves specifically because the stand-in doesn't gate on exe name,
+    // we add a wiz3D_Config.xml opt-in later.
+    Factory* f = AllocateFactory();
+    SrLog("SR Factory allocated at %p\n", (void*)f);
+    return f;
+}
+
+extern "C" __declspec(dllexport)
+void destroy_odyssey3d_factory_instance(Factory* f)
+{
+    SrLog("SR destroy_odyssey3d_factory_instance(f=%p)\n", (void*)f);
+    if (f) HeapFree(GetProcessHeap(), 0, f);
+}
+
+extern "C" __declspec(dllexport)
+const char* braindance3d_version(void)
+{
+    // Compatible version string for games that check it; identify ourselves
+    // as wiz3D so a user grepping the DLL knows which build they have.
+    return WIZ3D_SR_VERSION_STRING;
+}
+
+// ----------------------------------------------------------------------------
+// DllMain
+// ----------------------------------------------------------------------------
+
+BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved)
+{
+    (void)hModule; (void)lpReserved;
+    switch (ul_reason_for_call)
+    {
+        case DLL_PROCESS_ATTACH:
+            SrLogInit();
+            SrMonitorInit();
+            InitFactoryVtable();
+            InitDeviceVtable();
+            InitWeaverVtable();
+            SrLog("================================================================\n");
+            SrLog("wiz3D Odyssey3DSDK stand-in loaded (" WIZ3D_SR_VERSION_STRING ")\n");
+            SrLog("Clean-room implementation of Samsung Odyssey 3D SDK interface.\n");
+            SrLog("Spec reverse-engineered by vl3c (MIT) from public game call-sites.\n");
+            SrLog("Vtable slots: Factory=%u Device=%u Weaver=%u (kVtableSlots=%u each)\n",
+                  3u, 7u, 4u, kVtableSlots);
+            SrLog("Config: IPD=%.1fmm eye_z=%.1fmm log_slots_every_call=%d\n",
+                  g_cfg.ipd_mm, g_cfg.eye_z_mm, (int)g_logSlotsEveryCall);
+            SrLog("================================================================\n");
+            break;
+        case DLL_PROCESS_DETACH:
+            SrLog("wiz3D Odyssey3DSDK stand-in unloading\n");
+            if (g_logFile) { fclose(g_logFile); g_logFile = nullptr; }
+            break;
+    }
+    return TRUE;
+}
