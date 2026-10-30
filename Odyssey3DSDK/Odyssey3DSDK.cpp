@@ -170,10 +170,11 @@ static bool              g_srActive      = false;
 // LeiaSR's weave() reads currently-bound RT via the command list we set,
 // so we create a tiny CPU-visible RTV heap on the game's device and
 // bind the game's output resource as RT right before calling weave().
-static ID3D12Device*         g_srDevice       = nullptr;    // game's device, not AddRef'd (lifetime longer than us)
-static ID3D12DescriptorHeap* g_srRtvHeap      = nullptr;
-static ID3D12Resource*       g_srBoundOutputFB = nullptr;    // last-seen output FB (not AddRef'd, we just track identity)
-static DXGI_FORMAT           g_srBoundOutputFmt = DXGI_FORMAT_UNKNOWN;
+static ID3D12Device*            g_srDevice         = nullptr;    // game's device, not AddRef'd (lifetime longer than us)
+static ID3D12DescriptorHeap*    g_srRtvHeap        = nullptr;
+static ID3D12Resource*          g_srBoundOutputFB  = nullptr;    // last-seen output FB (not AddRef'd, we just track identity)
+static DXGI_FORMAT              g_srBoundOutputFmt = DXGI_FORMAT_UNKNOWN;
+static ID3D12GraphicsCommandList* g_srBoundCmdList = nullptr;    // last-set cmd list, for RT rebind at Weave time
 
 static void SrInitEnv()
 {
@@ -223,6 +224,16 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
         LeaveCriticalSection(&g_srLock);
         return false;
     }
+
+    // Enable late-latching + 1-frame latency compensation. Without this
+    // LeiaSR uses a static eye position and never activates its webcam /
+    // IR emitter -- user sees stereo but with no head-tracked parallax
+    // adjustment, and the panel's tracker light stays off. This mirrors
+    // the SR-Lib / S3DWrapper10 DX11 pattern (SR.cpp lines 139-140 in
+    // SR-lib-master).
+    g_srWeaver->setLatencyInFrames(1);
+    g_srWeaver->enableLateLatching(true);
+    SrLog("SR: late-latching enabled + latencyInFrames=1 (eye tracker should activate)\n");
 
     // Tiny CPU-visible RTV heap, 1 slot, for binding the game's output FB.
     D3D12_DESCRIPTOR_HEAP_DESC hd = {};
@@ -579,15 +590,17 @@ static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, i
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
     if (g_srActive && g_srWeaver) {
-        // The output RT needs to be bound on the command list before weave().
-        // The game's command list is whatever it last set via SetCommandList.
-        // Our SetOutputFrameBuffer stashed g_srBoundOutputFB; create a
-        // throwaway RTV each weave (cheap, 1 slot heap we own).
-        //
-        // Note: LeiaSR's weave() runs on whichever command list we previously
-        // set via setCommandList(). We don't own that command list -- the
-        // game does. All we do here is set vp/scissor + weave; the game
-        // Executes the command list later as part of its normal Present.
+        // Bind our output RTV on the command list right before weave --
+        // this guarantees the RT is set regardless of the order the game
+        // called SetCommandList vs SetOutputFrameBuffer this frame.
+        // Required because CP2077 calls SetCommandList first on frame 1,
+        // before SetOutputFrameBuffer, so there's no RTV to bind at that
+        // point. Doing it here means LeiaSR sees a valid RT when it
+        // records its weave commands.
+        if (g_srBoundCmdList && g_srRtvHeap && g_srBoundOutputFB) {
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv = g_srRtvHeap->GetCPUDescriptorHandleForHeapStart();
+            g_srBoundCmdList->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+        }
         D3D12_VIEWPORT vp = { (float)x, (float)y, (float)w, (float)h, 0.f, 1.f };
         D3D12_RECT     sr = { x, y, x + (int)w, y + (int)h };
         g_srWeaver->setViewport(vp);
@@ -664,15 +677,9 @@ static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
     if (g_srActive && g_srWeaver && commandList) {
         ID3D12GraphicsCommandList* cl = (ID3D12GraphicsCommandList*)commandList;
         g_srWeaver->setCommandList(cl);
-        // Bind our stashed output RT on this command list. LeiaSR's weave()
-        // reads the currently-set RT from the command list state.
-        if (g_srRtvHeap) {
-            D3D12_CPU_DESCRIPTOR_HANDLE rtv = g_srRtvHeap->GetCPUDescriptorHandleForHeapStart();
-            cl->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
-        }
+        g_srBoundCmdList = cl;    // cache for RT rebind at Weave() time
         static int logged = 0;
-        if (logged++ < 3)
-            SrLog("SR Weaver::SetCommandList: cl=%p (fwd + RT bound)\n", commandList);
+        if (logged++ < 3) SrLog("SR Weaver::SetCommandList: cl=%p (fwd + cached)\n", commandList);
         return;
     }
 #endif
