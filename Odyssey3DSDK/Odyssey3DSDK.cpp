@@ -54,6 +54,7 @@
 #include <sr/management/srcontext.h>
 #include <sr/weaver/WeaverTypes.h>
 #include <sr/weaver/dx12weaver.h>
+#include <sr/sense/system/systemsense.h>
 #endif
 
 // ----------------------------------------------------------------------------
@@ -225,22 +226,31 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
         return false;
     }
 
-    // Match SR-Lib's canonical init sequence (SR.cpp CreateSRInterfaceDX11,
-    // DX9, OGL -- all three do exactly these three calls in this order
-    // right after CreateXxxWeaver). Deviating from it broke stereo and
-    // left the tracker camera / IR emitter inactive:
-    //   1. setLatencyInFrames(1)     -- caps weaver's input-latency budget
-    //   2. enableLateLatching(true)  -- activates per-eye late-latch pipeline
-    //   3. srContext->initialize()   -- "Must be done after Weaver creation,
-    //                                    otherwise eye tracking is broken."
-    //                                    (verbatim comment from SR.cpp)
-    // Last one is the piece we were missing; without it LeiaSR's runtime
-    // never spins up the camera or publishes eye positions, which both
-    // disables the IR emitter AND regresses weave output to mono.
+    // SR-Lib (SR.cpp) does setLatency+enableLateLatching+initialize after
+    // CreateXxxWeaver in DX11/DX9/OGL. BUT -- SR-Lib's clients already
+    // registered the needed senses (SystemSense / EyeTracker) before
+    // reaching SR-Lib. We're a drop-in stand-in library, so we must
+    // register them ourselves. Reference: LeiaSR SDK's DX11/DX12 example
+    // main.cpp both call SystemSense::create(context) before weaver and
+    // before initialize().
+    //
+    // Without the sense registrations, LeiaSR's eye-tracker stays dormant
+    // (even with the camera physically on) and getPredictedEyePositions
+    // reports the "face lost" fallback (0, 100, 600) for BOTH eyes -- which
+    // produces mono output through the weaver (both eyes at same position
+    // = no disparity). The CP2077 launcher-menu-subtitles-are-mono symptom
+    // we saw was exactly this: tracker running but no face detected ->
+    // fallback eye positions -> mono weave.
+    __try {
+        SR::SystemSense::create(*g_srContext);
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        SrLog("SR: SystemSense::create threw (continuing without system events)\n");
+    }
+
     g_srWeaver->setLatencyInFrames(1);
     g_srWeaver->enableLateLatching(true);
     g_srContext->initialize();
-    SrLog("SR: late-latching enabled + context initialized (tracker should activate)\n");
+    SrLog("SR: SystemSense registered, context initialized, late-latching enabled\n");
 
     // Tiny CPU-visible RTV heap, 1 slot, for binding the game's output FB.
     D3D12_DESCRIPTOR_HEAP_DESC hd = {};
@@ -604,6 +614,27 @@ static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, i
         D3D12_RECT     sr = { x, y, x + (int)w, y + (int)h };
         g_srWeaver->setViewport(vp);
         g_srWeaver->setScissorRect(sr);
+
+        // One-time diagnostic: on the first few weaves, dump what LeiaSR
+        // thinks the user's eye positions are. If camera+initialize() hooked
+        // up correctly these should be moving, non-zero values. If they are
+        // (0,0,0) or NaN, LeiaSR's tracker isn't producing eye data and
+        // weave() may be falling back to mono.
+        static int logged = 0;
+        if (logged < 5) {
+            float lEye[3] = {0}, rEye[3] = {0};
+            __try {
+                g_srWeaver->getPredictedEyePositions(lEye, rEye);
+                SrLog("SR Weaver::Weave #%d: w=%u h=%u pos=(%d,%d)  "
+                      "eyeL=(%.1f,%.1f,%.1f)  eyeR=(%.1f,%.1f,%.1f)\n",
+                      logged, w, h, x, y,
+                      lEye[0], lEye[1], lEye[2], rEye[0], rEye[1], rEye[2]);
+            } __except(EXCEPTION_EXECUTE_HANDLER) {
+                SrLog("SR Weaver::Weave #%d: getPredictedEyePositions threw\n", logged);
+            }
+            ++logged;
+        }
+
         g_srWeaver->weave();
         return;
     }
