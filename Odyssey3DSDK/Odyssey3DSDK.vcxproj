@@ -120,27 +120,41 @@
       <Optimization>MaxSpeed</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>WIN64;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <!-- WIZ3D_SR_HAVE_LEIASR enables the LeiaSR DX12 passthrough path.
+           Only defined for x64 because the LeiaSR SDK is x64-only. 32-bit
+           builds stay SBSDebug / no-op forever. -->
+      <PreprocessorDefinitions>WIN64;NDEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;WIZ3D_SR_HAVE_LEIASR=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\lib\Simulated Reality\LeiaSR-SDK-1.36.2-win64\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <ModuleDefinitionFile>Odyssey3DSDK.def</ModuleDefinitionFile>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\lib\Simulated Reality\LeiaSR-SDK-1.36.2-win64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>SimulatedRealityCore.lib;SimulatedRealityDirectX.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <!-- Delay-load so a user without the LeiaSR runtime can still use
+           our stand-in in SBSDebug mode. Missing DLLs don't block load,
+           they just fail on first use and we fall back cleanly. -->
+      <DelayLoadDLLs>SimulatedRealityCore.dll;SimulatedRealityDirectX.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN64;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>WIN64;_DEBUG;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;WIZ3D_SR_HAVE_LEIASR=1;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProjectDir)..\lib\Simulated Reality\LeiaSR-SDK-1.36.2-win64\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
       <SubSystem>Windows</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <ModuleDefinitionFile>Odyssey3DSDK.def</ModuleDefinitionFile>
+      <AdditionalLibraryDirectories>$(ProjectDir)..\lib\Simulated Reality\LeiaSR-SDK-1.36.2-win64\lib;%(AdditionalLibraryDirectories)</AdditionalLibraryDirectories>
+      <AdditionalDependencies>SimulatedRealityCore.lib;SimulatedRealityDirectX.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <DelayLoadDLLs>SimulatedRealityCore.dll;SimulatedRealityDirectX.dll;%(DelayLoadDLLs)</DelayLoadDLLs>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>

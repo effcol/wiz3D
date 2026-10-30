@@ -47,6 +47,15 @@
 #include <stdarg.h>
 #include <stdint.h>
 
+// LeiaSR DX12 passthrough mode. Only compiled on x64 since the LeiaSR
+// SDK is x64-only. 32-bit builds stay no-op/SBSDebug-fallback forever.
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+#include <d3d12.h>
+#include <sr/management/srcontext.h>
+#include <sr/weaver/WeaverTypes.h>
+#include <sr/weaver/dx12weaver.h>
+#endif
+
 // ----------------------------------------------------------------------------
 // Build-time constants
 // ----------------------------------------------------------------------------
@@ -124,6 +133,124 @@ struct SrConfig
     int64_t rect_bottom  = 1080;
 };
 static SrConfig g_cfg;
+
+// ----------------------------------------------------------------------------
+// LeiaSR passthrough mode
+//
+// When active, our Weaver forwards all four game-side vtable calls to a
+// real SR::IDX12Weaver1 so the user gets native lenticular output on any
+// LeiaSR-compatible display (Samsung Odyssey, Acer SpatialLabs, Lume Pad,
+// Lenovo ThinkVision 3D, Red Magic). When inactive, Weaver no-ops and the
+// user is expected to be running SBSDebug + an external weaver like
+// SR-Loom.
+//
+// Mode selection:
+//   WIZ3D_SR_MODE=leiasr   -- force passthrough; fails loudly if runtime
+//                             missing
+//   WIZ3D_SR_MODE=sbsdebug -- force no-op; never try passthrough
+//   WIZ3D_SR_MODE=auto     -- default; probe LeiaSR runtime at CreateWeaver
+//                             time, use passthrough if available, else fall
+//                             back silently to no-op
+//
+// Lazy init at Factory::CreateWeaver time -- that's where the game supplies
+// us the ID3D12Device + HWND we need. Called under g_sr_lock.
+// ----------------------------------------------------------------------------
+enum class SrMode { Auto, Leiasr, Sbsdebug };
+static SrMode g_srMode = SrMode::Auto;
+
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+static CRITICAL_SECTION  g_srLock;
+static bool              g_srLockInit    = false;
+static SR::SRContext*    g_srContext     = nullptr;
+static SR::IDX12Weaver1* g_srWeaver      = nullptr;
+static bool              g_srInitTried   = false;
+static bool              g_srActive      = false;
+
+// RT binding state for the output framebuffer the game hands us.
+// LeiaSR's weave() reads currently-bound RT via the command list we set,
+// so we create a tiny CPU-visible RTV heap on the game's device and
+// bind the game's output resource as RT right before calling weave().
+static ID3D12Device*         g_srDevice       = nullptr;    // game's device, not AddRef'd (lifetime longer than us)
+static ID3D12DescriptorHeap* g_srRtvHeap      = nullptr;
+static ID3D12Resource*       g_srBoundOutputFB = nullptr;    // last-seen output FB (not AddRef'd, we just track identity)
+static DXGI_FORMAT           g_srBoundOutputFmt = DXGI_FORMAT_UNKNOWN;
+
+static void SrInitEnv()
+{
+    if (g_srLockInit) return;
+    InitializeCriticalSection(&g_srLock);
+    g_srLockInit = true;
+
+    char v[16] = {};
+    DWORD n = GetEnvironmentVariableA("WIZ3D_SR_MODE", v, sizeof(v));
+    if (n > 0) {
+        if      (!_stricmp(v, "leiasr"))   g_srMode = SrMode::Leiasr;
+        else if (!_stricmp(v, "sbsdebug")) g_srMode = SrMode::Sbsdebug;
+    }
+}
+
+// Lazy init on first Factory::CreateWeaver. Returns true if passthrough
+// is now active; false if we're falling back to no-op.
+static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
+{
+    EnterCriticalSection(&g_srLock);
+    if (g_srInitTried) { bool v = g_srActive; LeaveCriticalSection(&g_srLock); return v; }
+    g_srInitTried = true;
+
+    if (g_srMode == SrMode::Sbsdebug) {
+        SrLog("SR mode=sbsdebug -- not initializing LeiaSR passthrough\n");
+        LeaveCriticalSection(&g_srLock);
+        return false;
+    }
+
+    // Delay-loaded SR DLLs may fail to resolve. Wrap SRContext::create in SEH
+    // so a missing runtime doesn't take down the game.
+    __try {
+        g_srContext = SR::SRContext::create();
+    } __except(EXCEPTION_EXECUTE_HANDLER) {
+        g_srContext = nullptr;
+    }
+    if (!g_srContext) {
+        SrLog("SR: SRContext::create() failed (runtime missing?); falling back to no-op\n");
+        LeaveCriticalSection(&g_srLock);
+        return false;
+    }
+
+    WeaverErrorCode err = SR::CreateDX12Weaver(g_srContext, device, hwnd, &g_srWeaver);
+    if (err != WeaverSuccess || !g_srWeaver) {
+        SrLog("SR: CreateDX12Weaver err=%d; falling back to no-op\n", (int)err);
+        if (g_srContext) { delete g_srContext; g_srContext = nullptr; }
+        LeaveCriticalSection(&g_srLock);
+        return false;
+    }
+
+    // Tiny CPU-visible RTV heap, 1 slot, for binding the game's output FB.
+    D3D12_DESCRIPTOR_HEAP_DESC hd = {};
+    hd.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+    hd.NumDescriptors = 1;
+    hd.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+    if (FAILED(device->CreateDescriptorHeap(&hd, IID_PPV_ARGS(&g_srRtvHeap)))) {
+        SrLog("SR: CreateDescriptorHeap(rtv) failed; falling back to no-op\n");
+        if (g_srWeaver)  { g_srWeaver->destroy(); g_srWeaver  = nullptr; }
+        if (g_srContext) { delete g_srContext;    g_srContext = nullptr; }
+        LeaveCriticalSection(&g_srLock);
+        return false;
+    }
+
+    g_srDevice = device;    // raw pointer; CP2077's device lives longer than our DLL
+    g_srActive = true;
+    SrLog("================================================================\n");
+    SrLog("SR LeiaSR passthrough INITIALIZED (device=%p hwnd=%p)\n", (void*)device, (void*)hwnd);
+    SrLog("Weaver vtable will forward to real SR::IDX12Weaver1 -- lenticular output\n");
+    SrLog("will come from LeiaSR runtime on the user's SR display.\n");
+    SrLog("================================================================\n");
+    LeaveCriticalSection(&g_srLock);
+    return true;
+}
+#else
+static void SrInitEnv() {}
+static bool SrLazyInit(void*, HWND) { return false; }
+#endif  // WIZ3D_SR_HAVE_LEIASR
 
 // ----------------------------------------------------------------------------
 // Monitor discovery
@@ -448,32 +575,108 @@ static CallCounter g_cc_SetCmdList   = { 0, "Weaver::SetCommandList" };
 static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, int y)
 {
     NoteCall(g_cc_Weave);
-    // No-op. Under SBSDebug the game writes half-SBS to its own backbuffer and
-    // never relies on a weave happening here. Phase 3 would hook the game's
-    // D3D12 Present and route the half-SBS through our output stage.
-    (void)self; (void)w; (void)h; (void)x; (void)y;
+    (void)self;
+
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+    if (g_srActive && g_srWeaver) {
+        // The output RT needs to be bound on the command list before weave().
+        // The game's command list is whatever it last set via SetCommandList.
+        // Our SetOutputFrameBuffer stashed g_srBoundOutputFB; create a
+        // throwaway RTV each weave (cheap, 1 slot heap we own).
+        //
+        // Note: LeiaSR's weave() runs on whichever command list we previously
+        // set via setCommandList(). We don't own that command list -- the
+        // game does. All we do here is set vp/scissor + weave; the game
+        // Executes the command list later as part of its normal Present.
+        D3D12_VIEWPORT vp = { (float)x, (float)y, (float)w, (float)h, 0.f, 1.f };
+        D3D12_RECT     sr = { x, y, x + (int)w, y + (int)h };
+        g_srWeaver->setViewport(vp);
+        g_srWeaver->setScissorRect(sr);
+        g_srWeaver->weave();
+        return;
+    }
+#endif
+    // SBSDebug fallback: no-op (game writes half-SBS to its own BB).
+    (void)w; (void)h; (void)x; (void)y;
 }
 
 static void __stdcall WeaverSetInputViewTexture(Weaver* self, void* tex, int dxgiFormat)
 {
     NoteCall(g_cc_SetInputView);
+    (void)self;
+
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+    if (g_srActive && g_srWeaver && tex) {
+        ID3D12Resource* r = (ID3D12Resource*)tex;
+        D3D12_RESOURCE_DESC d = r->GetDesc();
+        g_srWeaver->setInputViewTexture(r, (int)d.Width, (int)d.Height, (DXGI_FORMAT)dxgiFormat);
+        static int logged = 0;
+        if (logged++ < 3)
+            SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (fwd to LeiaSR %llux%u)\n",
+                  tex, dxgiFormat, (unsigned long long)d.Width, d.Height);
+        return;
+    }
+#endif
     SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (ignored under SBSDebug)\n",
           tex, dxgiFormat);
-    (void)self;
 }
 
 static void __stdcall WeaverSetOutputFrameBuffer(Weaver* self, void* tex)
 {
     NoteCall(g_cc_SetOutputFB);
-    SrLog("SR Weaver::SetOutputFrameBuffer: tex=%p (ignored under SBSDebug)\n", tex);
     (void)self;
+
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+    if (g_srActive && g_srWeaver && tex && g_srDevice && g_srRtvHeap) {
+        ID3D12Resource* r = (ID3D12Resource*)tex;
+        D3D12_RESOURCE_DESC d = r->GetDesc();
+        if (d.Format != g_srBoundOutputFmt) {
+            g_srWeaver->setOutputFormat(d.Format);
+            g_srBoundOutputFmt = d.Format;
+            static int logged = 0;
+            if (logged++ < 3)
+                SrLog("SR Weaver::SetOutputFrameBuffer: tex=%p fmt=%d (fwd setOutputFormat)\n",
+                      tex, (int)d.Format);
+        }
+        // Create / refresh RTV so later SetCommandList's cmd-list can bind the
+        // right RT. We re-create unconditionally -- cheap, 1 slot, every bind
+        // overwrites the previous.
+        if (r != g_srBoundOutputFB) {
+            D3D12_RENDER_TARGET_VIEW_DESC rtvDesc = {};
+            rtvDesc.Format        = d.Format;
+            rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+            g_srDevice->CreateRenderTargetView(r, &rtvDesc,
+                g_srRtvHeap->GetCPUDescriptorHandleForHeapStart());
+            g_srBoundOutputFB = r;
+        }
+        return;
+    }
+#endif
+    SrLog("SR Weaver::SetOutputFrameBuffer: tex=%p (ignored under SBSDebug)\n", tex);
 }
 
 static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
 {
     NoteCall(g_cc_SetCmdList);
-    SrLog("SR Weaver::SetCommandList: cl=%p (ignored under SBSDebug)\n", commandList);
     (void)self;
+
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+    if (g_srActive && g_srWeaver && commandList) {
+        ID3D12GraphicsCommandList* cl = (ID3D12GraphicsCommandList*)commandList;
+        g_srWeaver->setCommandList(cl);
+        // Bind our stashed output RT on this command list. LeiaSR's weave()
+        // reads the currently-set RT from the command list state.
+        if (g_srRtvHeap) {
+            D3D12_CPU_DESCRIPTOR_HANDLE rtv = g_srRtvHeap->GetCPUDescriptorHandleForHeapStart();
+            cl->OMSetRenderTargets(1, &rtv, FALSE, nullptr);
+        }
+        static int logged = 0;
+        if (logged++ < 3)
+            SrLog("SR Weaver::SetCommandList: cl=%p (fwd + RT bound)\n", commandList);
+        return;
+    }
+#endif
+    SrLog("SR Weaver::SetCommandList: cl=%p (ignored under SBSDebug)\n", commandList);
 }
 
 // ----------------------------------------------------------------------------
@@ -622,6 +825,13 @@ static SharedPtr* __stdcall FacCreateWeaver(Factory* self, SharedPtr* retSlot,
     // output land" cue. Refresh the monitor rect from it so GetMonitorRect
     // reports the game's actual target display rather than the primary.
     SrMonitorRefreshFromHwnd(hwnd);
+
+#if defined(WIZ3D_SR_HAVE_LEIASR)
+    // Lazy LeiaSR init here -- game just supplied us the ID3D12Device + hwnd
+    // we need. If the runtime isn't present or mode is forced sbsdebug, this
+    // returns false and our Weaver vtable stays in no-op mode.
+    SrLazyInit((ID3D12Device*)d3dDevice, hwnd);
+#endif
 
     SharedPtr sp = MakeWeaverSharedPtr();
     SrLog("SR Factory::CreateWeaver: Weaver=%p RefCount=%p\n",
@@ -835,6 +1045,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
     {
         case DLL_PROCESS_ATTACH:
             SrLogInit();
+            SrInitEnv();
             SrMonitorInit();
             InitFactoryVtable();
             InitDeviceVtable();

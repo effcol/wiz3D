@@ -116,8 +116,20 @@ static void ReadConfig()
     char v[8] = {};
     DWORD n = GetEnvironmentVariableA("WIZ3D_SR_MENU_SQUEEZE", v, sizeof(v));
     if (n > 0 && v[0] == '0') g_enabled = false;
-    Log("Menu squeeze %s (set WIZ3D_SR_MENU_SQUEEZE=0 to disable)\n",
-        g_enabled ? "ENABLED" : "DISABLED");
+
+    // In LeiaSR passthrough mode the game's native Weaver handles flat
+    // frames (menu/cutscene) by bypassing itself -- the real SR SDK knows
+    // how to not-weave those. Our squeeze would double-process. Bootstrap
+    // sets WIZ3D_SR_RUNTIME_PRESENT=1 when it detects LeiaSR runtime.
+    char rt[8] = {};
+    DWORD rn = GetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", rt, sizeof(rt));
+    if (rn > 0 && rt[0] == '1') {
+        g_enabled = false;
+        Log("Menu squeeze DISABLED (LeiaSR passthrough active; game's native weaver handles flat frames)\n");
+    } else {
+        Log("Menu squeeze %s (set WIZ3D_SR_MENU_SQUEEZE=0 to disable)\n",
+            g_enabled ? "ENABLED" : "DISABLED");
+    }
 }
 
 // Only squeeze once we've seen at least one stereo frame (via a positive

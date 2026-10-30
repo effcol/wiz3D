@@ -345,9 +345,65 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             else
                 Log("Skipping registry write -- Odyssey3DSDK.dll not deployable here.\n");
 
-            // Drop the CP2077 REDengine SBSDebug ini if we're installed in a
-            // CP2077 layout. No-op on games with a different directory shape.
-            WriteRedengineConfigIfCP2077(gameDir);
+            // Probe for the LeiaSR runtime. If it loads, we assume the user
+            // is on a LeiaSR-compatible SR display (Samsung Odyssey, Acer
+            // SpatialLabs, Lume Pad, Lenovo ThinkVision 3D, Red Magic) and
+            // we want the game to go through its native Weaver path -- our
+            // Odyssey3DSDK Weaver will then forward to a real SR::IDX12Weaver1.
+            // In that mode we SKIP the SBSDebug ini drop so the game doesn't
+            // short-circuit the weaver, and we skip menu squeeze (the real
+            // weaver handles flat frames natively).
+            //
+            // WIZ3D_SR_MODE=sbsdebug forces the no-LeiaSR path regardless.
+            // WIZ3D_SR_MODE=leiasr forces passthrough even without the probe
+            // succeeding (useful for staging / testing a soft-fail path).
+            char modeEnv[16] = {};
+            DWORD modeLen = GetEnvironmentVariableA("WIZ3D_SR_MODE", modeEnv, sizeof(modeEnv));
+            bool forceSbsDebug = (modeLen > 0 && _stricmp(modeEnv, "sbsdebug") == 0);
+            bool forceLeiasr   = (modeLen > 0 && _stricmp(modeEnv, "leiasr")   == 0);
+
+            HMODULE srRuntime = nullptr;
+            if (!forceSbsDebug) {
+                srRuntime = LoadLibraryW(L"SimulatedRealityDirectX.dll");
+                if (srRuntime) {
+                    Log("Detected LeiaSR runtime (SimulatedRealityDirectX.dll loaded) -- passthrough mode\n");
+                    // Communicate the decision to Odyssey3DSDK (same process)
+                    // via env var so its DllMain can read the same signal.
+                    SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
+                } else if (forceLeiasr) {
+                    Log("WIZ3D_SR_MODE=leiasr forced but SimulatedRealityDirectX.dll not loadable -- "
+                        "Weaver will soft-fail to no-op if game invokes it\n");
+                    SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
+                } else {
+                    Log("LeiaSR runtime not detected -- falling back to SBSDebug mode\n");
+                }
+            } else {
+                Log("WIZ3D_SR_MODE=sbsdebug forced -- skipping LeiaSR probe\n");
+            }
+
+            // Drop the CP2077 REDengine SBSDebug ini ONLY when we're in the
+            // SBSDebug path (no LeiaSR runtime or forced sbsdebug). In
+            // passthrough mode the game must use its native Weaver so the
+            // real weave actually runs.
+            if (!srRuntime || forceSbsDebug) {
+                WriteRedengineConfigIfCP2077(gameDir);
+            } else {
+                Log("Skipping SBSDebug ini drop (LeiaSR passthrough mode)\n");
+                // Also remove any stale ini from a previous sbsdebug run so
+                // the game doesn't half-engage both paths.
+                WCHAR root[MAX_PATH];
+                wcscpy_s(root, gameDir);
+                size_t len = wcslen(root);
+                if (len > 0 && root[len - 1] == L'\\') root[len - 1] = L'\0';
+                WCHAR* s = wcsrchr(root, L'\\');
+                if (s) { *s = 0; s = wcsrchr(root, L'\\'); if (s) *s = 0; }
+                WCHAR ini[MAX_PATH];
+                swprintf_s(ini, MAX_PATH, L"%s\\engine\\config\\platform\\pc\\braindance3d.ini", root);
+                if (GetFileAttributesW(ini) != INVALID_FILE_ATTRIBUTES) {
+                    DeleteFileW(ini);
+                    Log("Removed stale braindance3d.ini (switching away from sbsdebug): %ls\n", ini);
+                }
+            }
 
             // Preload the real dxgi so first forward call doesn't incur the
             // library search cost mid-frame.
