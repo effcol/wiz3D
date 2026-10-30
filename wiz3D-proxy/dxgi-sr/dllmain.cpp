@@ -113,6 +113,77 @@ static void GetGameExeDir(WCHAR out[MAX_PATH])
     if (slash) *(slash + 1) = L'\0';
 }
 
+// ---------------------------------------------------------------------------
+// wiz3D_Config.xml reader (one setting for now: OutputMode).
+//
+// Lives next to this DLL (not game.exe) so a user who drops the SR package
+// into a game dir gets a config that moves with the package. Minimal
+// text scan rather than a real XML parse -- the file is tiny and this
+// bootstrap deliberately has no external deps.
+//
+// Returned string is a static buffer; copy before scheduling anything
+// async with it. Returns nullptr if the file / tag isn't present.
+// ---------------------------------------------------------------------------
+static const char* ReadConfigOutputMode(void)
+{
+    static char result[32];
+    result[0] = '\0';
+
+    WCHAR path[MAX_PATH];
+    GetModuleFileNameW((HMODULE)&ReadConfigOutputMode, path, MAX_PATH);
+    WCHAR* slash = wcsrchr(path, L'\\');
+    if (!slash) return nullptr;
+    *(slash + 1) = L'\0';
+    lstrcatW(path, L"wiz3D_Config.xml");
+
+    HANDLE h = CreateFileW(path, GENERIC_READ, FILE_SHARE_READ, NULL,
+                           OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+    if (h == INVALID_HANDLE_VALUE) {
+        Log("wiz3D_Config.xml not found at %ls (using defaults)\n", path);
+        return nullptr;
+    }
+    LARGE_INTEGER sz = {};
+    GetFileSizeEx(h, &sz);
+    if (sz.QuadPart <= 0 || sz.QuadPart > 64 * 1024) {
+        CloseHandle(h);
+        Log("wiz3D_Config.xml size out of range (%lld bytes); ignoring\n", (long long)sz.QuadPart);
+        return nullptr;
+    }
+    char* buf = (char*)HeapAlloc(GetProcessHeap(), 0, (SIZE_T)sz.QuadPart + 1);
+    if (!buf) { CloseHandle(h); return nullptr; }
+    DWORD read = 0;
+    ReadFile(h, buf, (DWORD)sz.QuadPart, &read, NULL);
+    buf[read] = '\0';
+    CloseHandle(h);
+
+    // Find <OutputMode ... Value="..." .../>. Case-sensitive on the tag name
+    // (matches the convention in other wiz3D_Config.xml files) but the value
+    // itself is matched case-insensitively downstream.
+    const char* tag = strstr(buf, "<OutputMode");
+    if (!tag) {
+        HeapFree(GetProcessHeap(), 0, buf);
+        Log("wiz3D_Config.xml: no <OutputMode> tag; using defaults\n");
+        return nullptr;
+    }
+    const char* vkey = strstr(tag, "Value=\"");
+    if (!vkey) {
+        HeapFree(GetProcessHeap(), 0, buf);
+        return nullptr;
+    }
+    vkey += 7;  // past Value="
+    const char* vend = strchr(vkey, '"');
+    if (!vend || vend - vkey >= (int)sizeof(result)) {
+        HeapFree(GetProcessHeap(), 0, buf);
+        return nullptr;
+    }
+    size_t n = (size_t)(vend - vkey);
+    memcpy(result, vkey, n);
+    result[n] = '\0';
+    HeapFree(GetProcessHeap(), 0, buf);
+    Log("wiz3D_Config.xml: OutputMode = \"%s\"\n", result);
+    return result;
+}
+
 static BOOL EnsureSamsungSubdirAndDLL(const WCHAR* gameExeDir)
 {
     // Build <gameExeDir>GameLauncherData\core
@@ -354,13 +425,35 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             // short-circuit the weaver, and we skip menu squeeze (the real
             // weaver handles flat frames natively).
             //
-            // WIZ3D_SR_MODE=sbsdebug forces the no-LeiaSR path regardless.
-            // WIZ3D_SR_MODE=leiasr forces passthrough even without the probe
-            // succeeding (useful for staging / testing a soft-fail path).
+            // Mode-selection precedence (highest wins):
+            //   1. WIZ3D_SR_MODE env var     (dev override, bypasses config)
+            //      - sbsdebug -> SBSDebug path, no LeiaSR
+            //      - leiasr   -> LeiaSR path, soft-fails to no-op if runtime absent
+            //   2. wiz3D_Config.xml OutputMode next to this DLL
+            //      - "HalfSBS" / "SBSDebug" -> SBSDebug path
+            //      - "LeiaSR"               -> LeiaSR path (soft-fail)
+            //      - "Auto" (or missing)    -> probe LeiaSR, pick based on result
+            //   3. Default = Auto
             char modeEnv[16] = {};
             DWORD modeLen = GetEnvironmentVariableA("WIZ3D_SR_MODE", modeEnv, sizeof(modeEnv));
             bool forceSbsDebug = (modeLen > 0 && _stricmp(modeEnv, "sbsdebug") == 0);
             bool forceLeiasr   = (modeLen > 0 && _stricmp(modeEnv, "leiasr")   == 0);
+
+            if (!forceSbsDebug && !forceLeiasr) {
+                const char* cfgMode = ReadConfigOutputMode();
+                if (cfgMode) {
+                    if (_stricmp(cfgMode, "HalfSBS")  == 0 ||
+                        _stricmp(cfgMode, "SBSDebug") == 0) {
+                        forceSbsDebug = true;
+                        Log("Config OutputMode=\"%s\" -> SBSDebug path\n", cfgMode);
+                    } else if (_stricmp(cfgMode, "LeiaSR") == 0) {
+                        forceLeiasr = true;
+                        Log("Config OutputMode=\"%s\" -> LeiaSR passthrough\n", cfgMode);
+                    } else if (_stricmp(cfgMode, "Auto") != 0) {
+                        Log("Config OutputMode=\"%s\" unrecognized; defaulting to Auto\n", cfgMode);
+                    }
+                }
+            }
 
             HMODULE srRuntime = nullptr;
             if (!forceSbsDebug) {

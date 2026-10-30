@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- wiz3D Simulated Reality config.
+     Place next to dxgi.dll; the bootstrap reads it before deciding how to
+     route stereo output.
+
+     OutputMode: how the game's native stereo frames leave this proxy.
+       "LeiaSR"   - Pass through to the LeiaSR runtime (Samsung Odyssey 3D,
+                    Acer SpatialLabs, Lume Pad, Lenovo ThinkVision 3D, Red
+                    Magic). Soft-fails to no-op if SimulatedRealityDirectX.dll
+                    isn't installed.
+       "HalfSBS"  - Drop a REDengine SBSDebug ini so the game writes its own
+                    half-SBS to the backbuffer; our Weaver stays a no-op.
+                    Easier to screenshot/diagnose, also pairs with external
+                    weavers (SR-Loom, Katanga).
+       "Auto"     - Probe for the LeiaSR runtime at startup. If it loads,
+                    pick LeiaSR; otherwise fall back to HalfSBS. (Default.)
+
+     Dev override: setting the environment variable WIZ3D_SR_MODE=leiasr or
+     =sbsdebug wins over this file. -->
+<Config Version="1">
+    <OutputMode Value="Auto"/>
+</Config>
