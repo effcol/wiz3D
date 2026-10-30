@@ -129,8 +129,12 @@ static const char* ReadConfigOutputMode(void)
     static char result[32];
     result[0] = '\0';
 
+    // Config file sits next to game.exe (same dir as this DLL for a
+    // drag-and-drop proxy install). Using the EXE path matches how LogOpen
+    // locates wiz3D_Logs; (HMODULE)&function doesn't yield a valid module
+    // handle, so GetModuleFileNameW would fail silently with that trick.
     WCHAR path[MAX_PATH];
-    GetModuleFileNameW((HMODULE)&ReadConfigOutputMode, path, MAX_PATH);
+    GetModuleFileNameW(NULL, path, MAX_PATH);
     WCHAR* slash = wcsrchr(path, L'\\');
     if (!slash) return nullptr;
     *(slash + 1) = L'\0';
@@ -428,27 +432,30 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             // Mode-selection precedence (highest wins):
             //   1. WIZ3D_SR_MODE env var     (dev override, bypasses config)
             //      - sbsdebug -> SBSDebug path, no LeiaSR
-            //      - leiasr   -> LeiaSR path, soft-fails to no-op if runtime absent
+            //      - srweave  -> SR Weave path (soft-fail to no-op if runtime absent)
+            //      - leiasr   -> deprecated alias for "srweave"
             //   2. wiz3D_Config.xml OutputMode next to this DLL
             //      - "HalfSBS" / "SBSDebug" -> SBSDebug path
-            //      - "LeiaSR"               -> LeiaSR path (soft-fail)
+            //      - "SRWeave" / "LeiaSR"   -> SR Weave path (soft-fail)
             //      - "Auto" (or missing)    -> probe LeiaSR, pick based on result
             //   3. Default = Auto
             char modeEnv[16] = {};
             DWORD modeLen = GetEnvironmentVariableA("WIZ3D_SR_MODE", modeEnv, sizeof(modeEnv));
             bool forceSbsDebug = (modeLen > 0 && _stricmp(modeEnv, "sbsdebug") == 0);
-            bool forceLeiasr   = (modeLen > 0 && _stricmp(modeEnv, "leiasr")   == 0);
+            bool forceSrWeave  = (modeLen > 0 && (_stricmp(modeEnv, "srweave") == 0 ||
+                                                   _stricmp(modeEnv, "leiasr")  == 0));
 
-            if (!forceSbsDebug && !forceLeiasr) {
+            if (!forceSbsDebug && !forceSrWeave) {
                 const char* cfgMode = ReadConfigOutputMode();
                 if (cfgMode) {
                     if (_stricmp(cfgMode, "HalfSBS")  == 0 ||
                         _stricmp(cfgMode, "SBSDebug") == 0) {
                         forceSbsDebug = true;
                         Log("Config OutputMode=\"%s\" -> SBSDebug path\n", cfgMode);
-                    } else if (_stricmp(cfgMode, "LeiaSR") == 0) {
-                        forceLeiasr = true;
-                        Log("Config OutputMode=\"%s\" -> LeiaSR passthrough\n", cfgMode);
+                    } else if (_stricmp(cfgMode, "SRWeave") == 0 ||
+                               _stricmp(cfgMode, "LeiaSR")  == 0) {
+                        forceSrWeave = true;
+                        Log("Config OutputMode=\"%s\" -> SR Weave passthrough\n", cfgMode);
                     } else if (_stricmp(cfgMode, "Auto") != 0) {
                         Log("Config OutputMode=\"%s\" unrecognized; defaulting to Auto\n", cfgMode);
                     }
@@ -463,8 +470,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
                     // Communicate the decision to Odyssey3DSDK (same process)
                     // via env var so its DllMain can read the same signal.
                     SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
-                } else if (forceLeiasr) {
-                    Log("WIZ3D_SR_MODE=leiasr forced but SimulatedRealityDirectX.dll not loadable -- "
+                } else if (forceSrWeave) {
+                    Log("SRWeave forced but SimulatedRealityDirectX.dll not loadable -- "
                         "Weaver will soft-fail to no-op if game invokes it\n");
                     SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
                 } else {

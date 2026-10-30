@@ -4,7 +4,7 @@
      route stereo output.
 
      OutputMode: how the game's native stereo frames leave this proxy.
-       "LeiaSR"   - Pass through to the LeiaSR runtime (Samsung Odyssey 3D,
+       "SRWeave"  - Pass through to the LeiaSR runtime (Samsung Odyssey 3D,
                     Acer SpatialLabs, Lume Pad, Lenovo ThinkVision 3D, Red
                     Magic). Soft-fails to no-op if SimulatedRealityDirectX.dll
                     isn't installed.
@@ -13,10 +13,11 @@
                     Easier to screenshot/diagnose, also pairs with external
                     weavers (SR-Loom, Katanga).
        "Auto"     - Probe for the LeiaSR runtime at startup. If it loads,
-                    pick LeiaSR; otherwise fall back to HalfSBS. (Default.)
+                    pick SRWeave; otherwise fall back to HalfSBS. (Default.)
 
-     Dev override: setting the environment variable WIZ3D_SR_MODE=leiasr or
-     =sbsdebug wins over this file. -->
+     Dev override: setting the environment variable WIZ3D_SR_MODE=srweave or
+     =sbsdebug wins over this file. "leiasr" is accepted as a legacy alias
+     for "srweave" in both this file and the env var. -->
 <Config Version="1">
     <OutputMode Value="Auto"/>
 </Config>
