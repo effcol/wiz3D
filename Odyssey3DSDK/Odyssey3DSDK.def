@@ -3,3 +3,8 @@ EXPORTS
     create_odyssey3d_factory_instance    @1
     destroy_odyssey3d_factory_instance   @2
     braindance3d_version                 @3
+    ; wiz3D private export (counter getter for the menu-squeeze module).
+    ; Returns the cumulative call count for a Device vtable slot.
+    ; Slot indices match the vtable (1=GetEyePosition, 10=IsAvailable,
+    ; 6=GetMonitorRect, 9=Hint48, etc.). -1 for unknown slot.
+    wiz3d_sr_get_device_call_count       @4

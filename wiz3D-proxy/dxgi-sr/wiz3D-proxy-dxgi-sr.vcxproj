@@ -145,6 +145,10 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="menu_squeeze.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="menu_squeeze.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="dxgi.def" />

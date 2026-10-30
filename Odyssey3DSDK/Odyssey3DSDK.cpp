@@ -799,6 +799,31 @@ const char* braindance3d_version(void)
     return WIZ3D_SR_VERSION_STRING;
 }
 
+// wiz3D private export: lets the menu-squeeze module (loaded in the game
+// via the dxgi.dll bootstrap) read our Device vtable call counters each
+// frame. The menu-squeeze detection heuristic diffs these counts between
+// Present boundaries -- CP2077 polls GetEyePosition only on stereo frames,
+// IsAvailable once/frame on 2D (twice on stereo), bursts GetMonitorRect on
+// user-toggled 3D changes. Returns -1 for an unknown slot.
+//
+// Slot indices match the game's Device vtable layout -- see InitDeviceVtable
+// above. Keeping this one entry point so the menu-squeeze module doesn't
+// have to export+resolve seven separate getters.
+extern "C" __declspec(dllexport)
+LONG64 wiz3d_sr_get_device_call_count(int slot)
+{
+    switch (slot) {
+        case 1:  return (LONG64)g_cc_GetEyePosition.count;  // stereo-frame beat
+        case 2:  return (LONG64)g_cc_GetResolution.count;
+        case 3:  return (LONG64)g_cc_GetFloat2_18.count;
+        case 6:  return (LONG64)g_cc_GetMonitorRect.count;  // user-toggle burst
+        case 9:  return (LONG64)g_cc_Hint48.count;
+        case 10: return (LONG64)g_cc_IsAvailable.count;     // 2D-frame beat
+        case 12: return (LONG64)g_cc_Destroy.count;
+        default: return -1;
+    }
+}
+
 // ----------------------------------------------------------------------------
 // DllMain
 // ----------------------------------------------------------------------------

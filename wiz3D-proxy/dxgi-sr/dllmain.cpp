@@ -30,8 +30,10 @@
 
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <dxgi1_4.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include "menu_squeeze.h"
 
 // ---------------------------------------------------------------------------
 // Logging -- shared log file wiz3D_proxy.log, same convention as every other
@@ -270,31 +272,52 @@ typedef HRESULT (WINAPI* PFN_CreateDXGIFactory )(REFIID, void**);
 typedef HRESULT (WINAPI* PFN_CreateDXGIFactory1)(REFIID, void**);
 typedef HRESULT (WINAPI* PFN_CreateDXGIFactory2)(UINT, REFIID, void**);
 
-extern "C" __declspec(dllexport)
-HRESULT WINAPI CreateDXGIFactory(REFIID riid, void** ppFactory)
+// After each successful factory creation we hand it to the menu-squeeze
+// module so it can vtable-patch CreateSwapChain* and later patch Present
+// on the returned swap chain. ppFactory may be a derived IDXGIFactory2
+// IID; menu_squeeze.OnFactoryCreated does QueryInterface internally.
+static void NotifySqueezeOfFactory(void** ppFactory, REFIID riid)
+{
+    if (!ppFactory || !*ppFactory) return;
+    IDXGIFactory* base = nullptr;
+    if (SUCCEEDED(((IUnknown*)*ppFactory)->QueryInterface(IID_PPV_ARGS(&base))) && base) {
+        wiz3d_sr::OnFactoryCreated(base);
+        base->Release();
+    }
+    (void)riid;
+}
+
+// Export linkage is set by dxgi.def -- no __declspec(dllexport) here
+// because the dxgi1_4.h declarations we include have default linkage
+// and the two would conflict (C2375).
+extern "C" HRESULT WINAPI CreateDXGIFactory(REFIID riid, void** ppFactory)
 {
     static PFN_CreateDXGIFactory pfn = nullptr;
     if (!pfn) pfn = (PFN_CreateDXGIFactory)ResolveReal("CreateDXGIFactory");
     if (!pfn) return E_FAIL;
-    return pfn(riid, ppFactory);
+    HRESULT hr = pfn(riid, ppFactory);
+    if (SUCCEEDED(hr)) NotifySqueezeOfFactory(ppFactory, riid);
+    return hr;
 }
 
-extern "C" __declspec(dllexport)
-HRESULT WINAPI CreateDXGIFactory1(REFIID riid, void** ppFactory)
+extern "C" HRESULT WINAPI CreateDXGIFactory1(REFIID riid, void** ppFactory)
 {
     static PFN_CreateDXGIFactory1 pfn = nullptr;
     if (!pfn) pfn = (PFN_CreateDXGIFactory1)ResolveReal("CreateDXGIFactory1");
     if (!pfn) return E_FAIL;
-    return pfn(riid, ppFactory);
+    HRESULT hr = pfn(riid, ppFactory);
+    if (SUCCEEDED(hr)) NotifySqueezeOfFactory(ppFactory, riid);
+    return hr;
 }
 
-extern "C" __declspec(dllexport)
-HRESULT WINAPI CreateDXGIFactory2(UINT flags, REFIID riid, void** ppFactory)
+extern "C" HRESULT WINAPI CreateDXGIFactory2(UINT flags, REFIID riid, void** ppFactory)
 {
     static PFN_CreateDXGIFactory2 pfn = nullptr;
     if (!pfn) pfn = (PFN_CreateDXGIFactory2)ResolveReal("CreateDXGIFactory2");
     if (!pfn) return E_FAIL;
-    return pfn(flags, riid, ppFactory);
+    HRESULT hr = pfn(flags, riid, ppFactory);
+    if (SUCCEEDED(hr)) NotifySqueezeOfFactory(ppFactory, riid);
+    return hr;
 }
 
 // ---------------------------------------------------------------------------
@@ -329,12 +352,20 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             // Preload the real dxgi so first forward call doesn't incur the
             // library search cost mid-frame.
             LoadRealDxgi();
+
+            // Initialise the menu-squeeze module -- opens its log, reads
+            // WIZ3D_SR_MENU_SQUEEZE env, prepares the state. No D3D12 work
+            // happens here; that's lazy on the first factory creation +
+            // first flat frame.
+            wiz3d_sr::MenuSqueezeInit();
+
             Log("Bootstrap complete; game startup continues.\n");
             Log("================================================================\n");
             break;
         }
         case DLL_PROCESS_DETACH:
             Log("wiz3D SR bootstrap (dxgi.dll) unloading\n");
+            wiz3d_sr::MenuSqueezeShutdown();
             if (g_logFile) { fclose(g_logFile); g_logFile = nullptr; }
             break;
     }
