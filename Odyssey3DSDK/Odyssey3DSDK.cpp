@@ -751,9 +751,25 @@ static void* __stdcall DevDestroy(Device* self, unsigned flags)
 }
 
 // ----------------------------------------------------------------------------
-// Weaver mapped slots (all no-ops under SBSDebug -- the game does its own
-// SBS output; our Weaver exists to satisfy the API contract so Factory::
-// CreateWeaver can return a non-null shared_ptr).
+// Weaver mapped slots.
+//
+// Thread-safety note (critical, learned from the intermittent load-screen
+// crash on CP2077): the game calls these forwards from EIGHT concurrent
+// threads (async-compute cmd-list recording -- diagnostic log revealed
+// SetCommandList/SetInputViewTexture/SetOutputFrameBuffer/Weave each hit
+// by 8 unique TIDs within ~140ms).  LeiaSR's IDX12Weaver1 is NOT
+// documented thread-safe, and the SDK example main.cpp uses only a
+// single rendering thread.  Letting 8 threads concurrently poke LeiaSR's
+// internal state corrupts it -- the symptom is a heap-corruption-shape
+// crash (varying 0x28 / 0x550 / 0xFFFFFFFFFFFFFFFF addresses) that fires
+// later from LeiaSR's background threads.
+//
+// Fix: serialize every forward with g_srLock.  Each call is atomic from
+// LeiaSR's perspective; the game's threads will stall on each other,
+// but that's the right trade for correctness.  Performance hit will
+// show if CP2077's weave work is a bottleneck -- so far it isn't,
+// 1024 weave frames in 15 wall-clock seconds is 68Hz, below the 8-way
+// theoretical cap.
 // ----------------------------------------------------------------------------
 
 static CallCounter g_cc_Weave        = { 0, "Weaver::Weave" };
@@ -767,6 +783,7 @@ static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, i
     (void)self;
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
+    EnterCriticalSection(&g_srLock);
     if (g_srActive && g_srWeaver) {
         // Gap detection: log when weave resumes after >1s pause.  This
         // reveals menu->gameplay transitions clearly in the diagnostic
@@ -811,8 +828,10 @@ static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, i
         }
 
         g_srWeaver->weave();
+        LeaveCriticalSection(&g_srLock);
         return;
     }
+    LeaveCriticalSection(&g_srLock);
 #endif
     // SBSDebug fallback: no-op (game writes half-SBS to its own BB).
     (void)w; (void)h; (void)x; (void)y;
@@ -824,6 +843,7 @@ static void __stdcall WeaverSetInputViewTexture(Weaver* self, void* tex, int dxg
     (void)self;
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
+    EnterCriticalSection(&g_srLock);
     if (g_srActive && g_srWeaver && tex) {
         ID3D12Resource* r = (ID3D12Resource*)tex;
 
@@ -846,8 +866,10 @@ static void __stdcall WeaverSetInputViewTexture(Weaver* self, void* tex, int dxg
         if (logged++ < 3)
             SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (fwd to LeiaSR %llux%u)\n",
                   tex, dxgiFormat, (unsigned long long)d.Width, d.Height);
+        LeaveCriticalSection(&g_srLock);
         return;
     }
+    LeaveCriticalSection(&g_srLock);
 #endif
     SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (ignored under SBSDebug)\n",
           tex, dxgiFormat);
@@ -859,6 +881,7 @@ static void __stdcall WeaverSetOutputFrameBuffer(Weaver* self, void* tex)
     (void)self;
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
+    EnterCriticalSection(&g_srLock);
     if (g_srActive && g_srWeaver && tex && g_srDevice && g_srRtvHeap) {
         ID3D12Resource* r = (ID3D12Resource*)tex;
         D3D12_RESOURCE_DESC d = r->GetDesc();
@@ -900,8 +923,10 @@ static void __stdcall WeaverSetOutputFrameBuffer(Weaver* self, void* tex)
                 g_srRtvHeap->GetCPUDescriptorHandleForHeapStart());
             g_srBoundOutputFB = r;
         }
+        LeaveCriticalSection(&g_srLock);
         return;
     }
+    LeaveCriticalSection(&g_srLock);
 #endif
     SrLog("SR Weaver::SetOutputFrameBuffer: tex=%p (ignored under SBSDebug)\n", tex);
 }
@@ -912,6 +937,7 @@ static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
     (void)self;
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
+    EnterCriticalSection(&g_srLock);
     if (g_srActive && g_srWeaver && commandList) {
         ID3D12GraphicsCommandList* cl = (ID3D12GraphicsCommandList*)commandList;
         g_srWeaver->setCommandList(cl);
@@ -929,8 +955,10 @@ static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
         }
         static int logged = 0;
         if (logged++ < 3) SrLog("SR Weaver::SetCommandList: cl=%p (fwd + RT bound)\n", commandList);
+        LeaveCriticalSection(&g_srLock);
         return;
     }
+    LeaveCriticalSection(&g_srLock);
 #endif
     SrLog("SR Weaver::SetCommandList: cl=%p (ignored under SBSDebug)\n", commandList);
 }
