@@ -297,6 +297,27 @@ static bool SrRecreateWeaver(const char* reason)
 
     SrLog("SR: recreating Weaver (reason: %s)\n", reason ? reason : "unspecified");
 
+    // Snapshot the cmd list the game bound this frame BEFORE we tear down,
+    // so we can re-push it to the fresh Weaver.  If we lose it, the first
+    // weave() against the new instance throws:
+    //   IDX12Weaver1 doc: "It is required to set the command list, the
+    //   viewport and the scissor rect before calling weave() or it will
+    //   throw an exception"
+    // In Release that surfaces as EXCEPTION_BREAKPOINT (abort) -- the
+    // actual pre-fix crash signature we saw on CP2077's settings-apply.
+    //
+    // The frame order the game uses is:
+    //   SetCommandList(cl)   <- fires before our recreate point
+    //   SetInputViewTexture  <- recreate fires here
+    //   SetOutputFrameBuffer <- fires after; its own forwarder re-pushes
+    //                           setOutputFormat (via g_srBoundOutputFmt
+    //                           reset) and CreateRTV (via g_srBoundOutputFB
+    //                           reset)
+    //   Weave                <- needs cmd list already set
+    // So we only need to re-push setCommandList; the other handlers will
+    // naturally re-emit their setup against the fresh Weaver.
+    ID3D12GraphicsCommandList* savedCmdList = g_srBoundCmdList;
+
     if (g_srWeaver) {
         __try { g_srWeaver->destroy(); } __except(EXCEPTION_EXECUTE_HANDLER) {}
         g_srWeaver = nullptr;
@@ -307,7 +328,7 @@ static bool SrRecreateWeaver(const char* reason)
     g_srBoundInputTex  = nullptr;
     g_srBoundOutputFB  = nullptr;
     g_srBoundOutputFmt = DXGI_FORMAT_UNKNOWN;
-    g_srBoundCmdList   = nullptr;
+    g_srBoundCmdList   = nullptr;    // forwarder will re-set when game next calls SetCommandList
 
     WeaverErrorCode err = SR::CreateDX12Weaver(g_srContext, g_srDevice, g_srHwnd, &g_srWeaver);
     if (err != WeaverSuccess || !g_srWeaver) {
@@ -319,7 +340,17 @@ static bool SrRecreateWeaver(const char* reason)
 
     g_srWeaver->setLatencyInFrames(1);
     g_srWeaver->enableLateLatching(true);
-    SrLog("SR: Weaver recreated OK\n");
+
+    // Re-push the saved command list so the fresh Weaver has one set
+    // before Weave fires later in this same frame.
+    if (savedCmdList) {
+        g_srWeaver->setCommandList(savedCmdList);
+        g_srBoundCmdList = savedCmdList;
+        SrLog("SR: Weaver recreated OK (cmd list re-pushed: cl=%p)\n", (void*)savedCmdList);
+    } else {
+        SrLog("SR: Weaver recreated OK (no cached cmd list to re-push; "
+              "game must call SetCommandList before Weave or weave() will throw)\n");
+    }
 
     LeaveCriticalSection(&g_srLock);
     return true;
