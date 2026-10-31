@@ -106,8 +106,12 @@ static void SrLog(const char* fmt, ...)
     EnterCriticalSection(&g_logLock);
     SYSTEMTIME st;
     GetLocalTime(&st);
-    fprintf(g_logFile, "[%02u:%02u:%02u.%03u] ",
-            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds);
+    // Thread ID in the stamp -- diagnosis of the intermittent load-screen
+    // crash needs to see which thread is calling what, so we tag every
+    // line.  Cheap (TlsGetValue-shaped syscall); worth it unconditionally.
+    fprintf(g_logFile, "[%02u:%02u:%02u.%03u T%lu] ",
+            st.wHour, st.wMinute, st.wSecond, st.wMilliseconds,
+            (unsigned long)GetCurrentThreadId());
     va_list ap;
     va_start(ap, fmt);
     vfprintf(g_logFile, fmt, ap);
@@ -451,9 +455,16 @@ static void SrMonitorRefreshFromHwnd(HWND hwnd)
 // GetEyePosition / GetResolution / Hint48 very frequently; we don't want a
 // log entry per call unless WIZ3D_SR_LOG_SLOTS is set.
 // ----------------------------------------------------------------------------
+// Per-slot bitset of up to 32 unique thread IDs we've seen call this slot.
+// Keyed by TID low-bits (not perfect but cheap and sufficient for CP2077's
+// thread count).  Lets us log "slot X now also hit by thread Y" the first
+// time a new thread calls each slot, revealing the thread distribution
+// used to drive our Odyssey3DSDK -- important for diagnosing the
+// intermittent load-screen crash which has race-signature shape.
 struct CallCounter {
-    volatile LONG count = 0;
-    const char*   name  = nullptr;
+    volatile LONG count            = 0;
+    const char*   name             = nullptr;
+    volatile LONG seenTids[8]      = {};   // slot[i] = TID or 0; 8 unique TIDs tracked
 };
 
 static void NoteCall(CallCounter& c)
@@ -462,6 +473,24 @@ static void NoteCall(CallCounter& c)
     if (n == 1) SrLog("SR first call: %s\n", c.name ? c.name : "<unnamed>");
     // Periodic rate dump every ~1024 calls -- cheap, keeps the log readable.
     if ((n & 0x3FF) == 0) SrLog("SR %s: %ld calls\n", c.name ? c.name : "<unnamed>", (long)n);
+
+    // New-TID detection: scan the per-slot TID set.  If this TID isn't
+    // in the set yet, atomically claim a free slot and log it.  O(8)
+    // per call, no allocation, no mutex -- cheap enough even for Hint48's
+    // ~340Hz rate.
+    LONG tid = (LONG)GetCurrentThreadId();
+    for (int i = 0; i < 8; ++i) {
+        LONG v = c.seenTids[i];
+        if (v == tid) break;                               // already seen
+        if (v == 0) {
+            if (InterlockedCompareExchange(&c.seenTids[i], tid, 0) == 0) {
+                SrLog("SR thread-distribution: %s now called by TID %lu (slot %d of 8)\n",
+                      c.name ? c.name : "<unnamed>", (unsigned long)tid, i);
+            }
+            break;    // we claimed it (or lost the race to another new TID, re-scan next time)
+        }
+    }
+
     if (g_logSlotsEveryCall)
         SrLog("SR call: %s (#%ld)\n", c.name ? c.name : "<unnamed>", (long)n);
 }
@@ -739,6 +768,20 @@ static void __stdcall WeaverWeave(Weaver* self, unsigned w, unsigned h, int x, i
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
     if (g_srActive && g_srWeaver) {
+        // Gap detection: log when weave resumes after >1s pause.  This
+        // reveals menu->gameplay transitions clearly in the diagnostic
+        // log -- useful for isolating the intermittent load-screen crash,
+        // which happens somewhere between "last weave of menu" and "first
+        // weave of gameplay".
+        static ULONGLONG lastWeaveTick = 0;
+        ULONGLONG now = GetTickCount64();
+        if (lastWeaveTick && now - lastWeaveTick > 1000) {
+            SrLog("SR Weaver::Weave: resuming after %llums gap "
+                  "(menu->gameplay or similar transition)\n",
+                  (unsigned long long)(now - lastWeaveTick));
+        }
+        lastWeaveTick = now;
+
         // RT binding is done in SetCommandList (test 1 pattern). Here we
         // only set weave params + record LeiaSR's weave commands onto
         // whichever cmd list we last cached.
