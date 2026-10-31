@@ -512,7 +512,33 @@ static void NoteCall(CallCounter& c)
 
 struct Factory;
 struct Device;
-struct Weaver;
+
+// Weaver struct -- layout matched to vl3c's reverse-engineered map so the
+// game sees the fields it expects at the offsets it expects.  Populated by
+// the Weaver forwarders (SetInputViewTexture, SetOutputFrameBuffer,
+// SetCommandList) so a thread reading these back during the loading screen
+// finds non-zero state matching what the real Samsung SDK would store.
+//
+// Load-screen crash hypothesis (as of 5f1a4985): the game -- or more
+// likely LeiaSR's background threads interrogating a game-owned structure
+// that was initialised from our Weaver -- derives a handle/pointer whose
+// zero-init value becomes a -1 sentinel downstream, and later dereferences
+// it (crash at 0xFFFFFFFFFFFFFFFF).  Populating these fields with the
+// pointers the game hands us gives the game whatever state it stored to
+// read back later.
+struct Weaver
+{
+    void**      vtable;        // 0x00
+    void*       input;         // 0x08  (really ID3D12Resource* when LeiaSR; void* here keeps x86 happy)
+    int         inputFormat;   // 0x10 (+ 4 padding)
+    int         _pad0;
+    void*       output;        // 0x18  (really ID3D12Resource*)
+    void*       cmdList;       // 0x20  (really ID3D12GraphicsCommandList*)
+    uint64_t    lastInputW;    // 0x28
+    uint64_t    lastOutputW;   // 0x30
+    unsigned    lastInputH;    // 0x38
+    unsigned    lastOutputH;   // 0x3C
+};
 
 typedef Device**         (__stdcall *FactoryCreateDeviceFn )(Factory* self, Device** out);
 typedef struct SharedPtr {
@@ -855,12 +881,23 @@ static void __stdcall WeaverSetInputViewTexture(Weaver* self, void* tex, int dxg
                   "(old=%p -> new=%p); recreating Weaver\n",
                   (void*)g_srBoundInputTex, (void*)r);
             SrRecreateWeaver("input texture resource identity changed");
-            if (!g_srWeaver) return;    // recreate failed; passthrough is now off
+            if (!g_srWeaver) { LeaveCriticalSection(&g_srLock); return; }
         }
 
         D3D12_RESOURCE_DESC d = r->GetDesc();
         g_srWeaver->setInputViewTexture(r, (int)d.Width, (int)d.Height, (DXGI_FORMAT)dxgiFormat);
         g_srBoundInputTex = r;
+
+        // Populate the Weaver struct fields the game may read back later.
+        // vl3c's Weaver stores these for its own purposes but the layout
+        // match means the game sees non-zero state at the expected
+        // offsets if it ever reads directly from the Weaver object.
+        if (self) {
+            self->input       = r;
+            self->inputFormat = dxgiFormat;
+            self->lastInputW  = d.Width;
+            self->lastInputH  = d.Height;
+        }
 
         static int logged = 0;
         if (logged++ < 3)
@@ -871,7 +908,16 @@ static void __stdcall WeaverSetInputViewTexture(Weaver* self, void* tex, int dxg
     }
     LeaveCriticalSection(&g_srLock);
 #endif
-    SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (ignored under SBSDebug)\n",
+    // SBSDebug fallback: populate struct state for game-side reads
+    // without requiring D3D12 headers (x86 build has no d3d12.h).  Width
+    // and height can't be queried without GetDesc, so leave those at zero
+    // in the SBSDebug path -- the pointer-slot populate is the important
+    // part (that's what the game would read as a non-null handle).
+    if (self && tex) {
+        self->input       = tex;
+        self->inputFormat = dxgiFormat;
+    }
+    SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (ignored under SBSDebug; struct populated)\n",
           tex, dxgiFormat);
 }
 
@@ -880,11 +926,19 @@ static void __stdcall WeaverSetOutputFrameBuffer(Weaver* self, void* tex)
     NoteCall(g_cc_SetOutputFB);
     (void)self;
 
+    // Populate the struct state the game may read regardless of mode.
+    if (self && tex) {
+        self->output = tex;
+    }
 #if defined(WIZ3D_SR_HAVE_LEIASR)
     EnterCriticalSection(&g_srLock);
     if (g_srActive && g_srWeaver && tex && g_srDevice && g_srRtvHeap) {
         ID3D12Resource* r = (ID3D12Resource*)tex;
         D3D12_RESOURCE_DESC d = r->GetDesc();
+        if (self) {
+            self->lastOutputW = d.Width;
+            self->lastOutputH = d.Height;
+        }
         if (d.Format != g_srBoundOutputFmt) {
             g_srWeaver->setOutputFormat(d.Format);
             g_srBoundOutputFmt = d.Format;
@@ -936,6 +990,10 @@ static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
     NoteCall(g_cc_SetCmdList);
     (void)self;
 
+    // Populate the struct state the game may read regardless of mode.
+    if (self && commandList) {
+        self->cmdList = commandList;
+    }
 #if defined(WIZ3D_SR_HAVE_LEIASR)
     EnterCriticalSection(&g_srLock);
     if (g_srActive && g_srWeaver && commandList) {
@@ -971,15 +1029,6 @@ static void __stdcall WeaverSetCommandList(Weaver* self, void* commandList)
 // 4-slot vtable {_Destroy, _Delete_this, ~dtor, _Get_deleter} followed by
 // two volatile LONG refcounts and the managed pointer.
 // ----------------------------------------------------------------------------
-
-struct Weaver
-{
-    void** vtable;    // 32-slot
-    // No per-instance state in phase 1; the stand-in's methods are no-ops.
-    // Reserved padding keeps the struct size stable for any field access that
-    // might cast through the first bytes.
-    uint8_t reserved[64];
-};
 
 struct RefCount
 {
