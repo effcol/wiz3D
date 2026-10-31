@@ -478,9 +478,29 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
 
             HMODULE srRuntime = nullptr;
             if (!forceSbsDebug && trySrWeave) {
-                srRuntime = LoadLibraryW(L"SimulatedRealityDirectX.dll");
-                if (srRuntime) {
-                    Log("LeiaSR runtime loaded (SimulatedRealityDirectX.dll) -- SRWeave active\n");
+                // Probe-and-release: briefly LoadLibrary to check SR runtime
+                // availability, then immediately FreeLibrary so the DLL
+                // doesn't sit ambient in the process.  Odyssey3DSDK.dll's
+                // delay-load bindings will re-load it on first SR SDK call
+                // (triggered only when the game actually invokes our
+                // stand-in; CP2077 does, Hell is Us / Lies of P / Khazan /
+                // Stellar Blade don't).
+                //
+                // Why not keep it loaded: Hell is Us (UE5 5.5.4) crashes
+                // with ERROR_PROC_NOT_FOUND (0xc06d007f) when it sees
+                // SimulatedRealityDirectX.dll ambient in its process -- the
+                // game appears to probe for the SR SDK on load, finds our
+                // ambient DLL, and trips on an interface-version mismatch.
+                // Lies of P (same engine) activates LeiaSR's camera-tracking
+                // thread off the ambient DLL without our stand-in being
+                // called at all, which is also wrong behaviour from our end.
+                HMODULE probe = LoadLibraryW(L"SimulatedRealityDirectX.dll");
+                if (probe) {
+                    Log("LeiaSR runtime detected (SimulatedRealityDirectX.dll loadable) -- "
+                        "SRWeave active; releasing probe, delay-load will re-load on first "
+                        "SR SDK call\n");
+                    srRuntime = probe;    // set truthy for the SBSDebug-ini-skip branch below
+                    FreeLibrary(probe);   // release immediately so game-side probes don't see it ambient
                     SetEnvironmentVariableA("WIZ3D_SR_RUNTIME_PRESENT", "1");
                 } else if (wantSrWeave) {
                     Log("SRWeave requested but SimulatedRealityDirectX.dll not loadable -- "
