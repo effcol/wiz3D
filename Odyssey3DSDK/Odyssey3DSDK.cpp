@@ -704,13 +704,19 @@ static float* __stdcall DevGetEyePosition(Device* self, float out[3], int eye)
             // Fall through to fake-IPD path, don't cache (try again next call).
         }
         if (gotEyes) {
-            // Guard against the "face not detected" fallback (0, 100, 600)
-            // that LeiaSR returns in the first few frames before the
-            // tracker has locked on.  If both eyes are at the same point
-            // we're in that state -- don't cache it, retry next call.
-            bool sameEye =
-                lEye[0] == rEye[0] && lEye[1] == rEye[1] && lEye[2] == rEye[2];
-            if (!sameEye) {
+            // Guard against the "face not detected" fallback (both eyes
+            // at (0, 100, 600) +/- tiny floating noise) that LeiaSR
+            // returns in the first few frames before the tracker locks
+            // on.  Earlier == check was fooled by near-zero binary
+            // differences that print the same -- the cache picked up
+            // the fallback as if it were a real reading.  Robust check:
+            // real human IPD is >= 50mm; if the horizontal separation
+            // between the two eyes is < 20mm (way under min IPD), the
+            // tracker hasn't locked.  Don't cache, retry next call.
+            float ipdX  = lEye[0] - rEye[0];
+            if (ipdX < 0) ipdX = -ipdX;
+            bool faceLost = (ipdX < 20.0f);
+            if (!faceLost) {
                 g_cachedLeftEye[0]  = lEye[0];
                 g_cachedLeftEye[1]  = lEye[1];
                 g_cachedLeftEye[2]  = lEye[2];
