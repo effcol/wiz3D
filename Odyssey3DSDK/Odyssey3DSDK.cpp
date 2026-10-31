@@ -176,8 +176,6 @@ static ID3D12DescriptorHeap*    g_srRtvHeap        = nullptr;
 static ID3D12Resource*          g_srBoundOutputFB  = nullptr;    // last-seen output FB (not AddRef'd, we just track identity)
 static DXGI_FORMAT              g_srBoundOutputFmt = DXGI_FORMAT_UNKNOWN;
 static ID3D12GraphicsCommandList* g_srBoundCmdList = nullptr;    // last-set cmd list, for RT rebind at Weave time
-static ID3D12Resource*          g_srBoundInputTex  = nullptr;    // last-seen input view texture (identity only)
-static HWND                     g_srHwnd           = nullptr;    // game's hwnd, cached for Weaver re-create
 
 static void SrInitEnv()
 {
@@ -260,7 +258,6 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
     }
 
     g_srDevice = device;    // raw pointer; CP2077's device lives longer than our DLL
-    g_srHwnd   = hwnd;      // cached so SrRecreateWeaver can rebuild against the same window
     g_srActive = true;
     SrLog("================================================================\n");
     SrLog("SR LeiaSR passthrough INITIALIZED (device=%p hwnd=%p)\n", (void*)device, (void*)hwnd);
@@ -271,94 +268,50 @@ static bool SrLazyInit(ID3D12Device* device, HWND hwnd)
     return true;
 }
 
-// Called when the game provides a new input texture or output FB whose
-// pointer identity differs from what we've seen before (and had previously
-// forwarded to LeiaSR).  Resource-identity change means the game has
-// re-provisioned its stereo render pipeline -- typical trigger is the user
-// changing CP2077's Odyssey3D settings (Strength / WeaponStrength / Preset).
-// Game then releases the OLD input texture, but LeiaSR's internal SRV/UAV
-// handles still cache the old resource -- next weave/sample dereferences a
-// freed GPU resource and the game crashes (observed as EXCEPTION_ACCESS_
-// VIOLATION reading at 0x28 during CP2077 stereo-settings apply).
+// Tear down LeiaSR cleanly.  Called from Device::Destroy (game's own
+// shutdown path) and from DLL_PROCESS_DETACH (process-exit backstop).
+// Must be idempotent so both can fire without double-free.
 //
-// Clean fix: destroy the Weaver, recreate it against the current device and
-// hwnd, re-apply all our stable setup (sense registration is sticky on the
-// context, no need to re-register), and reset our local cached refs so the
-// Weaver vtable forwards will re-call setInputViewTexture / setOutputFormat
-// on the fresh instance.  Lock-protected because the Weaver forwards run on
-// the game's render thread while this is a once-per-change event.
-static bool SrRecreateWeaver(const char* reason)
+// Why bother: a leaked IDX12Weaver1 holds GPU resource references and
+// an active connection to SRService.exe; if the game is cycling through
+// crashes, those zombie references accumulate until the next cold boot.
+// Clean teardown also lets SRService know this client is gone, so the
+// next launch starts from a known state.
+static void SrShutdown(const char* reason)
 {
+    if (!g_srLockInit) return;
     EnterCriticalSection(&g_srLock);
-    if (!g_srActive || !g_srDevice) {
+    if (!g_srActive && !g_srWeaver && !g_srContext) {
         LeaveCriticalSection(&g_srLock);
-        return false;
+        return;
     }
-
-    SrLog("SR: recreating Weaver (reason: %s)\n", reason ? reason : "unspecified");
-
-    // Snapshot the cmd list the game bound this frame BEFORE we tear down,
-    // so we can re-push it to the fresh Weaver.  If we lose it, the first
-    // weave() against the new instance throws:
-    //   IDX12Weaver1 doc: "It is required to set the command list, the
-    //   viewport and the scissor rect before calling weave() or it will
-    //   throw an exception"
-    // In Release that surfaces as EXCEPTION_BREAKPOINT (abort) -- the
-    // actual pre-fix crash signature we saw on CP2077's settings-apply.
-    //
-    // The frame order the game uses is:
-    //   SetCommandList(cl)   <- fires before our recreate point
-    //   SetInputViewTexture  <- recreate fires here
-    //   SetOutputFrameBuffer <- fires after; its own forwarder re-pushes
-    //                           setOutputFormat (via g_srBoundOutputFmt
-    //                           reset) and CreateRTV (via g_srBoundOutputFB
-    //                           reset)
-    //   Weave                <- needs cmd list already set
-    // So we only need to re-push setCommandList; the other handlers will
-    // naturally re-emit their setup against the fresh Weaver.
-    ID3D12GraphicsCommandList* savedCmdList = g_srBoundCmdList;
+    SrLog("SR: shutting down (reason: %s)\n", reason ? reason : "unspecified");
 
     if (g_srWeaver) {
         __try { g_srWeaver->destroy(); } __except(EXCEPTION_EXECUTE_HANDLER) {}
         g_srWeaver = nullptr;
     }
-
-    // Reset per-weaver cached state so the forwarders re-push input/output
-    // info to the fresh weaver on the next game call.
-    g_srBoundInputTex  = nullptr;
+    if (g_srRtvHeap) {
+        g_srRtvHeap->Release();
+        g_srRtvHeap = nullptr;
+    }
+    if (g_srContext) {
+        __try { delete g_srContext; } __except(EXCEPTION_EXECUTE_HANDLER) {}
+        g_srContext = nullptr;
+    }
     g_srBoundOutputFB  = nullptr;
     g_srBoundOutputFmt = DXGI_FORMAT_UNKNOWN;
-    g_srBoundCmdList   = nullptr;    // forwarder will re-set when game next calls SetCommandList
-
-    WeaverErrorCode err = SR::CreateDX12Weaver(g_srContext, g_srDevice, g_srHwnd, &g_srWeaver);
-    if (err != WeaverSuccess || !g_srWeaver) {
-        SrLog("SR: CreateDX12Weaver (recreate) err=%d; disabling passthrough\n", (int)err);
-        g_srActive = false;
-        LeaveCriticalSection(&g_srLock);
-        return false;
-    }
-
-    g_srWeaver->setLatencyInFrames(1);
-    g_srWeaver->enableLateLatching(true);
-
-    // Re-push the saved command list so the fresh Weaver has one set
-    // before Weave fires later in this same frame.
-    if (savedCmdList) {
-        g_srWeaver->setCommandList(savedCmdList);
-        g_srBoundCmdList = savedCmdList;
-        SrLog("SR: Weaver recreated OK (cmd list re-pushed: cl=%p)\n", (void*)savedCmdList);
-    } else {
-        SrLog("SR: Weaver recreated OK (no cached cmd list to re-push; "
-              "game must call SetCommandList before Weave or weave() will throw)\n");
-    }
+    g_srBoundCmdList   = nullptr;
+    g_srDevice         = nullptr;
+    g_srActive         = false;
+    g_srInitTried      = false;
 
     LeaveCriticalSection(&g_srLock);
-    return true;
 }
 #else
 static void SrInitEnv() {}
 static bool SrLazyInit(void*, HWND) { return false; }
-static bool SrRecreateWeaver(const char*) { return false; }
+static void SrShutdown(const char*) {}
 #endif  // WIZ3D_SR_HAVE_LEIASR
 
 // ----------------------------------------------------------------------------
@@ -695,6 +648,10 @@ static void* __stdcall DevDestroy(Device* self, unsigned flags)
 {
     NoteCall(g_cc_Destroy);
     SrLog("SR Device::Destroy(self=%p, flags=0x%X)\n", (void*)self, flags);
+    // Device::Destroy is the game's explicit "I'm done with the SDK" signal.
+    // Tear down LeiaSR here so SRService.exe sees us disconnect cleanly and
+    // the next launch isn't inheriting state from a zombie connection.
+    SrShutdown("Device::Destroy");
     if (flags & 1u) HeapFree(GetProcessHeap(), 0, self);
     return nullptr;
 }
@@ -761,26 +718,8 @@ static void __stdcall WeaverSetInputViewTexture(Weaver* self, void* tex, int dxg
 #if defined(WIZ3D_SR_HAVE_LEIASR)
     if (g_srActive && g_srWeaver && tex) {
         ID3D12Resource* r = (ID3D12Resource*)tex;
-
-        // Resource-identity change detection: if we previously forwarded a
-        // DIFFERENT input texture to LeiaSR, the game has re-provisioned
-        // its stereo render pipeline (typical cause: user changed Odyssey3D
-        // settings).  LeiaSR's internal SRV handles still cache the OLD
-        // resource; when the game releases that old texture, the stale
-        // handle crashes on the next weave sample.  Fix: destroy+recreate
-        // the Weaver so LeiaSR builds fresh handles against the new tex.
-        if (g_srBoundInputTex && r != g_srBoundInputTex) {
-            SrLog("SR Weaver::SetInputViewTexture: input texture changed "
-                  "(old=%p -> new=%p); recreating Weaver\n",
-                  (void*)g_srBoundInputTex, (void*)r);
-            SrRecreateWeaver("input texture resource identity changed");
-            if (!g_srWeaver) return;    // recreate failed; passthrough is now off
-        }
-
         D3D12_RESOURCE_DESC d = r->GetDesc();
         g_srWeaver->setInputViewTexture(r, (int)d.Width, (int)d.Height, (DXGI_FORMAT)dxgiFormat);
-        g_srBoundInputTex = r;
-
         static int logged = 0;
         if (logged++ < 3)
             SrLog("SR Weaver::SetInputViewTexture: tex=%p dxgiFormat=%d (fwd to LeiaSR %llux%u)\n",
@@ -1257,6 +1196,11 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserv
             break;
         case DLL_PROCESS_DETACH:
             SrLog("wiz3D Odyssey3DSDK stand-in unloading\n");
+            // Backstop: if the game didn't call Device::Destroy (abnormal
+            // exit, crash) we still try to drop the LeiaSR connection so
+            // SRService.exe sees a cleaner teardown than our process just
+            // vanishing with the Weaver still live.
+            SrShutdown("DLL_PROCESS_DETACH");
             if (g_logFile) { fclose(g_logFile); g_logFile = nullptr; }
             break;
     }
