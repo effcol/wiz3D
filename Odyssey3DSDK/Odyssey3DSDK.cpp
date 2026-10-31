@@ -182,9 +182,6 @@ static DXGI_FORMAT              g_srBoundOutputFmt = DXGI_FORMAT_UNKNOWN;
 static ID3D12GraphicsCommandList* g_srBoundCmdList = nullptr;    // last-set cmd list, for RT rebind at Weave time
 static ID3D12Resource*          g_srBoundInputTex  = nullptr;    // last-seen input view texture (identity only)
 static HWND                     g_srHwnd           = nullptr;    // game's hwnd, cached for Weaver re-create
-static volatile LONG            g_eyeCached        = 0;          // 0 = not cached, 1 = valid
-static float                    g_cachedLeftEye[3]  = {};
-static float                    g_cachedRightEye[3] = {};
 
 static void SrInitEnv()
 {
@@ -376,7 +373,6 @@ static void SrShutdown(const char* reason)
     g_srHwnd           = nullptr;
     g_srActive         = false;
     g_srInitTried      = false;
-    InterlockedExchange(&g_eyeCached, 0);    // next session re-reads tracker
 
     LeaveCriticalSection(&g_srLock);
 }
@@ -668,32 +664,19 @@ static CallCounter g_cc_Hint48         = { 0, "Device::Hint48"         };
 static CallCounter g_cc_IsAvailable    = { 0, "Device::IsAvailable"    };
 static CallCounter g_cc_Destroy        = { 0, "Device::Destroy"        };
 
-// Lazy-cached eye positions.  Read from LeiaSR's getPredictedEyePositions
-// ONCE after the tracker has had a moment to lock onto a face, then serve
-// the cached values thereafter.  Rationale:
-//   - CP2077 polls Device::GetEyePosition at ~128Hz from EIGHT concurrent
-//     threads.  Hammering LeiaSR's getPredictedEyePositions at 1024 Hz
-//     total (8 x 128) is almost certainly contributing to the heap-
-//     corruption-shape load-screen crash -- LeiaSR's internal eye-tracker
-//     state is being read concurrently from the game's threads AND
-//     written by LeiaSR's own tracker thread.
-//   - vl3c's stand-in just returns constants (±32mm, 0, 600) and that
-//     works fine on Samsung Odyssey hardware.  vl3c's audit says this
-//     value "doesn't enter the eye separation" anyway.
-//   - A one-shot cached read gives us the user's REAL IPD (not just the
-//     default 64mm) without the per-call race pressure.  Best of both.
-// (g_eyeCached, g_cachedLeftEye, g_cachedRightEye declared earlier with
-// the other SR globals.)
-
 static float* __stdcall DevGetEyePosition(Device* self, float out[3], int eye)
 {
     NoteCall(g_cc_GetEyePosition);
 
 #if defined(WIZ3D_SR_HAVE_LEIASR)
-    // Lazy one-shot cache: on first call after SR + Weaver are active,
-    // read real tracker positions and freeze them.  All subsequent
-    // calls serve the cached values -- no LeiaSR calls per-frame.
-    if (g_srActive && g_srWeaver && g_eyeCached == 0 && out)
+    // Real-time eye tracking: hand the game LeiaSR's current tracker
+    // positions on every call.  The lazy-cache experiment (5296c85b)
+    // proved that the 128Hz x 8-thread SDK polling isn't what causes
+    // the intermittent load crash -- the cache stopped the spam and
+    // the crash still fired.  Real-time tracking is what the user
+    // asked for and what gives the best stereo (per-frame updated
+    // camera offsets matching the viewer's actual head position).
+    if (g_srActive && g_srWeaver && out)
     {
         float lEye[3] = {0}, rEye[3] = {0};
         bool gotEyes = false;
@@ -701,51 +684,21 @@ static float* __stdcall DevGetEyePosition(Device* self, float out[3], int eye)
             g_srWeaver->getPredictedEyePositions(lEye, rEye);
             gotEyes = true;
         } __except(EXCEPTION_EXECUTE_HANDLER) {
-            // Fall through to fake-IPD path, don't cache (try again next call).
+            // Fall through to fake-IPD path.
         }
         if (gotEyes) {
-            // Guard against the "face not detected" fallback (both eyes
-            // at (0, 100, 600) +/- tiny floating noise) that LeiaSR
-            // returns in the first few frames before the tracker locks
-            // on.  Earlier == check was fooled by near-zero binary
-            // differences that print the same -- the cache picked up
-            // the fallback as if it were a real reading.  Robust check:
-            // real human IPD is >= 50mm; if the horizontal separation
-            // between the two eyes is < 20mm (way under min IPD), the
-            // tracker hasn't locked.  Don't cache, retry next call.
-            float ipdX  = lEye[0] - rEye[0];
-            if (ipdX < 0) ipdX = -ipdX;
-            bool faceLost = (ipdX < 20.0f);
-            if (!faceLost) {
-                g_cachedLeftEye[0]  = lEye[0];
-                g_cachedLeftEye[1]  = lEye[1];
-                g_cachedLeftEye[2]  = lEye[2];
-                g_cachedRightEye[0] = rEye[0];
-                g_cachedRightEye[1] = rEye[1];
-                g_cachedRightEye[2] = rEye[2];
-                InterlockedExchange(&g_eyeCached, 1);
-                SrLog("SR Device::GetEyePosition: cached tracked IPD "
-                      "L=(%.1f,%.1f,%.1f) R=(%.1f,%.1f,%.1f) -- serving "
-                      "static from here\n",
-                      lEye[0], lEye[1], lEye[2], rEye[0], rEye[1], rEye[2]);
-            }
+            const float* eyeV = (eye == 0) ? lEye : rEye;
+            out[0] = eyeV[0];
+            out[1] = eyeV[1];
+            out[2] = eyeV[2];
+            return out;
         }
-    }
-
-    // Serve the cached tracker values if we have them.
-    if (g_eyeCached == 1 && out)
-    {
-        const float* eyeV = (eye == 0) ? g_cachedLeftEye : g_cachedRightEye;
-        out[0] = eyeV[0];
-        out[1] = eyeV[1];
-        out[2] = eyeV[2];
-        return out;
     }
 #endif
 
-    // Fallback (SR not active yet, tracker not locked, or SBSDebug mode):
-    // hardcoded IPD/2 at a nominal view distance.  mm units; right-handed;
-    // x = ±IPD/2, y = 0, z = eye_z_mm.  Matches vl3c's constants exactly.
+    // Fallback (SR not active, SBSDebug mode, or getPredictedEyePositions
+    // threw): hardcoded IPD/2 at nominal view distance.  mm units;
+    // right-handed; x = +-IPD/2, y = 0, z = eye_z_mm.
     const float x = (eye == 0 ? -1.0f : +1.0f) * (g_cfg.ipd_mm * 0.5f);
     if (out)
     {
