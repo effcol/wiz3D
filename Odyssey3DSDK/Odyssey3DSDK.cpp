@@ -595,42 +595,23 @@ static float* __stdcall DevGetEyePosition(Device* self, float out[3], int eye)
 {
     NoteCall(g_cc_GetEyePosition);
 
-#if defined(WIZ3D_SR_HAVE_LEIASR)
-    // When LeiaSR's eye tracker is active, hand the game REAL tracked
-    // positions instead of hardcoded IPD-based constants.  The game uses
-    // these for its own stereo rendering (camera offsets).  Returning
-    // real positions means the game's rendered SBS matches the real
-    // viewer, which is what we want when SR Weave re-samples per real
-    // eye at display time.
+    // Constant IPD/2 offsets at a nominal view distance.  CP2077 polls this
+    // ~128 Hz from multiple threads but DOES NOT use the values for actual
+    // stereo rendering -- vl3c's audit (braindance3d_sdk.c:470-472) is
+    // explicit: "The values don't enter the eye separation (research/
+    // stereo-strength); the menu squeeze counts the calls to tell stereo
+    // frames from flat ones."  So this is a "likely dev-era experiment"
+    // path and feeding real tracker data here (previous b977830c change)
+    // only adds a 128-Hz cross-thread call into LeiaSR runtime that races
+    // with its eye-tracker thread -- cause of a load-screen regression in
+    // 504bc488+1b49828a.  Keep it dumb and constant like vl3c does.
     //
-    // Without this, there was a hidden mismatch: game rendered stereo
-    // with fake fixed-IPD cameras, weaver then rebuilt per-eye based on
-    // real tracker -- small per-frame disparity delta probably messed
-    // with CP2077's screen-space effects (TAA / DLSS reprojection).
-    if (g_srActive && g_srWeaver && out)
-    {
-        float lEye[3] = {0}, rEye[3] = {0};
-        bool gotEyes = false;
-        __try {
-            g_srWeaver->getPredictedEyePositions(lEye, rEye);
-            gotEyes = true;
-        } __except(EXCEPTION_EXECUTE_HANDLER) {
-            // Fall through to the fake-IPD path below.
-        }
-        if (gotEyes) {
-            const float* eyeV = (eye == 0) ? lEye : rEye;
-            out[0] = eyeV[0];
-            out[1] = eyeV[1];
-            out[2] = eyeV[2];
-            return out;
-        }
-    }
-#endif
-
-    // Fallback (SR not active, or tracker failed): hardcoded IPD/2 at a
-    // nominal view distance.  mm units; right-handed; x = ±IPD/2, y = 0,
-    // z = eye_z_mm.  Phase 4 will add an OpenTrack UDP feed so non-SR
-    // paths can drive this from any webcam/IR tracker.
+    // mm units; right-handed; x = ±IPD/2, y = 0, z = eye_z_mm (nominal
+    // view distance 600 mm).  Phase 4 will add an OpenTrack UDP feed for
+    // the non-SR paths that COULD benefit from real head position --
+    // games with actual head-coupled perspective rendering, which CP2077
+    // specifically is not (vl3c's own README: "Not VR: no head tracking,
+    // no motion controls! You look at a 3D screen.").
     const float x = (eye == 0 ? -1.0f : +1.0f) * (g_cfg.ipd_mm * 0.5f);
     if (out)
     {
