@@ -45,6 +45,33 @@
 #endif
 #endif
 
+namespace
+{
+	// 0.5.0 task #77 (round 2) helper: borderless-fullscreen detection.
+	// Returns true only when the HWND's outer rect exactly matches its
+	// monitor's full rect -- the common fingerprint of a borderless /
+	// "fullscreen windowed" game. Any deviation (visible title bar, border,
+	// DPI-driven offset) falls through to the "true windowed" branch and
+	// skips auto-upscale, which is what we want: user picked that window
+	// size on purpose, and the HWND-resize path hits UDK's window-clamp
+	// (see project_task77_udk_window_clamp memory).
+	bool IsBorderlessFullscreenHWND(HWND hWnd)
+	{
+		if (!hWnd || !::IsWindow(hWnd)) return false;
+		RECT win = {};
+		if (!::GetWindowRect(hWnd, &win)) return false;
+		HMONITOR hMon = ::MonitorFromWindow(hWnd, MONITOR_DEFAULTTONEAREST);
+		if (!hMon) return false;
+		MONITORINFO mi = {};
+		mi.cbSize = sizeof(MONITORINFO);
+		if (!::GetMonitorInfoW(hMon, &mi)) return false;
+		return win.left   == mi.rcMonitor.left
+		    && win.top    == mi.rcMonitor.top
+		    && win.right  == mi.rcMonitor.right
+		    && win.bottom == mi.rcMonitor.bottom;
+	}
+}
+
 CBaseSwapChain::CBaseSwapChain(CMonoRenderer* pDirect3DDevice9, UINT index)
 : CMonoSwapChain(pDirect3DDevice9, index), m_LaserSightData(false)
 {
@@ -606,54 +633,109 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 		break;
 	}
 
-	// NOTE: 0.5.0 task #77 auto-enable WAS attempted here but reverted. Setting
-	// DisplayScalingMode=SCALEDASPECT at swap-chain init made DoScaling()
-	// ColorFill the post-scale RT to black then StretchRect from an empty
-	// pre-scale RT. The game, through its hooked SetRenderTarget, ended up
-	// writing directly to the panel-sized post-scale RT with a game-dim
-	// viewport (top-left region only), DoScaling wiped it, and SR Weave read
-	// an empty intermediate -- producing the "top-left corner weave + rest
-	// black" symptom reported by Antichamber 2026-10-27. See
-	// Testing/Logs/DX9/x86/antichamber. The fix needs the game's
-	// SetRenderTarget routing to actually land on m_pStereoBBLeft (pre-scale)
-	// before DoScaling can bridge pre-scale -> post-scale correctly; that
-	// routing isn't fully wired on the modern code path. Left for a
-	// follow-up with proper SetRenderTarget tracing.
-
-	//--- enable GPU scaling ---
+	//--- enable GPU scaling (0.5.0 task #77 round 2) ---
+	// Auto-upscale sub-native fullscreen so every DX9 output mode lands
+	// at panel-native pitch for crisp lenticular / interlace / anaglyph /
+	// shutter output without DWM resampling. Mirrors the DX11 always-on
+	// path in SwapChain11Proxy::EnsureStereoBackBuffer (task #32 + #77).
+	//
+	// Fires on:
+	//   - exclusive fullscreen (Windowed=FALSE) at sub-native res, OR
+	//   - borderless-fullscreen (Windowed=TRUE AND HWND rect == monitor
+	//     rect) at sub-native res.
+	//
+	// Does NOT fire on true windowed (Windowed=TRUE AND HWND < monitor):
+	// user picked that window size on purpose, and the HWND-resize path
+	// hits UDK's window-clamp (see project_task77_udk_window_clamp memory
+	// -- that's why the first attempt was reverted at 5477991a).
+	//
+	// Uses SCALED (2) not SCALEDASPECT (4): SCALEDASPECT runs
+	// ColorFill(post-scale,black) in DoScaling() which wipes any game
+	// content that landed on post-scale directly, producing the
+	// Antichamber "top-left + rest black" symptom (df751a86 regression).
+	// SCALED just StretchRects pre-scale -> post-scale with no wipe.
+	//
+	// gInfo.DisplayScalingMode in Config.xml (dev / legacy iZ3D path)
+	// still works as an explicit override -- auto-detect only engages
+	// when it's NONE (the shipping default).
 	m_bScalingEnabled = false;
 	m_BackBufferSizeBeforeScaling = m_BackBufferSize;
-	if(	gInfo.DisplayScalingMode && (!m_PresentationParameters[0].Windowed) &&
-		(m_PresentationParameters[0].BackBufferWidth > 1 && m_PresentationParameters[0].BackBufferHeight > 1) )
 	{
-		UINT width = gInfo.DisplayNativeWidth;
-		UINT height = gInfo.DisplayNativeHeight;
-		if(m_PresentationParameters[0].BackBufferWidth != width 
-		   || m_PresentationParameters[0].BackBufferHeight != height)
+		UINT                 scaledW       = 0;
+		UINT                 scaledH       = 0;
+		TDisplayScalingMode  effectiveMode = DISPLAY_SCALING_NONE;
+		bool                 autoEngaged   = false;
+
+		if (gInfo.DisplayScalingMode && !m_PresentationParameters[0].Windowed)
+		{
+			// Config-override path (unchanged legacy behavior).
+			scaledW       = gInfo.DisplayNativeWidth;
+			scaledH       = gInfo.DisplayNativeHeight;
+			effectiveMode = TDisplayScalingMode(gInfo.DisplayScalingMode);
+		}
+		else if (!gInfo.DisplayScalingMode &&
+		         m_PresentationParameters[0].hDeviceWindow &&
+		         m_PresentationParameters[0].BackBufferWidth  > 1 &&
+		         m_PresentationParameters[0].BackBufferHeight > 1)
+		{
+			const bool exclusive  = !m_PresentationParameters[0].Windowed;
+			const bool borderless =  m_PresentationParameters[0].Windowed &&
+			                        IsBorderlessFullscreenHWND(m_PresentationParameters[0].hDeviceWindow);
+			if (exclusive || borderless)
+			{
+				int panelW = 0, panelH = 0;
+				if (wiz3d::QueryPanelNativeSize(m_PresentationParameters[0].hDeviceWindow, panelW, panelH)
+				    && panelW > 0 && panelH > 0)
+				{
+					scaledW       = (UINT)panelW;
+					scaledH       = (UINT)panelH;
+					effectiveMode = DISPLAY_SCALING_SCALED;
+					autoEngaged   = true;
+					DEBUG_MESSAGE(_T("Task #77 auto-upscale: %s sub-native BB %ux%u -> panel-native %dx%d (hWnd=%p)\n"),
+					              exclusive ? _T("exclusive-fullscreen") : _T("borderless-fullscreen"),
+					              m_PresentationParameters[0].BackBufferWidth,
+					              m_PresentationParameters[0].BackBufferHeight,
+					              panelW, panelH,
+					              m_PresentationParameters[0].hDeviceWindow);
+				}
+			}
+		}
+
+		if (effectiveMode != DISPLAY_SCALING_NONE &&
+		    scaledW > 1 && scaledH > 1 &&
+		    (m_PresentationParameters[0].BackBufferWidth  != scaledW ||
+		     m_PresentationParameters[0].BackBufferHeight != scaledH))
 		{
 			m_bScalingEnabled = true;
-			m_PresentationParameters[0].BackBufferWidth = width;
-			m_PresentationParameters[0].BackBufferHeight = height;
-			m_PresentationParameters[1].BackBufferWidth = width;
-			m_PresentationParameters[1].BackBufferHeight = height;
-			m_BackBufferSize.cx = width;
-			m_BackBufferSize.cy = height;
-			if (m_SwapChain.getExMode() == EXMODE_EMULATE)
+			m_PresentationParameters[0].BackBufferWidth  = scaledW;
+			m_PresentationParameters[0].BackBufferHeight = scaledH;
+			m_PresentationParameters[1].BackBufferWidth  = scaledW;
+			m_PresentationParameters[1].BackBufferHeight = scaledH;
+			m_BackBufferSize.cx = scaledW;
+			m_BackBufferSize.cy = scaledH;
+			// Legacy iZ3D path (EXMODE_EMULATE) OR the auto-detect
+			// exclusive-fullscreen case needs the display mode to match
+			// the real BB dims -- otherwise the fullscreen Reset rejects
+			// the mode switch. DX9Ex ResetEx (EXMODE_SUPPORTED) uses
+			// m_pFullscreenDisplayMode in ModifyPresentParameters -- the
+			// update below reaches both EXMODE paths uniformly for
+			// Windowed=FALSE. Borderless-fullscreen (Windowed=TRUE)
+			// skips: the display mode doesn't change in that case.
+			const bool exclusiveFS = !m_PresentationParameters[0].Windowed;
+			if (exclusiveFS && (m_SwapChain.getExMode() == EXMODE_EMULATE || autoEngaged))
 			{
-				m_FullscreenDisplayMode[0].Width = width;
-				m_FullscreenDisplayMode[0].Height = height;
-				m_FullscreenDisplayMode[1].Width = width;
-				m_FullscreenDisplayMode[1].Height = height;
+				m_FullscreenDisplayMode[0].Width  = scaledW;
+				m_FullscreenDisplayMode[0].Height = scaledH;
+				m_FullscreenDisplayMode[1].Width  = scaledW;
+				m_FullscreenDisplayMode[1].Height = scaledH;
 			}
 
-			m_ScalingHook = ScalingAgent::Instance()->InitializeHook( TDisplayScalingMode(gInfo.DisplayScalingMode), m_BackBufferSizeBeforeScaling, m_BackBufferSize );
+			m_ScalingHook = ScalingAgent::Instance()->InitializeHook(effectiveMode, m_BackBufferSizeBeforeScaling, m_BackBufferSize);
 		}
-		else {
+		else
+		{
 			m_ScalingHook.reset();
 		}
-	}
-	else {
-		m_ScalingHook.reset();
 	}
 
 	if (USE_SIMPLE_PRESENTER)
