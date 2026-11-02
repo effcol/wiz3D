@@ -394,6 +394,13 @@ Testing/Logs/
 # Test scaffolding directories under Testing/ may stage 3rd-party sample binaries
 # (e.g. Bo3b's Tutorial07 from lib/3D-Vision-Direct/) — keep them local.
 Testing/Tutorial07-DX9-DM/
+# Per-build Testing dumps (SHA- or version-prefixed per-wrapper build fingerprints
+# used for personal retest cycles). Keep tracked Testing/*.cpp / vcxproj at the
+# Testing/ root; only ignore the per-build subfolders.
+/Testing/*-dx*/
+/Testing/v*-dx*/
+# dxgi-sr proxy build output
+/wiz3D-proxy/dxgi-sr/bin/
 
 # ----- Vendor-dropped libraries are always OK. -----
 # lib/ is the LEGACY vendor location — new drops go to ThirdPartyLibs/.
