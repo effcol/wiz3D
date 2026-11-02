@@ -666,6 +666,10 @@ void ReadInputData(TiXmlNode* node)
 			}
 		}
 	}
+	// 0.5.0 preset-reset snapshot: capture the just-loaded preset values so
+	// Ctrl+F5 can restore them later (see DataInput::ResetToLoadedValues +
+	// KeyboardHook.cpp RELOAD_BASE_PROFILE dispatch).
+	gInfo.Input.SnapshotLoadedValues();
 }
 
 TiXmlNode* GetNode(const char *appFileNameUTF8, TiXmlNode* &profileNode)

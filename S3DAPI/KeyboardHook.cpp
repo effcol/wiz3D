@@ -269,6 +269,16 @@ void KeyboardHook::KeyboardProcedure()
 					break;
 				case RELOAD_BASE_PROFILE:
 					if (gInfo.ProfileReloadHandler) gInfo.ProfileReloadHandler();
+					// 0.5.0: Ctrl+F5 now also resets stereo preset values
+					// (StereoBase / One_div_ZPS / AutoFocusEnable per preset,
+					// plus the global ConvergenceShift) back to the snapshot
+					// captured at profile-load time (ReadInputData calls
+					// SnapshotLoadedValues after merging XML). Lets a user
+					// who's been nudging Numpad +/- / Shift+/- / Alt+/-
+					// revert without restarting the game. Shader-fix reload
+					// (above) and preset reset are the two things "reload my
+					// config" naturally means.
+					gInfo.Input.ResetToLoadedValues();
 					break;
 #ifndef FINAL_RELEASE
 				case INCREASE_ZNEAR:
