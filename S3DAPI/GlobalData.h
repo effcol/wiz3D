@@ -128,10 +128,36 @@ struct DataInput
 	// already live in release; the global hotkey was dead code because this
 	// field and the dispatch case were both FINAL_RELEASE-gated.
 	float ConvergenceShift;
+	// 0.5.0 preset-reset snapshot: Preset[]/ConvergenceShift at the time the
+	// profile was last loaded (ctor defaults + any XML overrides from
+	// ReadInputData). Ctrl+F5 restores from this snapshot via
+	// ResetToLoadedValues(), so a user who's been nudging Numpad +/- /
+	// Shift+/- / Alt+/- can revert to the known-good starting point without
+	// restarting the game.
+	CameraPreset PresetAtLoad[3];
+	float ConvergenceShiftAtLoad;
 	CameraPreset* GetActivePreset() { return &Preset[ActivePreset]; }
-	void SwitchCurrentPresetAutofocus(); 
+	void SwitchCurrentPresetAutofocus();
 	bool IsChanged(DataInput& inputOther);
 	bool IsStereoParamChanged(DataInput& inputOther);
+	// Snapshot the current Preset[] + ConvergenceShift into PresetAtLoad /
+	// ConvergenceShiftAtLoad. Call after a profile load so Ctrl+F5 has a
+	// correct "original" state to restore to.
+	void SnapshotLoadedValues()
+	{
+		for (int i = 0; i < 3; ++i) PresetAtLoad[i] = Preset[i];
+		ConvergenceShiftAtLoad = ConvergenceShift;
+	}
+	// Restore Preset[] + ConvergenceShift from the snapshot. Called from the
+	// Ctrl+F5 handler (KeyboardHook.cpp RELOAD_BASE_PROFILE case) after the
+	// per-wrapper ProfileReloadHandler finishes re-reading BaseProfile.xml.
+	// AutoFocusEnable and One_div_ZPS_Saved come along for the ride so an
+	// autofocus-on preset gets its original toggle state back too.
+	void ResetToLoadedValues()
+	{
+		for (int i = 0; i < 3; ++i) Preset[i] = PresetAtLoad[i];
+		ConvergenceShift = ConvergenceShiftAtLoad;
+	}
 	DataInput ()
 	{
 		ActivePreset = 1;  // start on the medium/default preset
@@ -165,6 +191,13 @@ struct DataInput
 		Multiplier			= 1.0f;
 #endif
 		ConvergenceShift	= 0.0f;
+		// Seed the preset-reset snapshot with the ctor defaults so Ctrl+F5
+		// has a valid restore target even if no XML profile loads later.
+		// ReadInputData calls SnapshotLoadedValues() again after it finishes
+		// merging XML overrides, so the snapshot reflects the real loaded
+		// state in normal use.
+		for (int i = 0; i < 3; ++i) PresetAtLoad[i] = Preset[i];
+		ConvergenceShiftAtLoad = 0.0f;
 	}
 };
 
@@ -599,10 +632,14 @@ public:
 			// 0.4.1 ShaderHunter — hotkey is itself the opt-in. Cycle/capture keys
 			// only act while hunt mode is on, so Numpad 1-3 are safe to leave as
 			// Numpad because games can't hit them without first entering hunt mode.
-			// 0.4.3: Hunt-toggle moved from Numpad 0 to Ctrl+0 (top-row 0) --
-			// Max Payne 3 (and other games) bind Numpad 0 as a gameplay key, so
-			// the bare Numpad 0 kept triggering hunt mode mid-game.
-			{ "ToggleShaderHunt",  TOGGLE_SHADER_HUNT,                      560 },	//--- Ctrl + 0 (top-row) enter/exit hunt mode	---
+			// 0.4.3: Hunt-toggle moved from Numpad 0 to Ctrl+0 (top-row 0) because
+			// Max Payne 3 (and other games) bind Numpad 0 as a gameplay key.
+			// 0.5.0: Moved back to Ctrl + Numpad 0 (per user preference) -- the
+			// Ctrl modifier is enough to disambiguate from gameplay-bound bare
+			// Numpad 0 (games don't typically bind Ctrl+Numpad combos), and the
+			// Numpad placement is ergonomically closer to the Numpad 1/2/3
+			// cycle/capture keys that pair with it.
+			{ "ToggleShaderHunt",  TOGGLE_SHADER_HUNT,                      608 },	//--- Ctrl + Numpad 0 enter/exit hunt mode	---
 			{ "HuntPrevShader",    HUNT_PREV_SHADER,                         97 },	//--- Numpad 1 (hide previous CRC)	---
 			{ "HuntNextShader",    HUNT_NEXT_SHADER,                         98 },	//--- Numpad 2 (hide next CRC)	---
 			{ "HuntCaptureShader", HUNT_CAPTURE_SHADER,                      99 },	//--- Numpad 3 (capture current CRC)	---
