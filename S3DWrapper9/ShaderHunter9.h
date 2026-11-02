@@ -61,6 +61,10 @@ void HunterOnToggle();
 void HunterOnCyclePrev();
 void HunterOnCycleNext();
 void HunterOnCapture();
+// 0.5.0 Numpad 4: force the currently cycled CRC to mono-both-eyes and
+// persist a <Mono> entry to the per-user UserProfile.xml. No-op when hunt
+// mode is off or no CRC is cycled yet. Fires a 2 s OSD toast on success.
+void HunterOnMonoCurrent();
 
 // OSD read API — POD snapshot, no locks held across GDI.
 struct HunterState

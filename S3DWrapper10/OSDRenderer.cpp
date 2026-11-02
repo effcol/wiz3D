@@ -685,7 +685,7 @@ void OSDRenderer::BuildHunterText(wchar_t* line1, size_t cap1,
                      s.hiddenCRC, s.drawsForHidden, s.cycleIdx, s.cycleSize);
     }
     _snwprintf_s(line2, cap2, _TRUNCATE,
-                 L"Num1 prev   Num2 next   Num3 capture   Num0 exit");
+                 L"Num1 prev   Num2 next   Num3 capture   Num4 mono-this   Ctrl+Num0 exit");
 }
 
 // 0.4.1 save-toast: bottom-right, two lines like "Shader saved" / "<leaf>".
@@ -702,7 +702,11 @@ void OSDRenderer::BuildSaveToastText(wchar_t* line1, size_t cap1,
         line2[0] = L'\0';
         return;
     }
-    _snwprintf_s(line1, cap1, _TRUNCATE, L"Shader saved");
+    // 0.5.0: shared toast slot (Numpad 3 capture + Numpad 4 mono-this-CRC).
+    // Mono leaves a "Mono ..." prefix in flashLeaf and already carries a
+    // github pointer, so flip the title to "wiz3D Hunter" for that case.
+    const bool isMono = (strncmp(s.flashLeaf, "Mono ", 5) == 0);
+    _snwprintf_s(line1, cap1, _TRUNCATE, isMono ? L"wiz3D Hunter" : L"Shader saved");
     _snwprintf_s(line2, cap2, _TRUNCATE, L"%hs", s.flashLeaf);
 }
 

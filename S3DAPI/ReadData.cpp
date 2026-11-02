@@ -743,6 +743,63 @@ void WriteInputData(DataInput* overrideInput)
 	g_docUserProfiles->SaveFile();
 }
 
+// 0.5.0 ShaderHunter Numpad 4 handler path. Keeps the XML write inside S3DAPI
+// so the ticpp-shim-linked wrapper DLLs don't walk our plain-TinyXML nodes
+// (same reason GetOutputConfigXml exists — see its comment).
+bool SaveMonoShaderCRCToUserProfile(DWORD crc, int stage)
+{
+	if (!crc) return false;
+	if (stage != 0 && stage != 1) return false;
+
+	// Hot-apply to g_ProfileData so the stereo pipeline treats the shader
+	// as mono on the very next draw. m_Multiplier == 0 is the legacy DX9
+	// mono path (BaseStereoRenderer_Main applies it per-draw); m_bSkipStereo
+	// is the PR#31 DX11 right-eye-CB-skip path (Context11Proxy::EditRightCBs
+	// consults it). Setting both covers every pipeline.
+	ShaderProfileData& prof = (stage == 0)
+		? g_ProfileData.VSCRCData[crc]
+		: g_ProfileData.PSCRCData[crc];
+	bool addedToMap = (prof.m_Multiplier != 0.0f) || !prof.m_bSkipStereo;
+	prof.m_Multiplier = 0.0f;
+	prof.m_bSkipStereo = true;
+
+	// Persist to UserProfile.xml so the fix survives a restart.
+	if (!g_docUserProfiles)
+		return addedToMap;   // in-memory hot-apply still worked
+
+	TiXmlNode* profileNode = NULL;
+	if (!GetNode(common::utils::to_utf8(gInfo.ApplicationFileName).c_str(), profileNode)
+	    || !profileNode)
+		return addedToMap;
+
+	// Find or create the <Mono> child.
+	TiXmlElement* monoElem = profileNode->FirstChildElement("Mono");
+	if (!monoElem)
+		monoElem = profileNode->InsertEndChild(TiXmlElement("Mono"))->ToElement();
+	if (!monoElem)
+		return addedToMap;
+
+	const char* tagName = (stage == 0) ? "VertexShader" : "PixelShader";
+
+	// Dedupe: skip if the same CRC is already listed.
+	char crcText[16];
+	sprintf_s(crcText, "0x%08X", (unsigned)crc);
+	for (TiXmlElement* e = monoElem->FirstChildElement(tagName); e; e = e->NextSiblingElement(tagName))
+	{
+		const char* existing = e->Attribute("CRC");
+		if (!existing) continue;
+		DWORD existingCrc = 0;
+		if (sscanf_s(existing, "0x%x", &existingCrc) == 1 && existingCrc == crc)
+			return false;   // already in the file; map was already set too
+	}
+
+	TiXmlElement entry(tagName);
+	entry.SetAttribute("CRC", crcText);
+	monoElem->InsertEndChild(entry);
+	g_docUserProfiles->SaveFile();
+	return true;
+}
+
 void ReadShaderData( TiXmlElement* elem, int shaderType, float fMultiplier, float fConvergenceShift );
 void ReadVectorData( TiXmlElement* itemElement, float fMultiplier )
 {

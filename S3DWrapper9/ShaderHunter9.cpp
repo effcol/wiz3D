@@ -233,6 +233,45 @@ void HunterOnCycleNext()
          s_cycleIdx + 1, s_cycle.size());
 }
 
+void HunterOnMonoCurrent()
+{
+    if (!PathIsOn()) { HLog("[hunt-dx9] mono: hunt mode is off (Ctrl+Numpad 0 to enter)\n"); return; }
+    CrcStageKey hidden;
+    {
+        std::lock_guard<std::mutex> g(s_lock);
+        // Mirror the capture ergonomics: if the user hits Numpad 4 before
+        // cycling, auto-pick the first shader in the cycle so the fix
+        // still fires.
+        if (!s_hidden && !s_cycle.empty())
+        {
+            s_cycleIdx = 0;
+            s_hidden   = s_cycle[0];
+        }
+        hidden = s_hidden;
+    }
+    if (!hidden) { HLog("[hunt-dx9] mono: nothing hidden and no draws seen yet\n"); return; }
+
+    const uint32_t crc = (uint32_t)(hidden >> 1);
+    const HuntStage stage = (HuntStage)(hidden & 1);
+    const int stageInt = (stage == HuntStage::VS) ? 0 : 1;
+
+    const bool added = SaveMonoShaderCRCToUserProfile((DWORD)crc, stageInt) != 0;
+    HLog("[hunt-dx9] mono CRC=0x%08X stage=%s added=%d\n",
+         crc, (stage == HuntStage::VS ? "VS" : "PS"), (int)added);
+
+    // Toast: distinct from the save-toast's "Shader saved" label so the user
+    // can tell which hotkey landed. The github reminder is intentional — the
+    // whole point of in-tree fix authoring is that community-collected
+    // profile entries land upstream.
+    char toast[128];
+    _snprintf_s(toast, _TRUNCATE,
+                "Mono 0x%08X %s - share at github.com/effcol/wiz3D",
+                crc, (stage == HuntStage::VS ? "VS" : "PS"));
+    std::lock_guard<std::mutex> g(s_lock);
+    s_flashDeadline = (uint64_t)GetTickCount64() + 2000;
+    strncpy_s(s_flashLeaf, toast, _TRUNCATE);
+}
+
 void HunterOnCapture()
 {
     if (!PathIsOn()) return;

@@ -19,6 +19,19 @@ void S3DAPI_API FreeProfiles();
 
 void S3DAPI_API ReadCurrentProfile( DWORD Vendor );
 void S3DAPI_API WriteInputData(DataInput* overrideInput);
+
+// 0.5.0 ShaderHunter mono-this-CRC (Numpad 4). Mutates g_ProfileData so the
+// stereo pipeline treats this shader as mono immediately, and appends a
+// <Mono><Vertex/PixelShader CRC="..."/></Mono> entry to the per-user
+// UserProfile.xml so the fix survives a game restart. Idempotent — repeat
+// calls with the same CRC+stage leave the file (and the map entry) unchanged.
+//
+// stage: 0 = VS, 1 = PS. Returns true if the entry was newly added, false if
+// it was already present or the user profile infrastructure wasn't available.
+// The caller is expected to be a hotkey handler on the KeyboardHook thread;
+// writes to g_ProfileData are unsynchronised, matching the existing
+// MaybeReloadProfileBetweenFrames pattern for Ctrl+F5.
+bool S3DAPI_API SaveMonoShaderCRCToUserProfile(DWORD crc, int stage);
 extern S3DAPI_API TiXmlNode* g_outputConfig;
 
 // Serialize the active output method's config subtree (g_outputConfig) to an

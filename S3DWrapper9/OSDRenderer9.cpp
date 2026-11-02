@@ -432,7 +432,7 @@ void OSDRenderer9::BuildHunterText(wchar_t* line1, size_t cap1,
                      s.hiddenCRC, s.drawsForHidden, s.cycleIdx, s.cycleSize);
     }
     _snwprintf_s(line2, cap2, _TRUNCATE,
-                 L"Num1 prev   Num2 next   Num3 capture   Num0 exit");
+                 L"Num1 prev   Num2 next   Num3 capture   Num4 mono-this   Ctrl+Num0 exit");
 }
 
 // 0.4.1 save-toast — bottom-right "Shader saved" / "<leaf>". Mirror of DX11.
@@ -446,7 +446,13 @@ void OSDRenderer9::BuildSaveToastText(wchar_t* line1, size_t cap1,
         line2[0] = L'\0';
         return;
     }
-    _snwprintf_s(line1, cap1, _TRUNCATE, L"Shader saved");
+    // 0.5.0: the toast slot is shared between Numpad 3 (capture) and Numpad 4
+    // (mono-this-CRC). Capture leaf is a bare "0x..._VS_...txt" filename, so
+    // the title stays "Shader saved". Mono leaf starts with "Mono " and
+    // already includes its own narrative + github pointer, so the title
+    // flips to "wiz3D Hunter" and the whole leaf goes on line 2.
+    const bool isMono = (strncmp(s.flashLeaf, "Mono ", 5) == 0);
+    _snwprintf_s(line1, cap1, _TRUNCATE, isMono ? L"wiz3D Hunter" : L"Shader saved");
     _snwprintf_s(line2, cap2, _TRUNCATE, L"%hs", s.flashLeaf);
 }
 

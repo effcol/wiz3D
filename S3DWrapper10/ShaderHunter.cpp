@@ -8,6 +8,7 @@
 #include "AdapterFunctions.h"            // DDILog, for hunter traces into wiz3D_proxy.log
 
 #include "..\S3DAPI\GlobalData.h"
+#include "..\S3DAPI\ReadData.h"          // SaveMonoShaderCRCToUserProfile
 
 #include <algorithm>
 #include <atomic>
@@ -284,6 +285,42 @@ void ShaderHunter::OnCycleNext()
            (uint32_t)(s_hidden >> 1),
            ((s_hidden & 1) ? "PS" : "VS"),
            s_cycleIdx + 1, s_cycle.size());
+}
+
+void ShaderHunter::OnMonoCurrent()
+{
+    if (!PathIsOn()) { DDILog("[hunt] mono: hunt mode is off (Ctrl+Numpad 0 to enter)\n"); return; }
+    CrcStageKey hidden;
+    {
+        std::lock_guard<std::mutex> g(s_lock);
+        // Match the capture ergonomics: auto-pick first-in-cycle if the user
+        // hits Numpad 4 before cycling with Numpad 1 / 2.
+        if (!s_hidden && !s_cycle.empty())
+        {
+            s_cycleIdx = 0;
+            s_hidden   = s_cycle[0];
+        }
+        hidden = s_hidden;
+    }
+    if (!hidden) { DDILog("[hunt] mono: nothing hidden and no draws seen yet\n"); return; }
+
+    const uint32_t crc = (uint32_t)(hidden >> 1);
+    const HuntStage stage = (HuntStage)(hidden & 1);
+    const int stageInt = (stage == HuntStage::VS) ? 0 : 1;
+
+    const bool added = SaveMonoShaderCRCToUserProfile((DWORD)crc, stageInt);
+    DDILog("[hunt] mono CRC=0x%08X stage=%s added=%d\n",
+           crc, (stage == HuntStage::VS ? "VS" : "PS"), (int)added);
+
+    // Toast. Distinct wording from the "Shader saved" capture toast so the
+    // user can tell which hotkey landed; github reminder is intentional.
+    char toast[128];
+    _snprintf_s(toast, _TRUNCATE,
+                "Mono 0x%08X %s - share at github.com/effcol/wiz3D",
+                crc, (stage == HuntStage::VS ? "VS" : "PS"));
+    std::lock_guard<std::mutex> g(s_lock);
+    s_flashDeadline = (uint64_t)GetTickCount64() + 2000;
+    strncpy_s(s_flashLeaf, toast, _TRUNCATE);
 }
 
 void ShaderHunter::OnCapture()

@@ -78,6 +78,7 @@ static void RegisterShaderHunterHandlers()
 	gInfo.HuntPrevHandler    = &wiz3d::ShaderHunter::OnCyclePrev;
 	gInfo.HuntNextHandler    = &wiz3d::ShaderHunter::OnCycleNext;
 	gInfo.HuntCaptureHandler = &wiz3d::ShaderHunter::OnCapture;
+	gInfo.HuntMonoCurrentHandler = &wiz3d::ShaderHunter::OnMonoCurrent;
 }
 
 // 0.4.1 runtime profile reload. Ctrl+F5 sets a between-frames flag; the

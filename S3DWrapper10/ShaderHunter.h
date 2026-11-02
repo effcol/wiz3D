@@ -103,6 +103,13 @@ public:
     // No-op if m_hiddenCRC is 0 or hunt mode is off.
     static void OnCapture();
 
+    // Numpad 4. Force the currently cycled CRC to mono-both-eyes via
+    // g_ProfileData.m_bSkipStereo (hot-applied so the user sees it on the
+    // next draw) and persist a <Mono> entry to the per-user
+    // UserProfile.xml so the fix survives a restart. Fires a 2 s OSD toast
+    // on success. No-op if hunt mode is off or nothing is cycled.
+    static void OnMonoCurrent();
+
     // -------------------------------------------------------------------------
     // OSD read API (SwapChain11Proxy / OSDRenderer thread). Takes the s_lock
     // only for the GetState snapshot; returns a POD copy so the OSD renderer
