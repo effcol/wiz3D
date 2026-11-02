@@ -179,23 +179,23 @@ void ShaderHunter::NoteDraw(uint32_t vsCrc, uint32_t psCrc)
     }
 }
 
-bool ShaderHunter::ShouldSkipDraw(uint32_t vsCrc, uint32_t psCrc)
+bool ShaderHunter::ShouldSkipDraw(uint32_t /*vsCrc*/, uint32_t /*psCrc*/)
 {
-    if (!PathIsOn()) return false;
-    // Minimise lock scope: read s_hidden under lock, then decide outside. We
-    // trust s_hidden to only be mutated under the same lock; a stale read
-    // one draw before the hotkey toggle lands is a visible-but-safe artefact
-    // (one extra frame of the "old" hidden shader) and isn't worth paying for.
-    CrcStageKey hidden;
-    {
-        std::lock_guard<std::mutex> g(s_lock);
-        hidden = s_hidden;
-    }
-    if (!hidden) return false;
-    uint32_t hiddenCrc  = (uint32_t)(hidden >> 1);
-    HuntStage hiddenStg = (HuntStage)(hidden & 1);
-    const uint32_t cand = (hiddenStg == HuntStage::VS) ? vsCrc : psCrc;
-    return cand == hiddenCrc;
+    // 0.5.0: this used to return true when the bound VS/PS CRC matched the
+    // currently hunted CRC, which caused Context11Proxy::Draw* to early-return
+    // without issuing the real draw AND without emplacing the right-eye replay
+    // closure (so both eyes dropped the draw). Unity games (Lara Croft GO
+    // observed 2026-11-02; null-deref inside Mono.dll JIT'd code right after
+    // the hunter exited) crash when draw outputs the Mono runtime relies on
+    // disappear, so a dropped draw is unsafe in the general case.
+    //
+    // The hunting workflow stays usable via the OSD (cycle / capture) plus
+    // the Numpad 4 "mono-this-CRC" hotkey, which routes through the normal
+    // mono / <SkipStereo/> plumbing in g_ProfileData — safe for any engine
+    // because the shader still executes, it just stops carrying the stereo
+    // offset on the right-eye replay (see m_bSkipStereo in Context11Proxy's
+    // EditRightCBs path). See docs/SHADER_HUNTER_DESIGN.md risk #1.
+    return false;
 }
 
 void ShaderHunter::FrameEnd()

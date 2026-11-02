@@ -156,19 +156,21 @@ void HunterNoteDraw(uint32_t vsCrc, uint32_t psCrc)
     }
 }
 
-bool HunterShouldSkipDraw(uint32_t vsCrc, uint32_t psCrc)
+bool HunterShouldSkipDraw(uint32_t /*vsCrc*/, uint32_t /*psCrc*/)
 {
-    if (!PathIsOn()) return false;
-    CrcStageKey hidden;
-    {
-        std::lock_guard<std::mutex> g(s_lock);
-        hidden = s_hidden;
-    }
-    if (!hidden) return false;
-    uint32_t hiddenCrc  = (uint32_t)(hidden >> 1);
-    HuntStage hiddenStg = (HuntStage)(hidden & 1);
-    const uint32_t cand = (hiddenStg == HuntStage::VS) ? vsCrc : psCrc;
-    return cand == hiddenCrc;
+    // 0.5.0: this used to return true when the bound VS/PS CRC matched the
+    // currently hunted CRC, which caused CBaseStereoRenderer::Draw* to return
+    // S_OK without issuing the draw at either eye. Unity games (Lara Croft GO
+    // observed 2026-11-02 on Acer SpatialLabs; crash dump null-deref inside
+    // Mono.dll JIT'd code) break when draw outputs the Mono runtime relies on
+    // disappear, so a dropped draw is unsafe in the general case.
+    //
+    // The hunting workflow stays usable via the OSD (cycle / capture) plus the
+    // Numpad 4 "mono-this-CRC" hotkey, which routes through the normal mono
+    // path via g_ProfileData — safe for any engine because the shader still
+    // executes, it just stops carrying the stereo offset. See the design doc
+    // risk #1 for the full rationale.
+    return false;
 }
 
 void HunterFrameEnd()
