@@ -15,6 +15,7 @@
 #include "MonoRenderer_Hook.h"
 #include <math.h>
 #include "CommandDumper.h"
+#include "Globals.h"   // 0.5.0 task #77 round 9: D9Log (DEBUG_MESSAGE stripped in Final Release)
 
 #include "shaders\shaderSimple.h"
 #include "shaders\shaderSimpleRAWZ.h"
@@ -787,15 +788,42 @@ void CWideStereoRenderer::SynchronizeDepthBuffer( CBaseSwapChain* pSwapChain )
 	CheckSynchronizeTexture(pWideTex, pLeftTex, pRightTex);
 }
 
-STDMETHODIMP CWideStereoRenderer::SetRenderTarget(DWORD RenderTargetIndex, IDirect3DSurface9 *pRenderTarget) 
+STDMETHODIMP CWideStereoRenderer::SetRenderTarget(DWORD RenderTargetIndex, IDirect3DSurface9 *pRenderTarget)
 {
 	DUMP_CMD(SetRenderTarget,RenderTargetIndex,pRenderTarget);
 
 	HRESULT hResult = S_OK;
-	_ASSERT(pRenderTarget != GetBaseSC()->m_pPrimaryBackBuffer); // should be m_pWidePrimaryBackBuffer
+
+	// 0.5.0 task #77 round 9: translate m_pPrimaryBackBuffer -> pre-scale wide RT.
+	// When round-2 auto-upscale engages, m_pPrimaryBackBuffer is the real swap-chain
+	// BB at PANEL dims. The iZ3D design assumed the game would be using
+	// m_pWidePrimaryBackBuffer (post-scale wide RT) -- see the original assertion
+	// at this line in iZ3D source. But games that cache the initial RT inherited
+	// from CreateDevice (UDK, modern engines) end up SetRenderTarget'ing
+	// m_pPrimaryBackBuffer. The right destination for them is the PRE-scale wide
+	// RT (m_pLeftBackBufferBeforeScaling), so game-dim viewport writes land there
+	// and DoScaling's StretchRect bridges pre-scale -> post-scale correctly.
+	// `project_task77_udk_window_clamp` memory called this out in October 2026.
+	// Belt-and-suspenders with the PostInitialize forced-initial-RT in BaseSwapChain.cpp.
+	if (RenderTargetIndex == 0 &&
+	    GetBaseSC()->m_bScalingEnabled &&
+	    pRenderTarget == GetBaseSC()->m_pPrimaryBackBuffer &&
+	    GetBaseSC()->m_pLeftBackBufferBeforeScaling)
+	{
+		static int s_r9SRTLogCount = 0;
+		if (s_r9SRTLogCount < 10)
+		{
+			D9Log("Task #77 round 9: translated SetRenderTarget m_pPrimaryBackBuffer %p -> m_pLeftBackBufferBeforeScaling %p (idx=%u, log %d/10)\n",
+			      (void*)pRenderTarget,
+			      (void*)(IDirect3DSurface9*)GetBaseSC()->m_pLeftBackBufferBeforeScaling,
+			      RenderTargetIndex, s_r9SRTLogCount);
+			s_r9SRTLogCount++;
+		}
+		pRenderTarget = GetBaseSC()->m_pLeftBackBufferBeforeScaling;
+	}
 
 	NSCALL_TRACE2(m_Direct3DDevice.SetRenderTarget(RenderTargetIndex, pRenderTarget),
-		DEBUG_MESSAGE(_T("SetRenderTarget(RenderTargetIndex = %d, pRenderTarget = %p [%s])"), 
+		DEBUG_MESSAGE(_T("SetRenderTarget(RenderTargetIndex = %d, pRenderTarget = %p [%s])"),
 		RenderTargetIndex, pRenderTarget, GetObjectName(pRenderTarget)));
 
 	if (FAILED(hResult))

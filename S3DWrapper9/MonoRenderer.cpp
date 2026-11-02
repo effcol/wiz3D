@@ -12,8 +12,11 @@
 #include "stdafx.h"
 #include "MonoRenderer.h"
 #include "MonoRenderer_Hook.h"
+#include "MonoSwapChain.h"
+#include "BaseSwapChain.h"              // 0.5.0 task #77 round 9: reach pre/post-scale RT pointers for the GetRenderTarget lie
 #include "Direct3D9.h"
 #include "Trace.h"
+#include "Globals.h"                     // 0.5.0 task #77 round 9: D9Log (DEBUG_MESSAGE stripped in Final Release)
 #include "..\S3DAPI\ScalingAgent.h"
 #include "CommandDumper.h"
 
@@ -530,15 +533,46 @@ STDMETHODIMP CMonoRenderer::GetViewport(D3DVIEWPORT9* pViewport)
 	return hResult;
 }
 
-STDMETHODIMP CMonoRenderer::GetRenderTarget( DWORD RenderTargetIndex, IDirect3DSurface9** ppRenderTarget ) 
+STDMETHODIMP CMonoRenderer::GetRenderTarget( DWORD RenderTargetIndex, IDirect3DSurface9** ppRenderTarget )
 {
 	HRESULT hResult = S_OK;
 	NSCALL_TRACE2(m_Direct3DDevice.GetRenderTarget(RenderTargetIndex, ppRenderTarget),
-		DEBUG_MESSAGE(_T("GetRenderTarget(RenderTargetIndex = %d, *ppRenderTarget = %p [%s])"), 
+		DEBUG_MESSAGE(_T("GetRenderTarget(RenderTargetIndex = %d, *ppRenderTarget = %p [%s])"),
 		RenderTargetIndex, Indirect(ppRenderTarget), GetObjectName(*ppRenderTarget, hResult)));
 
 	IDirect3DSurface9 *pRenderTarget = *ppRenderTarget;
 	DUMP_CMD(GetRenderTarget,RenderTargetIndex,pRenderTarget);
+
+	// 0.5.0 task #77 round 9: reverse-translation lie.
+	// If round-2 auto-upscale engaged AND the real current RT is the pre-scale
+	// wide RT (because we substituted it in PostInitialize / WideStereoRenderer::
+	// SetRenderTarget), return m_pPrimaryBackBuffer back to the game so what it
+	// gets from GetRenderTarget matches what it originally SetRenderTarget'd (or
+	// inherited at CreateDevice time). Keeps the game's own tracking consistent.
+	// Only applies to idx 0 (the primary RT). Only when scaling engaged.
+	if (RenderTargetIndex == 0 && SUCCEEDED(hResult) && ppRenderTarget && *ppRenderTarget && !m_SwapChains.empty())
+	{
+		CBaseSwapChain* pBaseSC = dynamic_cast<CBaseSwapChain*>(GetMonoSC(0));
+		if (pBaseSC && pBaseSC->m_bScalingEnabled &&
+		    pBaseSC->m_pLeftBackBufferBeforeScaling &&
+		    pBaseSC->m_pPrimaryBackBuffer &&
+		    *ppRenderTarget == (IDirect3DSurface9*)pBaseSC->m_pLeftBackBufferBeforeScaling)
+		{
+			static int s_r9GRTLogCount = 0;
+			if (s_r9GRTLogCount < 10) {
+				D9Log("Task #77 round 9: reverse-translated GetRenderTarget pre-scale %p -> m_pPrimaryBackBuffer %p (idx=0, log %d/10)\n",
+				      (void*)*ppRenderTarget,
+				      (void*)(IDirect3DSurface9*)pBaseSC->m_pPrimaryBackBuffer,
+				      s_r9GRTLogCount);
+				s_r9GRTLogCount++;
+			}
+			// Release the pre-scale ref the real GetRenderTarget AddRef'd, then
+			// return a referenced m_pPrimaryBackBuffer to the caller.
+			(*ppRenderTarget)->Release();
+			*ppRenderTarget = pBaseSC->m_pPrimaryBackBuffer;
+			(*ppRenderTarget)->AddRef();
+		}
+	}
 
 	return hResult;
 }

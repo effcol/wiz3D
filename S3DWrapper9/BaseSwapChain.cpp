@@ -20,6 +20,7 @@
 #include "..\S3DAPI\ScalingAgent.h"
 #include "..\S3DAPI\ScalingHook.h"
 #include "..\Shared\PanelNativeSize.h"       // 0.5.0 task #77: sub-native-fullscreen auto-enable
+#include "Globals.h"                         // 0.5.0 task #77 round 9: D9Log (always-on direct appender; DEBUG_MESSAGE is compiled out in Final Release)
 #include "..\S3DAPI\ReadData.h"
 #include "..\S3DAPI\ShutterAPI.h"
 #include "..\S3DAPI\Utils.h"
@@ -1859,6 +1860,41 @@ int WINAPI CBaseSwapChain::D3DPERF_EndEvent( void )
 HRESULT CBaseSwapChain::PostInitialize()
 {
 	HRESULT hResult = S_OK;
+
+	// 0.5.0 task #77 round 9: force the game's initial render target to the
+	// pre-scale eye RT. The game inherits whatever RT real-D3D9 picked at
+	// CreateDevice/Reset time -- that's m_pPrimaryBackBuffer, which is the
+	// real swap-chain BB at PANEL dims after round-2's PresentParameters
+	// rewrite. If the game never explicitly re-SetRenderTarget's afterward
+	// (UDK caches the initial RT), its draws land on m_pPrimaryBackBuffer
+	// with a game-dim viewport -- top-left clip, pre-scale wide RT stays
+	// empty, DoScaling bridges empty -> empty, OutputMethod composite is
+	// empty. See `project_task77_udk_window_clamp` memory + round-9 research
+	// fork diagnosis (2026-11-02).
+	//
+	// Fix: right here, after InitializeMode has allocated the wide RT pair
+	// (post-scale m_pLeftBackBuffer + pre-scale m_pLeftBackBufferBeforeScaling)
+	// and the real device is live, explicitly SetRenderTarget(0, pre-scale)
+	// so the inherited RT is the one the game SHOULD be using per the iZ3D-
+	// era design. Then DoScaling's StretchRect pre-scale -> post-scale fires
+	// correctly, OutputMethod reads a populated post-scale eye RT, and the
+	// composite matches what the iZ3D architecture always intended.
+	//
+	// Runs for both initial CreateDevice (via BaseStereoRenderer::StartEngine
+	// -> PostInitialize) and Reset (same path). Gated on m_bScalingEnabled
+	// so this only fires when round-2 auto-upscale actually engaged. Pre-
+	// scale RT presence is a safety belt.
+	if (m_bScalingEnabled && m_pLeftBackBufferBeforeScaling)
+	{
+		HRESULT hrSRT = GetD3D9Device().SetRenderTarget(0, m_pLeftBackBufferBeforeScaling);
+		D3DSURFACE_DESC descPre = {}, descPrim = {};
+		if (m_pLeftBackBufferBeforeScaling) m_pLeftBackBufferBeforeScaling->GetDesc(&descPre);
+		if (m_pPrimaryBackBuffer)           m_pPrimaryBackBuffer->GetDesc(&descPrim);
+		D9Log("Task #77 round 9: forced initial RT -> m_pLeftBackBufferBeforeScaling %p (%ux%u) [replaces inherited m_pPrimaryBackBuffer %p (%ux%u)] hr=0x%08lX\n",
+		      (void*)(IDirect3DSurface9*)m_pLeftBackBufferBeforeScaling, descPre.Width, descPre.Height,
+		      (void*)(IDirect3DSurface9*)m_pPrimaryBackBuffer, descPrim.Width, descPrim.Height,
+		      (unsigned long)hrSRT);
+	}
 
 	GetBaseDevice()->m_pOutputMethod->InitializeSCData(this);
 	if (m_pPresenterData)
