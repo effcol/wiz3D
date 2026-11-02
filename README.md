@@ -36,7 +36,7 @@ wiz3D stands on the shoulders of some incredible people and projects. Huge thank
 * **DirectX 9:** ✅ **Mostly Working!** `d3d9.dll` proxy loader works. Left 4 Dead 2 and many others run in full stereo 3D; profile system loads shader fixes and stereo settings for every originally-supported iZ3D game. Modern OSD + laser-sight crosshair ported from DX11 in 0.4.0.
 * **DirectX 8:** ✅ **Partially Working.** Wrapper that converts DX8 to use the DX9 stereoisation path. Known-good on a handful of titles, needs broader coverage.
 * **DirectX 7:** ⚠️ **In Progress.** Wrapper that converts DX7 to use the DX9 stereoisation path. DX7→DX9 conversion is working, present for testing.
-* **Nvidia 3D Vision 'Automatic Mode':** ✅ **Partially Working.** Games that relied on NVIDIA's driver stereo injection, the ones listed have 3D Vision in-game settings, shader fixes and config options. wiz3D's stereo injector replaces the driver path, with the aim of letting those shader fixes and separation/convergence sliders apply to wiz3D's output. In 0.4.0 the NVAPI stereo bridge extends to DX11, so convergence and separation sliders now hook up via `NvAPI_Stereo_SetConvergence`/`SetSeparation` on both DX9 and DX11.
+* **Nvidia 3D Vision 'Automatic-Aware':** ✅ **Partially Working.** Games that relied on NVIDIA's driver stereo injection, but communicated wuth 3D Vision via in-game settings, shader fixes and config options. Wiz3D's stereo injector replaces the driver path, with the aim of letting those shader fixes and separation/convergence sliders apply to wiz3D's output. In 0.4.0 the NVAPI stereo bridge extends to DX11, so convergence and separation sliders now hook up via `NvAPI_Stereo_SetConvergence`/`SetSeparation` on both DX9 and DX11.
 
 ---
 
@@ -486,7 +486,7 @@ DirectX 11 titles use the full 0.4.0 Stereo-Injector COM-wrap pipeline. DirectX 
 
 - **Excluded (Online Ban Risk):** *Empire Earth II*, *Freelancer*, *GTR - FIA GT Racing Game*, *NASCAR Racing 2003 Season*, *Tom Clancy's Rainbow Six 3: Raven Shield*. <sub>(Active community servers with stringent anti-cheat)</sub>
 
-### Nvidia 3D Vision "Automatic Mode" Games 
+### Nvidia 3D Vision "Automatic-Aware" Games 
 Games that used 3D Vision "Automatic Mode" driver stereo injection, but communicate with 3D Vision via in-game settings, built-in shader fixes, or config options. For our release, these use wiz3D's stereo injector instead, with the aim of making any shader fixes and separation/convergence sliders compatible with our injector. 0.4.0 wires the NVAPI stereo bridge on DX9 and DX11, so in-game sliders now move wiz3D's own stereo state.
 
 | Game | Install Path | iZ3D Profile | Testing | Notes |
