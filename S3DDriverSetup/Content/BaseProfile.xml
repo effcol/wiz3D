@@ -3853,6 +3853,32 @@
 			</Preset>
 		</Presets>
 	</Profile>
+	<!-- 0.5.0: Lara Croft GO (Square Enix Montreal, Unity DX9).
+	     Added 2026-11-02 after on-device shader-hunt on Acer SpatialLabs
+	     (CP2077 sibling test rig). The Unity UI stack renders at
+	     screen-space depth and gets stereo-offset by wiz3D's default path,
+	     which pushes HUD / overlay quads off-screen and shows up as
+	     double-vision menus. Three Unity UI shaders are forced mono below;
+	     the fourth (0x00AAA0EE_VS) is a plain MVP transform that Unity
+	     reuses for some non-UI geometry too, so it stays commented until
+	     a tester confirms it's safe to force mono. -->
+	<Profile Name="Lara Croft GO">
+		<File AppName="Lara Croft GO" Name="Lara Croft GO.exe"/>
+		<Mono>
+			<!-- Unity UI-Default pixel shader (sprite + clip rect) -->
+			<PixelShader CRC="0x449010EA"/>
+			<!-- Unity UI textured sprite (simple _Color + _MainTex) -->
+			<PixelShader CRC="0x0C3BE19E"/>
+			<!-- Unity UI vertex shader with _ScreenParams pixel offset -->
+			<VertexShader CRC="0x50E596A0"/>
+			<!-- 0x00AAA0EE_VS: plain glstate_matrix_mvp transform. Unity
+			     reuses the standard MVP VS for some scene geometry, so
+			     forcing it mono may flatten more than just UI. Left
+			     commented pending confirmation on a wider test pass.
+			<VertexShader CRC="0x00AAA0EE"/>
+			-->
+		</Mono>
+	</Profile>
 	<!--should be last-->
 	<Profile Name="Half-Life 2">
 		<File Name="hl2.exe"/>
