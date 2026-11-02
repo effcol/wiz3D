@@ -602,44 +602,37 @@ bool OSDRenderer::WantHotkeyHelp() const
     return gInfo.Input.ShowHotKeyOSD != 0;
 }
 
-// Status: "wiz3D | Preset N | Sep X% | Conv Yunits [(+shift)] [| AutoFocus] [| EyesSwapped]"
+// Status: "wiz3D | Preset N | Sep X% | Conv ±X.XX | Screen Plane X.XX [| AutoFocus] [| EyesSwapped]"
+// 0.5.0 relabel: "Conv" now reports ConvergenceShift (the actual convergence
+// offset term); the per-preset focal-plane depth (1/One_div_ZPS) is relabeled
+// "Screen Plane" per standard stereo-rendering vocabulary (zero-parallax depth).
+// Both values at 2 decimals -- a 4px-per-press hotkey tap on a 4K BB moves
+// each by ~0.02 units; one-decimal readout would collapse 3-4 consecutive
+// presses before showing any change.
 void OSDRenderer::BuildStatusText(wchar_t* out, size_t cap) const
 {
     const CameraPreset* p = gInfo.Input.GetActivePreset();
     const int presetIdx = (int)gInfo.Input.ActivePreset + 1;  // 1-based for user
-    const float sepPercent = p ? (p->StereoBase / 0.008f) : 0.f;  // StereoBase = percent * 0.008
-    const float convUnits  = (p && p->One_div_ZPS != 0.f) ? (1.f / p->One_div_ZPS) : 0.f;
-    // Convergence shown at 2 decimals so a 4 px-per-press hotkey tap is
-    // visible even at 4K BB where each step moves convUnits by ~0.02 units
-    // (one decimal would collapse 3-4 consecutive presses onto the same
-    // "2.0" reading before the user saw any number change).
-    // 0.4.3: Alt+Numpad +/- adjusts the global ConvergenceShift (additive
-    // to the preset's One_div_ZPS at render time). Show it next to Conv
-    // when non-zero so the user sees the hotkey do something.
-    wchar_t convStr[48];
-    if (gInfo.Input.ConvergenceShift != 0.0f) {
-        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE,
-                     L"Conv %.2f (shift %+.2f)", convUnits, gInfo.Input.ConvergenceShift);
-    } else {
-        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE, L"Conv %.2f", convUnits);
-    }
+    const float sepPercent  = p ? (p->StereoBase / 0.008f) : 0.f;  // StereoBase = percent * 0.008
+    const float screenPlane = (p && p->One_div_ZPS != 0.f) ? (1.f / p->One_div_ZPS) : 0.f;
+    const float convShift   = gInfo.Input.ConvergenceShift;
     const bool af = p && p->AutoFocusEnable;
     if (af && gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus   |   Eyes Swapped",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f   |   AutoFocus   |   Eyes Swapped",
+                     presetIdx, sepPercent, convShift, screenPlane);
     } else if (af) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f   |   AutoFocus",
+                     presetIdx, sepPercent, convShift, screenPlane);
     } else if (gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   Eyes Swapped",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f   |   Eyes Swapped",
+                     presetIdx, sepPercent, convShift, screenPlane);
     } else {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f",
+                     presetIdx, sepPercent, convShift, screenPlane);
     }
 }
 
@@ -826,16 +819,16 @@ void OSDRenderer::Render(ID3D11DeviceContext* ctx,
         static const wchar_t* lines[] = {
             L"Numpad *",             L"Toggle stereo on / off",
             L"Numpad +  /  -",       L"Separation (depth strength)",
-            L"Shift + Numpad +/-",   L"Convergence (where screen plane sits)",
-            L"Alt + Numpad +/-",     L"Convergence shift (quick comfort offset)",
+            L"Shift + Numpad +/-",   L"Screen Plane (where zero-parallax depth sits)",
+            L"Alt + Numpad +/-",     L"Convergence (quick comfort offset)",
             L"Numpad 7 / 8 / 9",     L"Preset Low / Default / Strong",
             L"Numpad /",             L"Toggle auto-focus",
             L"Ctrl + Numpad /",      L"Toggle laser-sight crosshair",
             L"PrtScn",               L"Stereo screenshot",
             L"Shift + F1",           L"Toggle this hotkey list",
             L"Ctrl + F1",            L"Toggle OSD strip + FPS",
-            L"Ctrl + 0",             L"ShaderHunter: enter / exit hunt mode",
-            L"Ctrl + F5",            L"Reload BaseProfile.xml (live)",
+            L"Ctrl + Numpad 0",      L"ShaderHunter: enter / exit hunt mode",
+            L"Ctrl + F5",            L"Reload BaseProfile.xml + reset preset values",
         };
         int row = 72;
         const int rowH = 32;

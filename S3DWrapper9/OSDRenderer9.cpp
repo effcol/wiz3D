@@ -450,42 +450,36 @@ void OSDRenderer9::BuildSaveToastText(wchar_t* line1, size_t cap1,
     _snwprintf_s(line2, cap2, _TRUNCATE, L"%hs", s.flashLeaf);
 }
 
-// Status: "wiz3D | Preset N | Sep X% | Conv Yunits [| AutoFocus] [| EyesSwapped]"
+// Status: "wiz3D | Preset N | Sep X% | Conv ±X.XX | Screen Plane X.XX [| AutoFocus] [| EyesSwapped]"
 // Mirror of DX11 OSDRenderer::BuildStatusText -- content layer kept in sync so
 // the user sees the same strip across DX9 and DX11 StereoInjector paths.
+// 0.5.0 relabel: "Conv" now reports ConvergenceShift (the actual convergence
+// offset term); the per-preset focal-plane depth (1/One_div_ZPS) is relabeled
+// "Screen Plane" per standard stereo-rendering vocabulary (zero-parallax depth).
 void OSDRenderer9::BuildStatusText(wchar_t* out, size_t cap) const
 {
     const CameraPreset* p = gInfo.Input.GetActivePreset();
     const int presetIdx = (int)gInfo.Input.ActivePreset + 1;
-    const float sepPercent = p ? (p->StereoBase / 0.008f) : 0.f;
-    const float convUnits  = (p && p->One_div_ZPS != 0.f) ? (1.f / p->One_div_ZPS) : 0.f;
-    // Convergence at 2 decimals (see DX11 OSDRenderer::BuildStatusText).
-    // 0.4.3: ConvergenceShift (Alt+Numpad +/-) shown next to Conv when
-    // non-zero so the global comfort-shift hotkey has visible feedback.
-    wchar_t convStr[48];
-    if (gInfo.Input.ConvergenceShift != 0.0f) {
-        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE,
-                     L"Conv %.2f (shift %+.2f)", convUnits, gInfo.Input.ConvergenceShift);
-    } else {
-        _snwprintf_s(convStr, _countof(convStr), _TRUNCATE, L"Conv %.2f", convUnits);
-    }
+    const float sepPercent    = p ? (p->StereoBase / 0.008f) : 0.f;
+    const float screenPlane   = (p && p->One_div_ZPS != 0.f) ? (1.f / p->One_div_ZPS) : 0.f;
+    const float convShift     = gInfo.Input.ConvergenceShift;
     const bool af = p && p->AutoFocusEnable;
     if (af && gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus   |   Eyes Swapped",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f   |   AutoFocus   |   Eyes Swapped",
+                     presetIdx, sepPercent, convShift, screenPlane);
     } else if (af) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   AutoFocus",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f   |   AutoFocus",
+                     presetIdx, sepPercent, convShift, screenPlane);
     } else if (gInfo.Input.SwapEyes) {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s   |   Eyes Swapped",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f   |   Eyes Swapped",
+                     presetIdx, sepPercent, convShift, screenPlane);
     } else {
         _snwprintf_s(out, cap, _TRUNCATE,
-                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   %s",
-                     presetIdx, sepPercent, convStr);
+                     L"wiz3D   |   Preset %d   |   Sep %.0f%%   |   Conv %+.2f   |   Screen Plane %.2f",
+                     presetIdx, sepPercent, convShift, screenPlane);
     }
 }
 
@@ -581,8 +575,8 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
         static const wchar_t* lines[] = {
             L"Numpad *",             L"Toggle stereo on / off",
             L"Numpad +  /  -",       L"Separation (depth strength)",
-            L"Shift + Numpad +/-",   L"Convergence (where screen plane sits)",
-            L"Alt + Numpad +/-",     L"Convergence shift (quick comfort offset)",
+            L"Shift + Numpad +/-",   L"Screen Plane (where zero-parallax depth sits)",
+            L"Alt + Numpad +/-",     L"Convergence (quick comfort offset)",
             L"Numpad 7 / 8 / 9",     L"Preset Low / Default / Strong",
             L"Numpad /",             L"Toggle auto-focus",
             L"Ctrl + Numpad /",      L"Toggle laser-sight crosshair",
@@ -592,8 +586,8 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
             // ShaderHunter cycle/capture/exit keys live on the hunter OSD
             // line 2 while hunt mode is active; only the entry hotkey needs
             // to appear in the global menu (user 2026-10-21 feedback).
-            L"Ctrl + 0",             L"ShaderHunter: enter / exit hunt mode",
-            L"Ctrl + F5",            L"Reload BaseProfile.xml (live)",
+            L"Ctrl + Numpad 0",      L"ShaderHunter: enter / exit hunt mode",
+            L"Ctrl + F5",            L"Reload BaseProfile.xml + reset preset values",
         };
         int row = 72;
         const int rowH = 32;
