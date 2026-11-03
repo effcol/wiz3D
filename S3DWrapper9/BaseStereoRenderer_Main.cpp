@@ -1127,11 +1127,42 @@ void CBaseStereoRenderer::CheckRenderInStereoPSPipeline()
 	m_CurrentPSMultiplier *= gInfo.SeparationScale;
 }
 
+// 0.4.3 <When TextureCRC="0x..."/> sub-filter on DX9. See header. Pointer-hash
+// scheme matches DX11 (Context11Proxy_RHW.cpp) — session-stable but not cross-
+// session portable. Caller is expected to run this before consuming the
+// profile's m_Multiplier / m_ConvergenceShift.
+static uint32_t FnvHashPtr_DX9(const void* p)
+{
+	uint32_t h = 0x811c9dc5u;
+	const uint8_t* b = reinterpret_cast<const uint8_t*>(&p);
+	for (size_t i = 0; i < sizeof(void*); ++i) { h ^= b[i]; h *= 0x01000193u; }
+	return h;
+}
+
+bool CBaseStereoRenderer::TextureMatchesWhenFilter(const ShaderProfileData& p)
+{
+	if (p.m_WhenTextureCRCs.empty()) return true;   // no filter = always match
+	for (DWORD stage = 0; stage < 16; ++stage)
+	{
+		IDirect3DBaseTexture9* tex = nullptr;
+		if (SUCCEEDED(m_Direct3DDevice.GetTexture(stage, &tex)) && tex)
+		{
+			const uint32_t h = FnvHashPtr_DX9(tex);
+			tex->Release();
+			for (const DWORD want : p.m_WhenTextureCRCs)
+				if (h == (uint32_t)want) return true;
+		}
+	}
+	return false;
+}
+
 void CBaseStereoRenderer::CheckVSCRCMultiplier()
 {
-	if (!DEBUG_SKIP_CRC_CHECK && m_VSPipelineData.m_pProfile) 
+	if (!DEBUG_SKIP_CRC_CHECK && m_VSPipelineData.m_pProfile)
 	{
-		DEBUG_TRACE3(_T("ShaderCRC = 0x%X Multiplier = %f detected\n"), 
+		// 0.4.3 <When TextureCRC> sub-filter — only apply primitive if filter matches.
+		if (!TextureMatchesWhenFilter(*m_VSPipelineData.m_pProfile)) return;
+		DEBUG_TRACE3(_T("ShaderCRC = 0x%X Multiplier = %f detected\n"),
 			m_VSPipelineData.m_CurrentShaderData.CRC32, m_VSPipelineData.m_pProfile->m_Multiplier);
 		m_CurrentMeshMultiplier = m_VSPipelineData.m_pProfile->m_Multiplier;
 		m_CurrentConvergenceShift = m_VSPipelineData.m_pProfile->m_ConvergenceShift;
@@ -1140,8 +1171,10 @@ void CBaseStereoRenderer::CheckVSCRCMultiplier()
 
 void CBaseStereoRenderer::CheckPSCRCMultiplier()
 {
-	if (!DEBUG_SKIP_CRC_CHECK && m_PSPipelineData.m_pProfile) 
+	if (!DEBUG_SKIP_CRC_CHECK && m_PSPipelineData.m_pProfile)
 	{
+		// 0.4.3 <When TextureCRC> sub-filter — only apply primitive if filter matches.
+		if (!TextureMatchesWhenFilter(*m_PSPipelineData.m_pProfile)) return;
 		DEBUG_TRACE3(_T("ShaderCRC = 0x%X Multiplier = %f detected\n"), 
 			m_PSPipelineData.m_CurrentShaderData.CRC32, m_PSPipelineData.m_pProfile->m_Multiplier);
 		m_CurrentPSMultiplier = m_PSPipelineData.m_pProfile->m_Multiplier;

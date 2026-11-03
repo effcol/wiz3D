@@ -535,6 +535,13 @@ protected:
 	void			CheckRenderInStereoPSPipeline();
 	void			CheckVSCRCMultiplier();
 	void			CheckPSCRCMultiplier();
+	// 0.4.3 <When TextureCRC="0x..."/> sub-filter on DX9: queries bound PS
+	// textures (stages 0..15), FNV-1a-hashes each pointer, and returns true
+	// if any match a listed CRC in the profile's m_WhenTextureCRCs vector.
+	// Returns true when the vector is empty (unfiltered). Called from
+	// CheckVSCRCMultiplier / CheckPSCRCMultiplier before applying the
+	// profile's m_Multiplier / m_ConvergenceShift.
+	bool			TextureMatchesWhenFilter(const class ShaderProfileData& p);
 	void			CheckMeshMultiplier();
 	void			CheckViewportZRange();
 

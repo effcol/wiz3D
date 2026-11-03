@@ -64,7 +64,14 @@ void HunterOnCapture();
 // 0.5.0 Numpad 4: force the currently cycled CRC to mono-both-eyes and
 // persist a <Mono> entry to the per-user UserProfile.xml. No-op when hunt
 // mode is off or no CRC is cycled yet. Fires a 2 s OSD toast on success.
+// Toggle semantics (0.5.0 port from DX11): a second press on the same CRC
+// un-monos and removes the UserProfile entry.
 void HunterOnMonoCurrent();
+
+// 0.5.0 Numpad 5: toggle hunt granularity between CRC-level (default) and
+// Draw-level. In Draw mode, Numpad 1/2 cycles individual draw calls of the
+// currently-selected CRC within a frame. Mirror of DX11's OnToggleGranularity.
+void HunterOnToggleGranularity();
 
 // OSD read API — POD snapshot, no locks held across GDI.
 struct HunterState
@@ -75,6 +82,10 @@ struct HunterState
     uint32_t drawsForHidden;
     size_t   cycleIdx;
     size_t   cycleSize;
+    // 0.5.0 Numpad 5 granularity + draw-cycle state (mirrors DX11).
+    bool     drawGranularity;
+    size_t   drawCycleIdx;
+    size_t   drawCycleSize;
     // 0.4.1 save-toast: non-zero flashDeadline means render a "Shader
     // saved: <leaf>" toast bottom-right until the deadline. Mirrors DX11.
     uint64_t flashDeadline;

@@ -62,6 +62,13 @@ static volatile LONG g_crashLogged = 0;  // prevent re-entrant logging
 //     Commando-AMD is the canonical example.
 //   - EOSOVH-Win32-Shipping.dll: Epic Online Services overlay strlen-loop
 //     trap when SR weave runs in TR2013-class titles (project_tr2013_sr_dead_end).
+//   - XAudio2_*.dll: integer-divide-by-zero inside the XAudio2 engine thread
+//     during Alt-F4 / taskkill shutdown of games using Microsoft's legacy audio
+//     stack (RE4 2005 Capcom port is canonical). The audio thread is still
+//     processing a buffer when the game kills the apartment thread that owns
+//     the output voice; XAudio2 does an unchecked division by a zero mixer
+//     stride. Harmless at this point in the process lifetime — the game is
+//     already exiting. Not a wiz3D bug and not reachable through our code.
 // Compared by leaf filename (case-insensitive). If a fault originates inside
 // one of these, we return CONTINUE_SEARCH WITHOUT writing a dump — the
 // existing SEH chain still gets the exception, the game still recovers.
@@ -71,6 +78,11 @@ static const wchar_t* const kFalseAlarmModules[] = {
     L"SPFILEQ.dll",
     L"drvstore.dll",
     L"EOSOVH-Win32-Shipping.dll",
+    // XAudio2 shutdown-race divide-by-zero (see note above). Match the whole
+    // family: XAudio2_7 (RE4 era), XAudio2_8 (Win8), XAudio2_9 (Win10+).
+    L"XAudio2_7.dll",
+    L"XAudio2_8.dll",
+    L"XAudio2_9.dll",
     // DimencoWeaving runs a VMware-backdoor hypervisor probe during SR
     // runtime init (`IN EAX, DX` to port 0x5658 with EAX="VMXh"). That
     // raises PRIV_INSTRUCTION which the SR SDK's own __try/__except

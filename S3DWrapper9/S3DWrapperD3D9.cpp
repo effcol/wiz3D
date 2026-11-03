@@ -119,6 +119,7 @@ static void RegisterDX9ShaderHunterHandlers()
 	gInfo.HuntNextHandler    = &wiz3d::dx9::HunterOnCycleNext;
 	gInfo.HuntCaptureHandler = &wiz3d::dx9::HunterOnCapture;
 	gInfo.HuntMonoCurrentHandler = &wiz3d::dx9::HunterOnMonoCurrent;
+	gInfo.HuntToggleGranularityHandler = &wiz3d::dx9::HunterOnToggleGranularity;
 	gInfo.ProfileReloadHandler = &wiz3d::dx9::RequestProfileReload;
 }
 

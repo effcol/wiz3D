@@ -57,7 +57,29 @@ std::unordered_set<CrcStageKey>             s_drewThisFrame;
 std::unordered_map<CrcStageKey, uint32_t>   s_drawCountForFrame;
 std::vector<CrcStageKey>                    s_cycle;
 size_t                                      s_cycleIdx = 0;
-CrcStageKey                                 s_hidden   = 0;
+
+// 0.5.0 port from DX11: s_hidden promoted to atomic so hot-path
+// HunterShouldSkipDraw reads lock-free. Hotkey writers still take s_lock to
+// update the atomic together with cycle state.
+std::atomic<uint64_t>                       s_hidden{ 0 };
+
+// 0.5.0 cycle-flash: HunterShouldSkipDraw returns true for 15 of every 30
+// frames so the hunted shader visibly flashes on/off at ~2 Hz. FrameEnd
+// increments; OnToggle / OnCycle* reset to start in the hidden half so the
+// first visual response is "it disappeared".
+std::atomic<uint32_t>                       s_flashFrame{ 0 };
+constexpr uint32_t                          kFlashPeriod = 30;
+constexpr uint32_t                          kFlashHidden = 15;
+
+// 0.5.0 Numpad 5 draw-level granularity. In Draw mode, ShouldSkipDraw
+// flashes only the specific draw-of-CRC at index s_drawCycleIdx. NoteDraw
+// bumps s_currentDrawIdx for each matching draw per frame; FrameEnd
+// snapshots the count into s_drawCycleSize.
+enum class HuntGranularity : uint8_t { CRC = 0, Draw = 1 };
+std::atomic<uint8_t>                        s_granularity{ (uint8_t)HuntGranularity::CRC };
+std::atomic<uint32_t>                       s_currentDrawIdx{ 0 };
+size_t                                      s_drawCycleIdx = 1;
+size_t                                      s_drawCycleSize = 0;
 
 // 0.4.1 save-toast. See S3DWrapper10/ShaderHunter.cpp for the design.
 uint64_t                                    s_flashDeadline  = 0;
@@ -141,6 +163,18 @@ void HunterNoteCreated(uint32_t crc, HuntStage stage, const void* bytecode, uint
 void HunterNoteDraw(uint32_t vsCrc, uint32_t psCrc)
 {
     if (!PathIsOn()) return;
+    // 0.5.0 Numpad 5: bump the per-draw counter if the bound VS or PS matches
+    // the selected CRC. Atomic — ShouldSkipDraw reads this right after.
+    const uint64_t hidden = s_hidden.load(std::memory_order_relaxed);
+    if (hidden)
+    {
+        const uint32_t crc = (uint32_t)(hidden >> 1);
+        const bool isVS = ((hidden & 1) == 0);
+        const uint32_t boundCrc = isVS ? vsCrc : psCrc;
+        if (boundCrc == crc)
+            s_currentDrawIdx.fetch_add(1, std::memory_order_acq_rel);
+    }
+
     std::lock_guard<std::mutex> g(s_lock);
     if (vsCrc)
     {
@@ -156,21 +190,29 @@ void HunterNoteDraw(uint32_t vsCrc, uint32_t psCrc)
     }
 }
 
-bool HunterShouldSkipDraw(uint32_t /*vsCrc*/, uint32_t /*psCrc*/)
+bool HunterShouldSkipDraw(uint32_t vsCrc, uint32_t psCrc)
 {
-    // 0.5.0: this used to return true when the bound VS/PS CRC matched the
-    // currently hunted CRC, which caused CBaseStereoRenderer::Draw* to return
-    // S_OK without issuing the draw at either eye. Unity games (Lara Croft GO
-    // observed 2026-11-02 on Acer SpatialLabs; crash dump null-deref inside
-    // Mono.dll JIT'd code) break when draw outputs the Mono runtime relies on
-    // disappear, so a dropped draw is unsafe in the general case.
-    //
-    // The hunting workflow stays usable via the OSD (cycle / capture) plus the
-    // Numpad 4 "mono-this-CRC" hotkey, which routes through the normal mono
-    // path via g_ProfileData — safe for any engine because the shader still
-    // executes, it just stops carrying the stereo offset. See the design doc
-    // risk #1 for the full rationale.
-    return false;
+    // 0.5.0 cycle-flash (port from DX11): the hunted shader flashes on/off
+    // at ~2 Hz (15/30 frames hidden). Not continuous-hide — keeps Unity /
+    // Mono.dll runtimes from null-derefing on expected outputs. State is
+    // cleared on hunt-exit in HunterOnToggle so the game recovers cleanly.
+    // Numpad 4 remains the engine-safe way to persist a mono fix.
+    const uint64_t hidden = s_hidden.load(std::memory_order_relaxed);
+    if (!hidden) return false;
+    const uint32_t crc = (uint32_t)(hidden >> 1);
+    const bool isVS = ((hidden & 1) == 0);
+    const uint32_t boundCrc = isVS ? vsCrc : psCrc;
+    if (boundCrc != crc) return false;
+
+    const auto gran = (HuntGranularity)s_granularity.load(std::memory_order_relaxed);
+    if (gran == HuntGranularity::Draw)
+    {
+        const uint32_t curIdx = s_currentDrawIdx.load(std::memory_order_relaxed);
+        if (s_drawCycleIdx == 0 || curIdx != (uint32_t)s_drawCycleIdx) return false;
+    }
+
+    const uint32_t f = s_flashFrame.load(std::memory_order_relaxed);
+    return (f % kFlashPeriod) < kFlashHidden;
 }
 
 void HunterFrameEnd()
@@ -179,10 +221,11 @@ void HunterFrameEnd()
     std::lock_guard<std::mutex> g(s_lock);
     s_cycle.assign(s_drewThisFrame.begin(), s_drewThisFrame.end());
     std::sort(s_cycle.begin(), s_cycle.end());
-    if (s_hidden)
+    const CrcStageKey hiddenNow = s_hidden.load(std::memory_order_relaxed);
+    if (hiddenNow)
     {
-        auto it = std::lower_bound(s_cycle.begin(), s_cycle.end(), s_hidden);
-        if (it != s_cycle.end() && *it == s_hidden)
+        auto it = std::lower_bound(s_cycle.begin(), s_cycle.end(), hiddenNow);
+        if (it != s_cycle.end() && *it == hiddenNow)
             s_cycleIdx = (size_t)(it - s_cycle.begin());
         else
             s_cycleIdx = 0;
@@ -191,6 +234,12 @@ void HunterFrameEnd()
     {
         s_cycleIdx = 0;
     }
+
+    // 0.5.0: advance the flash counter + snapshot per-draw counter.
+    s_flashFrame.fetch_add(1, std::memory_order_relaxed);
+    s_drawCycleSize = (size_t)s_currentDrawIdx.exchange(0, std::memory_order_acq_rel);
+    if (s_drawCycleSize && s_drawCycleIdx > s_drawCycleSize) s_drawCycleIdx = s_drawCycleSize;
+
     s_drewThisFrame.clear();
     s_drawCountForFrame.clear();
 }
@@ -200,23 +249,44 @@ void HunterOnToggle()
     std::lock_guard<std::mutex> g(s_lock);
     const bool next = !g_active.load(std::memory_order_relaxed);
     g_active.store(next, std::memory_order_release);
-    if (!next) s_hidden = 0;
+    if (!next)
+    {
+        // Leaving hunt — restore all draws (Unity-safe recovery).
+        s_hidden.store(0, std::memory_order_release);
+    }
+    else
+    {
+        s_flashFrame.store(0, std::memory_order_relaxed);
+    }
     HLog("[hunt-dx9] %s\n", next ? "ENTER" : "EXIT");
 }
 
 void HunterOnCyclePrev()
 {
-    // Always log the outcome so a "nothing happens" complaint has a
-    // diagnostic trail. Mirror of the DX11 ShaderHunter.
     if (!PathIsOn()) { HLog("[hunt-dx9] prev: hunt mode is off (Numpad 0 to enter)\n"); return; }
     std::lock_guard<std::mutex> g(s_lock);
+    const auto gran = (HuntGranularity)s_granularity.load(std::memory_order_relaxed);
+    if (gran == HuntGranularity::Draw)
+    {
+        if (!s_drawCycleSize) { HLog("[hunt-dx9] prev: no draws of selected CRC this frame\n"); return; }
+        if (s_drawCycleIdx <= 1) s_drawCycleIdx = s_drawCycleSize;
+        else                     s_drawCycleIdx--;
+        s_flashFrame.store(0, std::memory_order_relaxed);
+        HLog("[hunt-dx9] prev -> draw %zu/%zu of CRC=0x%08X\n",
+             s_drawCycleIdx, s_drawCycleSize,
+             (uint32_t)(s_hidden.load(std::memory_order_relaxed) >> 1));
+        return;
+    }
     if (s_cycle.empty()) { HLog("[hunt-dx9] prev: cycle empty (no draws observed this frame yet)\n"); return; }
     if (s_cycleIdx == 0) s_cycleIdx = s_cycle.size() - 1;
     else                 s_cycleIdx--;
-    s_hidden = s_cycle[s_cycleIdx];
+    const CrcStageKey k = s_cycle[s_cycleIdx];
+    s_hidden.store(k, std::memory_order_release);
+    s_flashFrame.store(0, std::memory_order_relaxed);
+    s_drawCycleIdx = 1;
     HLog("[hunt-dx9] prev -> CRC=0x%08X stage=%s (%zu/%zu)\n",
-         (uint32_t)(s_hidden >> 1),
-         ((s_hidden & 1) ? "PS" : "VS"),
+         (uint32_t)(k >> 1),
+         ((k & 1) ? "PS" : "VS"),
          s_cycleIdx + 1, s_cycle.size());
 }
 
@@ -224,13 +294,41 @@ void HunterOnCycleNext()
 {
     if (!PathIsOn()) { HLog("[hunt-dx9] next: hunt mode is off (Numpad 0 to enter)\n"); return; }
     std::lock_guard<std::mutex> g(s_lock);
+    const auto gran = (HuntGranularity)s_granularity.load(std::memory_order_relaxed);
+    if (gran == HuntGranularity::Draw)
+    {
+        if (!s_drawCycleSize) { HLog("[hunt-dx9] next: no draws of selected CRC this frame\n"); return; }
+        if (s_drawCycleIdx == 0 || s_drawCycleIdx >= s_drawCycleSize) s_drawCycleIdx = 1;
+        else                                                           s_drawCycleIdx++;
+        s_flashFrame.store(0, std::memory_order_relaxed);
+        HLog("[hunt-dx9] next -> draw %zu/%zu of CRC=0x%08X\n",
+             s_drawCycleIdx, s_drawCycleSize,
+             (uint32_t)(s_hidden.load(std::memory_order_relaxed) >> 1));
+        return;
+    }
     if (s_cycle.empty()) { HLog("[hunt-dx9] next: cycle empty (no draws observed this frame yet)\n"); return; }
     s_cycleIdx = (s_cycleIdx + 1) % s_cycle.size();
-    s_hidden = s_cycle[s_cycleIdx];
+    const CrcStageKey k = s_cycle[s_cycleIdx];
+    s_hidden.store(k, std::memory_order_release);
+    s_flashFrame.store(0, std::memory_order_relaxed);
+    s_drawCycleIdx = 1;
     HLog("[hunt-dx9] next -> CRC=0x%08X stage=%s (%zu/%zu)\n",
-         (uint32_t)(s_hidden >> 1),
-         ((s_hidden & 1) ? "PS" : "VS"),
+         (uint32_t)(k >> 1),
+         ((k & 1) ? "PS" : "VS"),
          s_cycleIdx + 1, s_cycle.size());
+}
+
+void HunterOnToggleGranularity()
+{
+    if (!PathIsOn()) { HLog("[hunt-dx9] granularity: hunt mode is off (Ctrl+Numpad 0 to enter)\n"); return; }
+    std::lock_guard<std::mutex> g(s_lock);
+    const auto cur = (HuntGranularity)s_granularity.load(std::memory_order_relaxed);
+    const auto next = (cur == HuntGranularity::CRC) ? HuntGranularity::Draw : HuntGranularity::CRC;
+    s_granularity.store((uint8_t)next, std::memory_order_release);
+    if (next == HuntGranularity::Draw && s_drawCycleIdx == 0 && s_drawCycleSize) s_drawCycleIdx = 1;
+    s_flashFrame.store(0, std::memory_order_relaxed);
+    HLog("[hunt-dx9] granularity -> %s (draws of selected CRC last frame: %zu)\n",
+         next == HuntGranularity::CRC ? "CRC" : "Draw", s_drawCycleSize);
 }
 
 void HunterOnMonoCurrent()
@@ -239,15 +337,14 @@ void HunterOnMonoCurrent()
     CrcStageKey hidden;
     {
         std::lock_guard<std::mutex> g(s_lock);
-        // Mirror the capture ergonomics: if the user hits Numpad 4 before
-        // cycling, auto-pick the first shader in the cycle so the fix
-        // still fires.
-        if (!s_hidden && !s_cycle.empty())
+        CrcStageKey cur = s_hidden.load(std::memory_order_relaxed);
+        if (!cur && !s_cycle.empty())
         {
             s_cycleIdx = 0;
-            s_hidden   = s_cycle[0];
+            cur = s_cycle[0];
+            s_hidden.store(cur, std::memory_order_release);
         }
-        hidden = s_hidden;
+        hidden = cur;
     }
     if (!hidden) { HLog("[hunt-dx9] mono: nothing hidden and no draws seen yet\n"); return; }
 
@@ -255,17 +352,22 @@ void HunterOnMonoCurrent()
     const HuntStage stage = (HuntStage)(hidden & 1);
     const int stageInt = (stage == HuntStage::VS) ? 0 : 1;
 
-    const bool added = SaveMonoShaderCRCToUserProfile((DWORD)crc, stageInt) != 0;
-    HLog("[hunt-dx9] mono CRC=0x%08X stage=%s added=%d\n",
-         crc, (stage == HuntStage::VS ? "VS" : "PS"), (int)added);
+    // 0.5.0 toggle semantics (port from DX11): second press un-monos the
+    // same CRC — clears live g_ProfileData and removes the UserProfile entry.
+    bool removed = false;
+    const bool wasMonoed = IsMonoShaderCRCInUserProfile((DWORD)crc, stageInt);
+    if (wasMonoed)
+        removed = RemoveMonoShaderCRCFromUserProfile((DWORD)crc, stageInt);
+    const bool added = !wasMonoed && SaveMonoShaderCRCToUserProfile((DWORD)crc, stageInt) != 0;
+    HLog("[hunt-dx9] mono CRC=0x%08X stage=%s %s\n",
+         crc, (stage == HuntStage::VS ? "VS" : "PS"),
+         wasMonoed ? (removed ? "removed" : "remove-failed")
+                   : (added   ? "added"   : "add-skipped-already-present"));
 
-    // Toast: distinct from the save-toast's "Shader saved" label so the user
-    // can tell which hotkey landed. The github reminder is intentional — the
-    // whole point of in-tree fix authoring is that community-collected
-    // profile entries land upstream.
     char toast[128];
     _snprintf_s(toast, _TRUNCATE,
-                "Mono 0x%08X %s - share at github.com/effcol/wiz3D",
+                "%s 0x%08X %s - share at github.com/effcol/wiz3D",
+                wasMonoed ? "Un-mono" : "Mono",
                 crc, (stage == HuntStage::VS ? "VS" : "PS"));
     std::lock_guard<std::mutex> g(s_lock);
     s_flashDeadline = (uint64_t)GetTickCount64() + 2000;
@@ -282,12 +384,14 @@ void HunterOnCapture()
         std::lock_guard<std::mutex> g(s_lock);
         // 0.4.1: if the user presses Numpad 3 before cycling, auto-pick the first
         // shader in the current cycle so the capture still fires. Matches DX11.
-        if (!s_hidden && !s_cycle.empty())
+        CrcStageKey cur = s_hidden.load(std::memory_order_relaxed);
+        if (!cur && !s_cycle.empty())
         {
             s_cycleIdx = 0;
-            s_hidden   = s_cycle[0];
+            cur = s_cycle[0];
+            s_hidden.store(cur, std::memory_order_release);
         }
-        hidden = s_hidden;
+        hidden = cur;
         if (!hidden) { HLog("[hunt-dx9] capture: nothing hidden and no draws seen yet\n"); return; }
         auto it = s_known.find(hidden);
         if (it == s_known.end())
@@ -391,15 +495,21 @@ HunterState HunterGetState()
     }
     if (!PathIsOn()) return out;
     out.active = true;
-    if (s_hidden)
+    const CrcStageKey hidden = s_hidden.load(std::memory_order_relaxed);
+    if (hidden)
     {
-        out.hiddenCRC   = (uint32_t)(s_hidden >> 1);
-        out.hiddenStage = (HuntStage)(s_hidden & 1);
-        auto it = s_drawCountForFrame.find(s_hidden);
+        out.hiddenCRC   = (uint32_t)(hidden >> 1);
+        out.hiddenStage = (HuntStage)(hidden & 1);
+        auto it = s_drawCountForFrame.find(hidden);
         out.drawsForHidden = (it == s_drawCountForFrame.end()) ? 0 : it->second;
         out.cycleIdx = s_cycleIdx + 1;
     }
     out.cycleSize = s_cycle.size();
+    // 0.5.0 Numpad 5 granularity + draw-cycle state (mirrors DX11).
+    out.drawGranularity = ((HuntGranularity)s_granularity.load(std::memory_order_relaxed)
+                            == HuntGranularity::Draw);
+    out.drawCycleIdx    = s_drawCycleIdx;
+    out.drawCycleSize   = s_drawCycleSize;
     return out;
 }
 
