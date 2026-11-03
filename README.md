@@ -167,6 +167,7 @@ DirectX 11 titles use the full 0.4.0 Stereo-Injector COM-wrap pipeline. DirectX 
 | Far Cry 2 | `Stereo-Injector/DX10-11/32-bit` | ✓ | Untested |  |
 | Far Cry 3 | `Stereo-Injector/DX10-11/32-bit` | ✕ | ✅ Working | DX11 only. Fullscreen or windowed recommended over borderless. |
 | Far Cry 4 | `Stereo-Injector/DX10-11/64-bit` | ✕ | ✅ Working |  |
+| Fallout Shelter | `Stereo-Injector/DX10-11/64-bit` | ✕ | ✅ Working | Unity engine. UI mono via universal UI-Default handler (0x449010EA PS). |
 | F.E.A.R. 3 | `Stereo-Injector/DX10-11/32-bit` | ✓ | Untested |  |
 | Gears of War | `Stereo-Injector/DX10-11/32-bit` | ✓ | Untested |  |
 | Homefront | `Stereo-Injector/DX10-11/32-bit` | ✓ | Untested |  |
@@ -242,6 +243,7 @@ DirectX 11 titles use the full 0.4.0 Stereo-Injector COM-wrap pipeline. DirectX 
 | Call of Duty 4: Modern Warfare (2007) | `Stereo-Injector/DX9/32-bit` | ✓ | Untested |  |
 | Call of Duty: Modern Warfare 2 | `Stereo-Injector/DX9/32-bit` | ✓ | Untested |  |
 | Cars | `Stereo-Injector/DX9/32-bit` | ✓ | Untested |  |
+| Castlevania Anniversary Collection | `Stereo-Injector/DX9/32-bit` | ✕ | ⚠️ Partial | Collection runs stereo but inner emulated games render on a single plane (flat 2D). Needs a 2D-to-3D parallax primitive (planned 0.6.0+). |
 | Castlevania: Lords of Shadow 2 | `Stereo-Injector/DX9/32-bit` | ✕ | ✅ Mostly Working | Needs shadow shader fix. |
 | Chromadrome 2 | `Stereo-Injector/DX9/32-bit` | ✓ | Untested |  |
 | Command & Conquer 3: Tiberium Wars | `Stereo-Injector/DX9/32-bit` | ✓ | ✅ Working | Place in `/RetailExe/1.10`. Game crashes when changing settings. |
@@ -520,6 +522,7 @@ Games that used 3D Vision "Automatic Mode" driver stereo injection, but communic
 | Metro 2033 | `Stereo-Injector/DX10-11/32-bit` | ✓ | ✅ Mostly Working | Can't see weapon in hand. |
 | Metro: Last Light | `Stereo-Injector/DX10-11/32-bit` | ✕ | Untested | Lists 3D Vision support in [Official PC Requirements](https://www.reddit.com/r/Games/comments/1cjh4l/metro_last_light_official_pc_requirements/). |
 | [Orbiter Space Flight Simulator](https://github.com/orbitersim/orbiter) | `Stereo-Injector/DX9/64-bit` | ✕ | Untested | `Stereoscopic 3D` in settings. |
+| Resident Evil 4 (2005) | `Stereo-Injector/DX9/32-bit` | ✕ | ✅ Working | Pre-rendered FMV intro renders black (fine once in-game). Known XAudio2 shutdown-race on Alt-F4 is now filtered. |
 | Resident Evil 5 | `Stereo-Injector/DX9/32-bit` | ✓ | ✅ Working | `Stereo=ON` in `config.ini`.<br>DX9 only on Steam, only tested DX9. |
 | Resident Evil 6 | `Stereo-Injector/DX9/32-bit` | ✕ | ✅ Working | `Stereo=ON` in `config.ini`. Might need shader fix. |
 | rFactor 2 | `Stereo-Injector/DX9/64-bit` | ✕ | Untested | Use Single-player only. |
@@ -555,9 +558,13 @@ In-game hotkeys for adjusting stereo on the fly. All bindings are remappable in 
 | `Shift+F1` | Toggle on-screen hotkey hints |
 | `Ctrl+F1` | Toggle status strip + FPS counter |
 | `Ctrl+Numpad /` | Toggle laser sight (crosshair anchored at screen depth) |
-| `Numpad 0` | **ShaderHunter**: enter / exit hunt mode (DX9 + DX11) — see [Profile Building & Shader Fixes](#profile-building--shader-fixes) |
-| `Numpad 1` / `Numpad 2` | Hunt-mode only: cycle to previous / next drawn shader |
-| `Numpad 3` | Hunt-mode only: capture the currently hidden shader to `wiz3D_Shaders\<Game>\Hunter\` |
+| `Ctrl+Numpad 0` | **ShaderHunter**: enter / exit hunt mode (DX9 + DX11) — see [Profile Building & Shader Fixes](#profile-building--shader-fixes) |
+| `Numpad 1` / `Numpad 2` | Hunt-mode only: cycle previous / next (flashes the current selection on/off at 2 Hz) |
+| `Numpad 3` | Hunt-mode only: capture the currently selected shader to `wiz3D_Shaders\<Game>\Hunter\` |
+| `Numpad 4` | Hunt-mode only (DX11): force-mono the selected CRC and persist to `UserProfile.xml`; press again on the same CRC to un-mono |
+| `Numpad 5` | Hunt-mode only (DX11): toggle hunt granularity between CRC-level (default) and Draw-level — cycle individual draws of the selected CRC |
+| `Alt+Numpad +/-` | Convergence (quick comfort offset) |
+| `Ctrl+Alt+Numpad +/-` | Convergence fine (5x smaller step) |
 | `Ctrl+F5` | Reload `BaseProfile.xml` live (apply profile edits without restarting the game) |
 | `PrintScreen` | Save a stereo screenshot to `My Pictures\wiz3D Screenshots\<Game>\` (default format `.png`; pick PNG/PNS/JPEG/JPS/BMP/DDS via `<ScreenshotType>` in `wiz3D_Config.xml`) |
 | `Ctrl+PrintScreen` | Save a stereo screenshot without applying the display's gamma ramp |

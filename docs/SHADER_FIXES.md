@@ -29,8 +29,8 @@ The DX9 HelixMod-compatible user-HLSL side-door (external `ShaderOverride/<CRC>.
 **0.4.0 (shipped):**
 - **CB-math features** (Akshay's PR #31). 37 declarative tags in `BaseProfile.xml` cover most engine families (UE3, UE4, CryEngine, RAGE, Dunia).
 
-**0.4.1 (this release):**
-- **ShaderHunter** — Numpad 0 enters hunt mode, Numpad 1 / Numpad 2 cycle through CRCs drawn this frame (symmetric left/right skip to keep replay in sync), Numpad 3 captures a mini-report with disasm + CB layout + suggested `<ShaderPatch>` skeleton to `wiz3D_Shaders/<Game>/Hunter/<CRC>_<stage>_<ts>.txt`. OSD strip bottom-centre while active. No config knob — the hotkey is itself the entry point. Numpad bindings follow 3Dmigoto / HelixMod convention so shaderhackers coming from those tools don't learn a new layout.
+**0.4.1 (shipped):**
+- **ShaderHunter** — `Ctrl+Numpad 0` enters hunt mode, Numpad 1 / Numpad 2 cycle through CRCs drawn this frame (symmetric left/right skip to keep replay in sync), Numpad 3 captures a mini-report with disasm + CB layout + suggested `<ShaderPatch>` skeleton to `wiz3D_Shaders/<Game>/Hunter/<CRC>_<stage>_<ts>.txt`. OSD strip bottom-centre while active. No config knob — the hotkey is itself the entry point. Numpad bindings follow 3Dmigoto / HelixMod convention so shaderhackers coming from those tools don't learn a new layout.
 - **`<ShaderPatch>` shorthand** (CRC-keyed, declarative). First primitive: `<SkipStereo/>` — forces a draw mono-both-eyes by short-circuiting `Context11Proxy::EditRightCBs` for the right eye when the bound VS or PS matches. Covers HUD leaks, specific crosshairs, screen-space shaders that shouldn't shift.
 
 **Example:**
@@ -49,10 +49,78 @@ The DX9 HelixMod-compatible user-HLSL side-door (external `ShaderOverride/<CRC>.
 
 The hunter's capture report pre-fills a `<ShaderPatch>` skeleton with sensible defaults for the shader it captured, so authoring is often one copy-paste from the Hunter/ output into BaseProfile.xml.
 
-**Still planned for 0.5.0:**
-- More `<ShaderPatch>` primitives: `<PatchCB>`, `<ScaleCB>`, `<OverrideFeature>`, `<ForceModifiedVS>`.
+**0.4.3 / 0.5.0 (current branch — new primitives):**
+
+Eight new `<ShaderPatch>` primitives + a sub-filter. All are declarative XML inside an existing `<ShaderPatch CRC=...>` block — no HLSL required. All are DX11-only unless noted; the DX9 wrapper ships `<SkipStereo/>` + `<When TextureCRC>` with the 0.4.3 line.
+
+- **`<SkipStereo/>`** (DX9 + DX11, cross-wrapper) — force a draw mono-both-eyes. On DX9 this also pins `m_Multiplier=0` so the iZ3D shader-asm path can't re-apply stereo divergence under a different code path.
+
+- **`<SpriteDepth/>`** (DX11) — analyser replaces a shader's constant depth output with the sampled scene depth so 2D sprites sit at the geometry they occlude. XML override fields:
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="PS">
+      <SpriteDepth TexSlot="3" DepthReg="o0" DepthComponent="z"/>
+  </ShaderPatch>
+  ```
+
+- **`<FixedDepth>`** (DX11) — pin a shader's output to a specific scalar depth (either a fixed value or the current Screen Plane). Twin-shader emits `out.x += cb[0].x` before every `ret`.
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="VS"><FixedDepth Value="0.5"/></ShaderPatch>
+  ```
+
+- **`<DepthFromCB>`** (DX11) — read the depth from a specific CB slot + byte offset. Builds on the FixedDepth twin plan.
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="VS"><DepthFromCB Slot="1" OffsetBytes="48"/></ShaderPatch>
+  ```
+
+- **`<AnimateDepth>`** (DX11) — animate depth over a CB-driven progress value (0..1 lerp from Start to End).
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="VS">
+      <AnimateDepth ProgressCB="2" OffsetBytes="16" Start="0.0" End="1.0"/>
+  </ShaderPatch>
+  ```
+
+- **`<ShiftUV>`** (DX11) — apply a per-eye UV offset on an output register. Twin-shader emits `out.<component> += cb[0].x` where cb[0].x carries the per-eye sign * amount.
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="PS">
+      <ShiftUV OutputReg="o1" Component="x" Amount="0.004"/>
+  </ShaderPatch>
+  ```
+
+- **`<ParallaxLayer>`** (DX11) — convenience shorthand around `<ShiftUV>` for 2D parallax layering (Castlevania / DuckTales / sprite-games). Preset amount + component, no asm required.
+
+- **`<PerEyeTexture>`** (DX11) — swap the SRV bound at a slot to a different pre-rendered texture on the right eye. Lazy scan of currently-bound SRVs keyed by FNV-1a 32-bit hash over the `ID3D11Resource*` pointer — no persistent cache.
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="PS">
+      <PerEyeTexture Slot="0" LeftCRC="0x..." RightCRC="0x..."/>
+  </ShaderPatch>
+  ```
+
+- **`<OverrideCBValue>`** (DX11) — write a specific float into the right-eye CB. Uses `GetRealRight()` preferring the right-eye sibling buffer.
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="VS">
+      <OverrideCBValue Slot="2" OffsetBytes="64" Value="0.25"/>
+  </ShaderPatch>
+  ```
+
+- **`<When TextureCRC="...">`** sub-filter (DX9 + DX11) — scope any of the above to fire only when a specific texture is bound. Lets one profile handle "mono this HUD shader *except* when it's drawing the mini-map" or "shift this UV only for the sprite sheet". FNV-1a 32-bit hash over `ID3D11Resource*` (DX11) or `IDirect3DBaseTexture9*` (DX9) pointer, captured via Hunter's Numpad 5 draw-level fingerprint.
+  ```xml
+  <ShaderPatch CRC="0x..." Stage="PS">
+      <When TextureCRC="0x8F3A21BC"><SkipStereo/></When>
+  </ShaderPatch>
+  ```
+
+**New Hunter features (0.4.3 / 0.5.0):**
+- **`Numpad 4`** (DX11 + DX9) — in hunt mode, mono-force the selected CRC and persist to `UserProfile.xml`. Press again on the same CRC to un-mono (toggle semantics via `IsMonoShaderCRCInUserProfile` + `RemoveMonoShaderCRCFromUserProfile`).
+- **`Numpad 5`** (DX11) — toggle hunt granularity between CRC-level (default) and Draw-level. In Draw mode, Numpad 1/2 cycle individual draws of the selected CRC; the Hunter capture report records per-draw fingerprints (bound textures + bound CB slot values) so you can key a `<When TextureCRC>` filter to the exact draw.
+- **Cycle-flash** (DX11 + DX9) — the selected shader/draw flashes on/off at 2 Hz (15/30 frames hidden per period) so you can see at a glance which element is currently suppressed. Atomic `s_hidden` / `s_flashFrame` state, restarts on cycle/toggle.
+- **Draw-level hunt** (DX11 + DX9 Hunter parity, 0.5.0) — sub-draw selection within a single CRC's draws. Required for games that reuse one shader CRC across multiple logical elements (UI atlases, decal passes).
 
 **Explicitly out of scope:** inline user-HLSL (CDATA override blocks, stereo-params SRV, HelixMod-style replacement shaders). The CRC-keyed declarative path is the only user-facing fix authoring surface — fix fragmentation and licensing complexity from HLSL side-doors (see Geo-11) are what we're avoiding.
+
+**Deferred / planned:**
+- `<InjectMath>` — bounded DSL for anchored bytecode insertions beyond the Fixed/Shift/CB primitives.
+- `<ReplaceShader>` + an LGPL-licensed template library.
+- DX9 parity for `<DepthFromCB>`, `<AnimateDepth>`, `<PerEyeTexture>`, `<SpriteDepth>` (dynamic world-pos). XML parses on DX9 today; runtime deferred until a concrete DX9 game surfaces that needs them. Author workaround: use the DX11 wrapper if the game has a DX11 renderer available.
 
 See `S3DWrapper10/ShaderModifier11.cpp` (automatic VS eye-shift token rewrite) and `S3DWrapper10/ShaderPatch11.cpp` (automatic right-eye shader twinning) for the existing engine-internal shader-modification paths. Both run without user authoring.
 

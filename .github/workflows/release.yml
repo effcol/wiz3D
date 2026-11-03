@@ -93,8 +93,15 @@ jobs:
 
       - name: Upload combined release artifact
         # Single artifact, name pulled from VERSION.txt (e.g. wiz3D.v0.2.4).
+        # SR-Native (Samsung Odyssey 3D Hub / LeiaSR passthrough) is built
+        # locally only — its solution isn't in CI and its output includes
+        # third-party SDK DLLs that can't ship from GitHub Actions. The
+        # folder's wiz3D_Config.xml is tracked in git, so exclude the whole
+        # subtree here.
         uses: actions/upload-artifact@v6
         with:
           name: wiz3D.v${{ steps.version.outputs.version }}
-          path: releases/
+          path: |
+            releases/
+            !releases/wiz3D/SR-Native/**
           if-no-files-found: error
