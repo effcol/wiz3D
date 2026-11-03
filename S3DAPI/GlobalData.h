@@ -279,6 +279,10 @@ enum EventId
 	// gated (dev-only).
 	INCREASE_CONVERGENCE_SHIFT,
 	DECREASE_CONVERGENCE_SHIFT,
+	// 0.5.0: Ctrl+Alt+Num +/- for 5x-finer convergence tuning (comfort trims
+	// below the normal step). Pairs with INCREASE/DECREASE_CONVERGENCE_SHIFT.
+	INCREASE_CONVERGENCE_SHIFT_FINE,
+	DECREASE_CONVERGENCE_SHIFT_FINE,
 #ifndef FINAL_RELEASE
 	// DEBUG events!!!
 	INCREASE_ZNEAR,
@@ -661,6 +665,9 @@ public:
 			// 0.4.3: ConvergenceShift bindings ungated for Final Release.
 			{ "ConvergenceShiftIncrease", INCREASE_CONVERGENCE_SHIFT,       1131 },	//--- Alt + Num +			---
 			{ "ConvergenceShiftDecrease", DECREASE_CONVERGENCE_SHIFT,       1133 },	//--- Alt + Num -			---
+			// 0.5.0: Ctrl+Alt+Num +/- = 5x-finer convergence step for comfort trims.
+			{ "ConvergenceShiftIncreaseFine", INCREASE_CONVERGENCE_SHIFT_FINE, 1643 },	//--- Ctrl + Alt + Num +	---
+			{ "ConvergenceShiftDecreaseFine", DECREASE_CONVERGENCE_SHIFT_FINE, 1645 },	//--- Ctrl + Alt + Num -	---
 #ifndef FINAL_RELEASE
 			{ "ZNearIncrease", INCREASE_ZNEAR,                              875 },	//--- Ctrl + Shift + Num +  ---
 			{ "ZNearDecrease", DECREASE_ZNEAR,                              877 },	//--- Ctrl + Shift + Num -  ---

@@ -303,21 +303,35 @@ void KeyboardHook::KeyboardProcedure()
 					break;
 #endif
 
-				// 0.4.3: INCREASE/DECREASE_CONVERGENCE_SHIFT ungated for release.
-				// The dev-only Multiplier divisor from the pre-0.4.3 delta formula
-				// is replaced by a constant 1.0 so the hotkey keeps compiling in
-				// FINAL_RELEASE where Multiplier doesn't exist. Semantics match
-				// the per-shader ConvergenceShift from BaseProfile.xml -- additive
-				// to the preset's One_div_ZPS at render time.
+				// 0.5.0: INCREASE/DECREASE_CONVERGENCE_SHIFT step reduced 5x
+				// (/250 vs the former /50). ConvergenceShift is additive to the
+				// preset's One_div_ZPS at render time, and One_div_ZPS defaults
+				// around 0.5, so a /50 step moved ~4% per press -- too coarse
+				// for comfort tuning. /250 lands at ~0.8%, which matches the
+				// feel of the per-shader ConvergenceShift knob in BaseProfile.
 				case INCREASE_CONVERGENCE_SHIFT:
 					{
-						float delta = STEP_ONE_DIV_ZPS / 50 * m_Scale;
+						float delta = STEP_ONE_DIV_ZPS / 250 * m_Scale;
 						gInfo.Input.ConvergenceShift += delta;
 					}
 					break;
 				case DECREASE_CONVERGENCE_SHIFT:
 					{
-						float delta = STEP_ONE_DIV_ZPS / 50 * m_Scale;
+						float delta = STEP_ONE_DIV_ZPS / 250 * m_Scale;
+						gInfo.Input.ConvergenceShift -= delta;
+					}
+					break;
+				// 0.5.0: Ctrl+Alt+Num +/- -- 5x finer than the normal step
+				// for comfort trims where even the /250 step feels too coarse.
+				case INCREASE_CONVERGENCE_SHIFT_FINE:
+					{
+						float delta = STEP_ONE_DIV_ZPS / 1250 * m_Scale;
+						gInfo.Input.ConvergenceShift += delta;
+					}
+					break;
+				case DECREASE_CONVERGENCE_SHIFT_FINE:
+					{
+						float delta = STEP_ONE_DIV_ZPS / 1250 * m_Scale;
 						gInfo.Input.ConvergenceShift -= delta;
 					}
 					break;
