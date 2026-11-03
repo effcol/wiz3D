@@ -14,6 +14,7 @@
 #include <Shlobj.h>
 #include <Shlwapi.h>
 #include "ShaderProfileData.h"
+#include "UniversalMono.h"              // ApplyUniversalMonoDefaults()
 #include "../../CommonUtils/StringUtils.h"
 #include "../../CommonUtils/CommonResourceFolders.h"
 #include "..\Shared\OutputModeNames.h"  // ResolveOutputModeName + OutputModeToLegacyDll
@@ -1137,6 +1138,10 @@ bool ReadConfig(DWORD Vendor)
 void ReadProfiles()
 {
 	gInfo.Input.StereoActive = gInfo.EnableStereo;
+	// Seed universal mono defaults FIRST so BaseProfile/CommunityProfile/
+	// UserProfile entries can override on a per-game basis if any game
+	// legitimately uses a universally-mono CRC for non-UI content.
+	ApplyUniversalMonoDefaults();
 	ReadProfilePart2Data(g_nodeSystemProfile);
 	ReadProfilePart2Data(g_nodeCommunityProfile);
 	ReadProfilePart2Data(g_nodeUserProfile);

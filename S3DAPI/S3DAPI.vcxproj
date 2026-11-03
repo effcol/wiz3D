@@ -229,6 +229,7 @@
     <ClCompile Include="ScalingAgent.cpp" />
     <ClCompile Include="ScalingHook.cpp" />
     <ClCompile Include="ShaderProfileData.cpp" />
+    <ClCompile Include="UniversalMono.cpp" />
     <ClCompile Include="stdafx.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Create</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Create</PrecompiledHeader>
@@ -268,6 +269,7 @@
     <ClInclude Include="ScalingAgent.h" />
     <ClInclude Include="ScalingHook.h" />
     <ClInclude Include="ShaderProfileData.h" />
+    <ClInclude Include="UniversalMono.h" />
     <ClInclude Include="ShutterAPI.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="StereoAPI.h" />

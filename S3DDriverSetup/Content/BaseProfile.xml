@@ -3865,8 +3865,9 @@
 	<Profile Name="Lara Croft GO">
 		<File AppName="Lara Croft GO" Name="Lara Croft GO.exe"/>
 		<Mono>
-			<!-- Unity UI-Default pixel shader (sprite + clip rect) -->
-			<PixelShader CRC="0x449010EA"/>
+			<!-- 0x449010EA (Unity UI-Default PS) is now a universal mono
+			     default (S3DAPI/UniversalMono.cpp), so no per-game entry
+			     is needed for the canonical Unity UI shader. -->
 			<!-- Unity UI textured sprite (simple _Color + _MainTex) -->
 			<PixelShader CRC="0x0C3BE19E"/>
 			<!-- Unity UI vertex shader with _ScreenParams pixel offset -->
