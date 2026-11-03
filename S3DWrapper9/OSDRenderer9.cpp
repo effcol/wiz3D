@@ -297,7 +297,7 @@ bool OSDRenderer9::Init(IDirect3DDevice9* device)
     // Status slot widened to 720 to match the DX11 OSD. Pairs with the 94%
     // horizontal squeeze in DrawTextLine so the worst-case status string
     // fits without clipping.
-    if (!m_slots[(int)Slot::Status].Create(device, 720, 48))      { ReleaseAll(); m_initFailed = true; return false; }
+    if (!m_slots[(int)Slot::Status].Create(device, 1100, 48))     { ReleaseAll(); m_initFailed = true; return false; }
     if (!m_slots[(int)Slot::Fps].Create(device, 180, 36))         { ReleaseAll(); m_initFailed = true; return false; }
     if (!m_slots[(int)Slot::HotkeyHelp].Create(device, 720, 520)) { ReleaseAll(); m_initFailed = true; return false; }
     // 0.4.1 ShaderHunter DX9: two-line bottom-centre strip. Same 820x72
@@ -583,6 +583,7 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
             L"Numpad +  /  -",       L"Separation (depth strength)",
             L"Shift + Numpad +/-",   L"Screen Plane (where zero-parallax depth sits)",
             L"Alt + Numpad +/-",     L"Convergence (quick comfort offset)",
+            L"Ctrl+Alt + Numpad +/-",L"Convergence fine (5x smaller step)",
             L"Numpad 7 / 8 / 9",     L"Preset Low / Default / Strong",
             L"Numpad /",             L"Toggle auto-focus",
             L"Ctrl + Numpad /",      L"Toggle laser-sight crosshair",

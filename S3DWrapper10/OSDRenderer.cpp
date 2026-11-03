@@ -426,7 +426,7 @@ bool OSDRenderer::Init(ID3D11Device* device)
     // horizontal squeeze in DrawTextLine, we want enough DIB room to hold the
     // worst-case status string ("wiz3D | Preset 2 | Sep 100% | Conv 1000 units
     // [Eyes Swapped]") without clipping right-side glyphs.
-    if (!m_slots[(int)Slot::Status].Create(device, 720, 48))      { ReleaseAll(); m_initFailed = true; return false; }
+    if (!m_slots[(int)Slot::Status].Create(device, 1100, 48))     { ReleaseAll(); m_initFailed = true; return false; }
     if (!m_slots[(int)Slot::Fps].Create(device, 180, 36))         { ReleaseAll(); m_initFailed = true; return false; }
     if (!m_slots[(int)Slot::HotkeyHelp].Create(device, 720, 520)) { ReleaseAll(); m_initFailed = true; return false; }
     // 0.5.0 ShaderHunter: two-line bottom-centre strip. 820x72 fits
@@ -825,6 +825,7 @@ void OSDRenderer::Render(ID3D11DeviceContext* ctx,
             L"Numpad +  /  -",       L"Separation (depth strength)",
             L"Shift + Numpad +/-",   L"Screen Plane (where zero-parallax depth sits)",
             L"Alt + Numpad +/-",     L"Convergence (quick comfort offset)",
+            L"Ctrl+Alt + Numpad +/-",L"Convergence fine (5x smaller step)",
             L"Numpad 7 / 8 / 9",     L"Preset Low / Default / Strong",
             L"Numpad /",             L"Toggle auto-focus",
             L"Ctrl + Numpad /",      L"Toggle laser-sight crosshair",
