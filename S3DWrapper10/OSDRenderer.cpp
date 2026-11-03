@@ -677,6 +677,15 @@ void OSDRenderer::BuildHunterText(wchar_t* line1, size_t cap1,
                      L"HUNT  none selected  (%zu CRCs drawn last frame)",
                      s.cycleSize);
     }
+    else if (s.drawGranularity)
+    {
+        // 0.5.0 Numpad 5: Draw-level cycle — show "draw X/Y of CRC Z".
+        _snwprintf_s(line1, cap1, _TRUNCATE,
+                     L"HUNT [Draw]  %hs:0x%08X  draw %zu/%zu  (cycle %zu/%zu)",
+                     (s.hiddenStage == HuntStage::VS ? "VS" : "PS"),
+                     s.hiddenCRC, s.drawCycleIdx, s.drawCycleSize,
+                     s.cycleIdx, s.cycleSize);
+    }
     else
     {
         _snwprintf_s(line1, cap1, _TRUNCATE,
@@ -685,7 +694,7 @@ void OSDRenderer::BuildHunterText(wchar_t* line1, size_t cap1,
                      s.hiddenCRC, s.drawsForHidden, s.cycleIdx, s.cycleSize);
     }
     _snwprintf_s(line2, cap2, _TRUNCATE,
-                 L"Num1 prev   Num2 next   Num3 capture   Num4 mono-this   Ctrl+Num0 exit");
+                 L"Num1 prev   Num2 next   Num3 capture   Num4 mono-this   Num5 draw/CRC   Ctrl+Num0 exit");
 }
 
 // 0.4.1 save-toast: bottom-right, two lines like "Shader saved" / "<leaf>".

@@ -270,6 +270,9 @@ void KeyboardHook::KeyboardProcedure()
 				case HUNT_MONO_CURRENT_SHADER:
 					if (gInfo.HuntMonoCurrentHandler) gInfo.HuntMonoCurrentHandler();
 					break;
+				case HUNT_TOGGLE_GRANULARITY:
+					if (gInfo.HuntToggleGranularityHandler) gInfo.HuntToggleGranularityHandler();
+					break;
 				case RELOAD_BASE_PROFILE:
 					if (gInfo.ProfileReloadHandler) gInfo.ProfileReloadHandler();
 					// 0.5.0: Ctrl+F5 now also resets stereo preset values

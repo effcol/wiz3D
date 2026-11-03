@@ -74,7 +74,12 @@ void ShaderWrapper::ProcessShader( ShaderStaticData& data, CONST UINT* pCode, CO
 	shader_analyzer::TShaderList shaderList;
 	shader_analyzer::TShaderList modifiedShaderList;
 	bool signatureFounded = shader_analyzer::FindOutputSignature(pSignatures, pOutputSignature);
-	if(signatureFounded || GINFO_DEBUG)
+	// 0.5.0: also parse when dumping is on, so the dumped shader has the
+	// iZ3D shader-tree body alongside the raw D3DDisassemble output. Was
+	// gated on signatureFounded alone which skipped half of Unity's shaders
+	// (compute, post-process, utility shaders don't have full I/O sigs).
+	const bool dumpOn = (data.pDump && *data.pDump);
+	if(signatureFounded || GINFO_DEBUG || dumpOn)
 	{
 		shader_analyzer::ParseShader(pCode, shaderList);
 	}
@@ -97,9 +102,11 @@ void ShaderWrapper::ProcessShader( ShaderStaticData& data, CONST UINT* pCode, CO
 			shader_analyzer::GetProjectionMatrices( pOutputSignature, m_ProjectionData, shaderList );
 		}
 
-#ifndef FINAL_RELEASE
+		// 0.5.0: ungated. Was #ifndef FINAL_RELEASE — but the dump path below
+		// prints the resources mask into every shader entry, so release builds
+		// were emitting all-zero masks. Analyser cost is one bitset scan per
+		// unique shader (cached), well under the noise floor.
 		shader_analyzer::GetUsedResourcesMask( shaderList, m_UserResourcesMask );
-#endif
 		
 #if 0
 		if (0) // Assassin's Creed matrix
@@ -119,32 +126,36 @@ void ShaderWrapper::ProcessShader( ShaderStaticData& data, CONST UINT* pCode, CO
 #endif 
 		auto& cacheData = data.CachedAnalyze[m_CRC32];
 		cacheData.projectionShaderData	= m_ProjectionData;
-#ifndef FINAL_RELEASE
-		cacheData.userResourcesMask		= m_UserResourcesMask;
-#endif
+		cacheData.userResourcesMask		= m_UserResourcesMask;   // 0.5.0: ungated for dump
 	}
 	else
 	{
 		m_ProjectionData	= it->second.projectionShaderData;
-#ifndef FINAL_RELEASE
-		m_UserResourcesMask = it->second.userResourcesMask;
-#endif
+		m_UserResourcesMask = it->second.userResourcesMask;      // 0.5.0: ungated for dump
 	}
 
 	if (bStereo)
 		ProcessStereoShader(pCode, shaderList, signatureFounded ? pOutputSignature : NULL, modifiedShaderList, profile);
 
 	// --- print shader if not cached ---
-#ifndef FINAL_RELEASE
+	// 0.5.0: ungated. Was #ifndef FINAL_RELEASE — DumpShaderText itself was
+	// also wrapped, so DumpVS=1 / DumpPS=1 / WIZ3D_FORCE_DUMP=1 silently did
+	// nothing on shipping DX10/11 builds. Companion fix to the DX9 ungate at
+	// DX9ShaderConverter.cpp:911 (0.4.2). Only called on first sight of a CRC
+	// (cache miss) so cost is one disk write per unique shader.
+	//
+	// Also decoupled from the signatureFounded gate — in release GINFO_DEBUG
+	// is FALSE, so the previous `if (signatureFounded || GINFO_DEBUG)` meant
+	// dumps only fired for shaders with full I/O signatures. Many engines
+	// (Unity especially) emit utility / post-process / compute shaders that
+	// pass through our pipeline without a signature, and those were silently
+	// dropped from the dump. D3DDisassemble works on raw bytecode, and
+	// DumpShaderText handles an empty shaderList fine.
 	if (it == data.CachedAnalyze.end())
 	{
-		if (signatureFounded || GINFO_DEBUG)
-		{
-			if (data.pDump && *data.pDump && data.FilePostfix)
-				DumpShaderText(data, pCode, shaderList, modifiedShaderList);
-		}
-	}		
-#endif
+		if (data.pDump && *data.pDump && data.FilePostfix)
+			DumpShaderText(data, pCode, shaderList, modifiedShaderList);
+	}
 }
 
 void ShaderWrapper::ProcessStereoShader( CONST UINT* pCode, const shader_analyzer::TShaderList& shList, 
@@ -377,7 +388,9 @@ CONST UINT* ShaderWrapper::LookForFullShaderCode(CONST UINT* pCode, SIZE_T& full
 
 void ShaderWrapper::DumpShaderText( ShaderStaticData &data, CONST UINT* pCode, const shader_analyzer::TShaderList& shList, const shader_analyzer::TShaderList& modifiedShList )
 {
-#ifndef FINAL_RELEASE
+	// 0.5.0: body ungated (was #ifndef FINAL_RELEASE). Caller gates on
+	// gInfo.DumpVS / gInfo.DumpPS via data.pDump, so if the Config flag is 0
+	// we never get here. D3DDisassemble is available in release.
 	UINT version = pCode[0];
 	std::wstring fullPath = gData.DumpDirectory;
 	fullPath += L"\\";
@@ -450,5 +463,4 @@ void ShaderWrapper::DumpShaderText( ShaderStaticData &data, CONST UINT* pCode, c
 	}
 
 	disShader << std::endl;
-#endif
 }

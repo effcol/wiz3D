@@ -801,6 +801,84 @@ bool SaveMonoShaderCRCToUserProfile(DWORD crc, int stage)
 	return true;
 }
 
+bool IsMonoShaderCRCInUserProfile(DWORD crc, int stage)
+{
+	if (!crc) return false;
+	if (stage != 0 && stage != 1) return false;
+	if (!g_docUserProfiles) return false;
+
+	TiXmlNode* profileNode = NULL;
+	if (!GetNode(common::utils::to_utf8(gInfo.ApplicationFileName).c_str(), profileNode)
+	    || !profileNode)
+		return false;
+
+	TiXmlElement* monoElem = profileNode->FirstChildElement("Mono");
+	if (!monoElem) return false;
+
+	const char* tagName = (stage == 0) ? "VertexShader" : "PixelShader";
+	for (TiXmlElement* e = monoElem->FirstChildElement(tagName); e; e = e->NextSiblingElement(tagName))
+	{
+		const char* existing = e->Attribute("CRC");
+		if (!existing) continue;
+		DWORD existingCrc = 0;
+		if (sscanf_s(existing, "0x%x", &existingCrc) == 1 && existingCrc == crc)
+			return true;
+	}
+	return false;
+}
+
+bool RemoveMonoShaderCRCFromUserProfile(DWORD crc, int stage)
+{
+	if (!crc) return false;
+	if (stage != 0 && stage != 1) return false;
+
+	// Hot-revert the g_ProfileData entry so stereo renders normally again
+	// on the next draw. If the entry has no other state (nothing from
+	// BaseProfile / CommunityProfile set it), erase it entirely; otherwise
+	// just clear the mono flags and leave whatever else was there.
+	ShaderProfileDataMap& map = (stage == 0)
+		? g_ProfileData.VSCRCData
+		: g_ProfileData.PSCRCData;
+	auto it = map.find(crc);
+	if (it != map.end())
+	{
+		it->second.m_Multiplier = 1.0f;
+		it->second.m_bSkipStereo = false;
+	}
+
+	// Remove from UserProfile.xml. Dedup is already enforced on insert so at
+	// most one entry per CRC exists; we still erase_if-walk to be safe
+	// against earlier format variants.
+	if (!g_docUserProfiles) return it != map.end();   // in-memory hot-revert still worked
+
+	TiXmlNode* profileNode = NULL;
+	if (!GetNode(common::utils::to_utf8(gInfo.ApplicationFileName).c_str(), profileNode)
+	    || !profileNode)
+		return it != map.end();
+
+	TiXmlElement* monoElem = profileNode->FirstChildElement("Mono");
+	if (!monoElem) return false;
+
+	const char* tagName = (stage == 0) ? "VertexShader" : "PixelShader";
+	bool removed = false;
+	TiXmlElement* e = monoElem->FirstChildElement(tagName);
+	while (e)
+	{
+		TiXmlElement* next = e->NextSiblingElement(tagName);
+		const char* existing = e->Attribute("CRC");
+		DWORD existingCrc = 0;
+		if (existing && sscanf_s(existing, "0x%x", &existingCrc) == 1 && existingCrc == crc)
+		{
+			monoElem->RemoveChild(e);
+			removed = true;
+		}
+		e = next;
+	}
+	if (removed)
+		g_docUserProfiles->SaveFile();
+	return removed;
+}
+
 void ReadShaderData( TiXmlElement* elem, int shaderType, float fMultiplier, float fConvergenceShift );
 void ReadVectorData( TiXmlElement* itemElement, float fMultiplier )
 {
@@ -1060,7 +1138,151 @@ void ReadProfilePart2Data(TiXmlNode* node)
 			for ( TiXmlElement* op = itemElement->FirstChildElement(); op; op = op->NextSiblingElement() )
 			{
 				if (strcmp(op->Value(), "SkipStereo") == 0)
+				{
+					// 0.4.3: SkipStereo now cross-wrapper. DX11 reads
+					// m_bSkipStereo in Context11Proxy's EditRightCBs; DX9
+					// also sets m_Multiplier=0 so the legacy BaseStereoRenderer
+					// mono-both-eyes path fires. One XML entry, both worlds.
 					pProfile->m_bSkipStereo = true;
+					pProfile->m_Multiplier = 0.0f;
+				}
+				else if (strcmp(op->Value(), "SpriteDepth") == 0)
+				{
+					// 0.5.0 <SpriteDepth/> — XML trigger for Akshay's auto-
+					// detected sprite-depth path. See ShaderProfileData.h for
+					// the attribute meanings. All three are integer registers
+					// (not CRCs); read them from the Numpad 3 capture of the
+					// shader. -1 preserves whatever auto-detection found.
+					int wi = -1, cb = -1, reg = -1;
+					op->QueryIntAttribute("WorldInput", &wi);
+					op->QueryIntAttribute("CameraCB",   &cb);
+					op->QueryIntAttribute("CameraReg",  &reg);
+					if (wi  >= 0) pProfile->m_SpriteWorldInput = wi;
+					if (cb  >= 0) pProfile->m_SpriteCameraCB   = cb;
+					if (reg >= 0) pProfile->m_SpriteCameraReg  = reg;
+				}
+				else if (strcmp(op->Value(), "FixedDepth") == 0)
+				{
+					// 0.5.0 <FixedDepth Value="X"/> — static per-shader depth.
+					// VS only. No world-pos input needed. CAC / retro 2D use.
+					float v = 0.0f;
+					if (op->QueryFloatAttribute("Value", &v) == TIXML_SUCCESS)
+						pProfile->m_FixedDepth = v;
+				}
+				else if (strcmp(op->Value(), "DepthFromCB") == 0)
+				{
+					// 0.5.0 <DepthFromCB CB="N" OffsetBytes="M"/> — read depth
+					// live from a float in a bound CB. VS only.
+					int cb = -1, off = -1;
+					op->QueryIntAttribute("CB",          &cb);
+					op->QueryIntAttribute("OffsetBytes", &off);
+					if (cb >= 0) pProfile->m_DepthFromCB_Slot = cb;
+					if (off >= 0) pProfile->m_DepthFromCB_OffsetBytes = off;
+				}
+				else if (strcmp(op->Value(), "ShiftUV") == 0)
+				{
+					// 0.5.0 <ShiftUV OutputReg="N" Component="x|y" Amount="X"/>
+					// Shift a VS output UV register per eye. Component accepts
+					// "x" / "y" (defaults to x). VS only.
+					int reg = -1;
+					float amt = 0.0f;
+					op->QueryIntAttribute("OutputReg", &reg);
+					op->QueryFloatAttribute("Amount",   &amt);
+					if (reg >= 0) pProfile->m_ShiftUV_OutputReg = reg;
+					pProfile->m_ShiftUV_Amount = amt;
+					const char* comp = op->Attribute("Component");
+					pProfile->m_ShiftUV_Component = (comp && comp[0] == 'y') ? 1 : 0;
+				}
+				else if (strcmp(op->Value(), "ParallaxLayer") == 0)
+				{
+					// 0.5.0 <ParallaxLayer Depth="0.3" UVShift="0.004" OutputReg="N"/>
+					// Flato3D-SR style: combines FixedDepth + ShiftUV in one tag.
+					// Depth = static clip-space shift (like FixedDepth Value);
+					// UVShift = per-eye UV offset (like ShiftUV Amount);
+					// OutputReg (optional, default 1) = the UV output register;
+					// Component (optional, default x) = which UV axis to shift.
+					// Either/both of Depth / UVShift may be set; the primitive
+					// does whichever are active.
+					float depth = 0.0f, uv = 0.0f;
+					if (op->QueryFloatAttribute("Depth", &depth) == TIXML_SUCCESS)
+						pProfile->m_FixedDepth = depth;
+					if (op->QueryFloatAttribute("UVShift", &uv) == TIXML_SUCCESS)
+					{
+						pProfile->m_ShiftUV_Amount = uv;
+						int reg = 1;
+						op->QueryIntAttribute("OutputReg", &reg);
+						pProfile->m_ShiftUV_OutputReg = reg;
+						const char* comp = op->Attribute("Component");
+						pProfile->m_ShiftUV_Component = (comp && comp[0] == 'y') ? 1 : 0;
+					}
+				}
+				else if (strcmp(op->Value(), "AnimateDepth") == 0)
+				{
+					// 0.5.0 <AnimateDepth StartDepth="X" EndDepth="Y"
+					//                     ProgressCB="N" ProgressOffset="M"/>
+					// Lerps between StartDepth and EndDepth by a game-filled
+					// 0..1 progress float read from the CB. VS only.
+					float sd = 0.0f, ed = 0.0f;
+					int cb = -1, off = -1;
+					op->QueryFloatAttribute("StartDepth",      &sd);
+					op->QueryFloatAttribute("EndDepth",        &ed);
+					op->QueryIntAttribute("ProgressCB",        &cb);
+					op->QueryIntAttribute("ProgressOffset",    &off);
+					pProfile->m_AnimDepth_Start = sd;
+					pProfile->m_AnimDepth_End   = ed;
+					if (cb  >= 0) pProfile->m_AnimDepth_ProgressCB     = cb;
+					if (off >= 0) pProfile->m_AnimDepth_ProgressOffset = off;
+				}
+				else if (strcmp(op->Value(), "PerEyeTexture") == 0)
+				{
+					// 0.6.0 <PerEyeTexture Slot="N" LeftCRC="0x..." RightCRC="0x..."/>
+					// Right-eye draw substitutes the game's SRV at Slot N for
+					// the SRV whose resource hashes to RightCRC. Both texture
+					// CRCs come from Numpad 3 Draw-mode capture reports.
+					int slot = -1;
+					op->QueryIntAttribute("Slot", &slot);
+					const char* lcrc = op->Attribute("LeftCRC");
+					const char* rcrc = op->Attribute("RightCRC");
+					DWORD l = 0, r = 0;
+					if (lcrc) sscanf_s(lcrc, "0x%x", &l);
+					if (rcrc) sscanf_s(rcrc, "0x%x", &r);
+					if (slot >= 0 && l && r) {
+						pProfile->m_PerEye_Slot     = slot;
+						pProfile->m_PerEye_LeftCRC  = l;
+						pProfile->m_PerEye_RightCRC = r;
+					}
+				}
+				else if (strcmp(op->Value(), "OverrideCBValue") == 0)
+				{
+					// 0.4.3 <OverrideCBValue CB="N" OffsetBytes="M" Value="X"/>
+					// Write a float value into a game CB at a specific offset
+					// at right-eye draw time. VS only. Most common missing
+					// HelixMod primitive — override wrong stereo-related
+					// constants, disable broken-under-stereo effects by
+					// zeroing a coefficient, etc.
+					int cb = -1, off = -1;
+					float v = 0.0f;
+					op->QueryIntAttribute("CB",          &cb);
+					op->QueryIntAttribute("OffsetBytes", &off);
+					const bool hasValue =
+						(op->QueryFloatAttribute("Value", &v) == TIXML_SUCCESS);
+					if (cb >= 0) pProfile->m_OverrideCB_Slot        = cb;
+					if (off >= 0) pProfile->m_OverrideCB_OffsetBytes = off;
+					if (hasValue) pProfile->m_OverrideCB_Value       = v;
+				}
+				else if (strcmp(op->Value(), "When") == 0)
+				{
+					// 0.5.0 <When TextureCRC="0x..."/> — sub-filter. If any
+					// <When TextureCRC/> is present under this <ShaderPatch>,
+					// the primitives apply only when a draw binds a matching
+					// texture. Multiple <When TextureCRC/> entries OR together.
+					const char* tc = op->Attribute("TextureCRC");
+					if (tc) {
+						DWORD v = 0;
+						if (sscanf_s(tc, "0x%x", &v) == 1 && v)
+							pProfile->m_WhenTextureCRCs.push_back(v);
+					}
+				}
 			}
 		}
 		else if ( strcmp( itemElement->Value(), "Keys" ) == 0 )

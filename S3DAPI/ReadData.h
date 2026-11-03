@@ -32,6 +32,21 @@ void S3DAPI_API WriteInputData(DataInput* overrideInput);
 // writes to g_ProfileData are unsynchronised, matching the existing
 // MaybeReloadProfileBetweenFrames pattern for Ctrl+F5.
 bool S3DAPI_API SaveMonoShaderCRCToUserProfile(DWORD crc, int stage);
+
+// 0.5.0 toggle: companion of SaveMonoShaderCRCToUserProfile. Removes the
+// <VertexShader CRC=...>/<PixelShader CRC=...> entry from UserProfile.xml's
+// <Mono> block AND clears m_Multiplier/m_bSkipStereo on the hot
+// g_ProfileData entry so the shader renders stereo again on the very next
+// draw. Returns true if an entry was actually removed, false if the CRC
+// wasn't in the file.
+bool S3DAPI_API RemoveMonoShaderCRCFromUserProfile(DWORD crc, int stage);
+
+// 0.5.0 toggle query: returns true if the (crc, stage) pair has a
+// <VertexShader CRC=...>/<PixelShader CRC=...> entry inside the active
+// game's <Mono> block in UserProfile.xml. Used by Numpad 4 to decide
+// between save and remove on the current cycle target.
+bool S3DAPI_API IsMonoShaderCRCInUserProfile(DWORD crc, int stage);
+
 extern S3DAPI_API TiXmlNode* g_outputConfig;
 
 // Serialize the active output method's config subtree (g_outputConfig) to an

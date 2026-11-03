@@ -8,6 +8,8 @@
 
 #include "StdAfx.h"
 #include "Context11Proxy-inl.h"
+#include "ShaderHunter.h"   // 0.5.0 Numpad 3 Draw-mode fingerprint capture hook
+#include <cmath>            // 0.5.0 std::isnan for <FixedDepth> sentinel test
 
 namespace wiz3d
 {
@@ -169,7 +171,67 @@ bool Context11Proxy::BindClipSpaceShift(int mode)
 {
     if (m_clipSpaceBound) return false;   // ClipSpaceRays took this draw
     const ShaderAnalysis11Result* info = m_boundInfo[0];
-    if (!info || !(info->clipSpacePosition || (mode == 3 && info->clipSpaceBuilt)) || !m_parent) return false;
+    if (!info || !m_parent) return false;
+
+    // 0.5.0 XML-driven primitives — check the bound VS's profile for an
+    // override before running auto-detect. `<When TextureCRC>` sub-filter
+    // (if present) restricts the primitive to draws binding a matching
+    // texture. See PsBoundResourceHashes() for the pointer-hash scheme.
+    const DWORD vsCrc = BoundShaderCRC(m_parent, m_boundVS);
+    if (vsCrc)
+    {
+        auto it = g_ProfileData.VSCRCData.find(vsCrc);
+        if (it != g_ProfileData.VSCRCData.end())
+        {
+            const auto& p = it->second;
+            if (WhenFilterMatches(p))
+            {
+                // FIFO of specificity: PerEyeTexture (SRV swap, no shader
+                // patch) → ShiftUV → AnimateDepth → DepthFromCB → FixedDepth.
+                // First match wins.
+                if (p.m_PerEye_Slot >= 0)
+                {
+                    if (BindPerEyeTexture(info, p.m_PerEye_Slot,
+                                           p.m_PerEye_LeftCRC, p.m_PerEye_RightCRC))
+                        return true;
+                }
+                if (p.m_ShiftUV_OutputReg >= 0)
+                {
+                    if (BindShiftUV(info, (unsigned)p.m_ShiftUV_OutputReg,
+                                     (unsigned)p.m_ShiftUV_Component, p.m_ShiftUV_Amount))
+                        return true;
+                }
+                if (p.m_AnimDepth_ProgressCB >= 0 && p.m_AnimDepth_ProgressOffset >= 0)
+                {
+                    if (BindAnimateDepth(info, p.m_AnimDepth_ProgressCB,
+                                          p.m_AnimDepth_ProgressOffset,
+                                          p.m_AnimDepth_Start, p.m_AnimDepth_End))
+                        return true;
+                }
+                if (p.m_DepthFromCB_Slot >= 0 && p.m_DepthFromCB_OffsetBytes >= 0)
+                {
+                    if (BindDepthFromCB(info, p.m_DepthFromCB_Slot, p.m_DepthFromCB_OffsetBytes))
+                        return true;
+                }
+                if (!std::isnan(p.m_FixedDepth))
+                {
+                    if (BindFixedDepth(info, p.m_FixedDepth))
+                        return true;
+                }
+                if (p.m_OverrideCB_Slot >= 0 && p.m_OverrideCB_OffsetBytes >= 0
+                    && !std::isnan(p.m_OverrideCB_Value))
+                {
+                    if (BindOverrideCBValue(info, p.m_OverrideCB_Slot,
+                                             p.m_OverrideCB_OffsetBytes,
+                                             p.m_OverrideCB_Value))
+                        return true;
+                }
+            }
+        }
+    }
+
+    // Auto-detect path (Akshay's analyser-driven):
+    if (!(info->clipSpacePosition || (mode == 3 && info->clipSpaceBuilt))) return false;
     if (m_boundGS || m_boundHS || m_boundDS || !m_depthTestOn || m_depthWriteOn || m_omHasUAVs || OverlayPass() ||
         (m_topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST && m_topology != D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP))
         return false;
@@ -218,13 +280,93 @@ bool Context11Proxy::BindClipSpaceShift(int mode)
     return true;
 }
 
+// 0.5.0 <When TextureCRC> runtime filter. Resource-pointer hash (FNV-1a 32)
+// over the ID3D11Resource* of each bound PS SRV. Session-stable (same hash
+// for the same texture object across frames of one run) but not cross-session
+// portable — pointer values shift between launches. Good enough for the
+// hunt-then-author-then-test loop; cross-session content hashing is a
+// future refinement (needs texture-upload hooking).
+static uint32_t FnvHashPtr(const void* p)
+{
+    uint32_t h = 0x811c9dc5u;
+    const uint8_t* b = reinterpret_cast<const uint8_t*>(&p);
+    for (size_t i = 0; i < sizeof(void*); ++i) { h ^= b[i]; h *= 0x01000193u; }
+    return h;
+}
+
+void Context11Proxy::PsBoundResourceHashes(uint32_t out[16], unsigned& count)
+{
+    count = 0;
+    ID3D11ShaderResourceView* srvs[16] = {};
+    m_real->PSGetShaderResources(0, 16, srvs);
+    for (unsigned i = 0; i < 16; ++i)
+    {
+        if (!srvs[i]) continue;
+        ID3D11Resource* res = nullptr;
+        srvs[i]->GetResource(&res);
+        if (res)
+        {
+            out[count++] = FnvHashPtr(res);
+            res->Release();
+        }
+        srvs[i]->Release();
+    }
+}
+
+bool Context11Proxy::WhenFilterMatches(const ::ShaderProfileData& p)
+{
+    if (p.m_WhenTextureCRCs.empty()) return true;   // no filter = always match
+    uint32_t hashes[16]; unsigned n = 0;
+    PsBoundResourceHashes(hashes, n);
+    for (const DWORD want : p.m_WhenTextureCRCs)
+        for (unsigned i = 0; i < n; ++i)
+            if (hashes[i] == (uint32_t)want) return true;
+    return false;
+}
+
+// 0.5.0 — called from every Draw* in Context11Proxy_Modified.cpp right after
+// ShaderHunter::NoteDraw. Cheap when hunt mode is off or in CRC granularity
+// (one atomic load). Expensive only for the one specific draw-cycle target.
+void Context11Proxy::HuntMaybeCaptureFingerprint()
+{
+    if (!wiz3d::ShaderHunter::ShouldCaptureFingerprint()) return;
+    uint32_t hashes[16]; unsigned n = 0;
+    PsBoundResourceHashes(hashes, n);
+    wiz3d::ShaderHunter::StoreCurrentDrawFingerprint(hashes, n);
+}
+
+// 0.5.0 <SpriteDepth> XML override: when BaseProfile.xml declares a sprite's
+// world-input / camera-CB / camera-register for a VS CRC the analyser missed,
+// use the user values here. The analyser's auto-detected values stay as the
+// default so games with working auto-detect are unaffected. Reads via the
+// VS CRCData map keyed on the currently bound VS; a mismatched profile entry
+// just leaves auto-detect in place.
+void Context11Proxy::EffectiveSpriteDepthFields(const ShaderAnalysis11Result* info,
+                                                 int& outWorldInput,
+                                                 int& outCameraCB,
+                                                 int& outCameraReg)
+{
+    outWorldInput = info->spriteWorldInput;
+    outCameraCB   = info->spriteCameraCB;
+    outCameraReg  = info->spriteCameraReg;
+    const DWORD crc = BoundShaderCRC(m_parent, m_boundVS);
+    if (!crc) return;
+    auto it = g_ProfileData.VSCRCData.find(crc);
+    if (it == g_ProfileData.VSCRCData.end()) return;
+    if (it->second.m_SpriteWorldInput >= 0) outWorldInput = it->second.m_SpriteWorldInput;
+    if (it->second.m_SpriteCameraCB   >= 0) outCameraCB   = it->second.m_SpriteCameraCB;
+    if (it->second.m_SpriteCameraReg  >= 0) outCameraReg  = it->second.m_SpriteCameraReg;
+}
+
 // The row a sprite twin dots float4(world position, 1) with to get its depth: the scene camera's w row from the block the
 // shader reads its camera position from, made world-space when that camera is camera-relative (w translation ~ 0).
 bool Context11Proxy::SpriteDepthRow(const ShaderAnalysis11Result* info, float row[4])
 {
+    int worldInputUnused, effCameraCB, effCameraReg;
+    EffectiveSpriteDepthFields(info, worldInputUnused, effCameraCB, effCameraReg);
     const CBEyeSlots& s = m_cbSlots[ST_VS];
-    const UINT slot = (UINT)info->spriteCameraCB;
-    if (info->spriteCameraCB < 0 || slot >= s.high || slot >= kMaxCBs || !s.proxy[slot]) return false;
+    const UINT slot = (UINT)effCameraCB;
+    if (effCameraCB < 0 || slot >= s.high || slot >= kMaxCBs || !s.proxy[slot]) return false;
     Buffer11Proxy* b = s.proxy[slot];
     const bool ring = b->IsRing();
     if (!ring && b->Shadow().empty()) return false;
@@ -234,8 +376,8 @@ bool Context11Proxy::SpriteDepthRow(const ShaderAnalysis11Result* info, float ro
     size_t size = s.num[slot] ? (size_t)s.num[slot] * 16 : total - base;
     if (base + size > total) size = total - base;
     const unsigned char* bytes = (ring ? b->RingData() : b->Shadow().data()) + base;
-    if ((size_t)info->spriteCameraReg * 16 + 16 > size) return false;
-    const float* c = reinterpret_cast<const float*>(bytes + (size_t)info->spriteCameraReg * 16);
+    if ((size_t)effCameraReg * 16 + 16 > size) return false;
+    const float* c = reinterpret_cast<const float*>(bytes + (size_t)effCameraReg * 16);
     float m[16];
     bool found = false;
     for (size_t off = 0; off + 64 <= size && off < 64 * 16; off += 16)
@@ -261,17 +403,185 @@ bool Context11Proxy::SpriteDepthRow(const ShaderAnalysis11Result* info, float ro
 // depth, the scene's own stereo terms. No near plane and no depth buffer: Andromeda's flare z is no depth.
 bool Context11Proxy::BindSpriteDepth(const ShaderAnalysis11Result* info)
 {
-    if (info->spriteWorldInput < 0) return false;
+    int effWorldInput, effCameraCB, effCameraReg;
+    EffectiveSpriteDepthFields(info, effWorldInput, effCameraCB, effCameraReg);
+    if (effWorldInput < 0) return false;
     const float p00 = s_camP00 > 0.f ? s_camP00 : s_sceneP00;
     float row[4];
     if (!(p00 > 0.f) || !SpriteDepthRow(info, row)) { ++m_clipSpaceNoCameraThisFrame; return false; }
     const float eyeShift = wiz3D_GetEffectiveEyeShift() * ProfileShaderMultiplier(m_parent, m_boundVS) * EyeShiftSign();
     const float k[8] = { row[0], row[1], row[2], row[3], eyeShift * p00, EyeOffsetM41(eyeShift) * p00, 0.f, 0.f };
-    if (!BindTwin(ST_VS, info, kTwinSpriteDepth, SpriteDepthPlan((unsigned)info->spriteWorldInput), k, 8)) return false;
+    if (!BindTwin(ST_VS, info, kTwinSpriteDepth, SpriteDepthPlan((unsigned)effWorldInput), k, 8)) return false;
     m_clipSpaceBound = true;
     ++m_clipSpaceDrawsThisFrame;
     ++m_spriteTwinDrawsThisFrame;
     return true;
+}
+
+// 0.5.0 <FixedDepth Value="X"/> — static per-shader depth, no world-pos read.
+// Simplest primitive; plan is a single ADD of cb[0].x to clip-space x.
+bool Context11Proxy::BindFixedDepth(const ShaderAnalysis11Result* info, float depth)
+{
+    if (!info || !m_parent) return false;
+    const float p00 = s_camP00 > 0.f ? s_camP00 : s_sceneP00;
+    if (!(p00 > 0.f)) { ++m_clipSpaceNoCameraThisFrame; return false; }
+    const float eyeShift = wiz3D_GetEffectiveEyeShift() * ProfileShaderMultiplier(m_parent, m_boundVS) * EyeShiftSign();
+    const float k[4] = { eyeShift * depth * p00, 0.f, 0.f, 0.f };
+    if (!BindTwin(ST_VS, info, kTwinFixedDepth, FixedDepthPlan(), k, 4)) return false;
+    m_clipSpaceBound = true;
+    ++m_clipSpaceDrawsThisFrame;
+    return true;
+}
+
+// 0.5.0 <DepthFromCB CB="N" OffsetBytes="M"/> — depth read from a bound CB
+// float at bind time. Same plan as FixedDepth; the difference is purely
+// where we source the depth value.
+bool Context11Proxy::BindDepthFromCB(const ShaderAnalysis11Result* info, int cbSlot, int offsetBytes)
+{
+    if (!info || !m_parent) return false;
+    if (cbSlot < 0 || (UINT)cbSlot >= kMaxCBs || offsetBytes < 0) return false;
+    const CBEyeSlots& s = m_cbSlots[ST_VS];
+    if ((UINT)cbSlot >= s.high || !s.proxy[cbSlot]) return false;
+    Buffer11Proxy* b = s.proxy[cbSlot];
+    const bool ring = b->IsRing();
+    if (!ring && b->Shadow().empty()) return false;
+    const size_t base = s.num[cbSlot] ? (size_t)s.first[cbSlot] * 16 : 0;
+    const size_t total = ring ? b->RingSize() : b->Shadow().size();
+    if (base + (size_t)offsetBytes + sizeof(float) > total) return false;
+    const unsigned char* bytes = (ring ? b->RingData() : b->Shadow().data()) + base;
+    float depth = 0.0f;
+    memcpy(&depth, bytes + (size_t)offsetBytes, sizeof(float));
+    return BindFixedDepth(info, depth);
+}
+
+// 0.5.0 <ShiftUV OutputReg="N" Component="x|y" Amount="X"/> — shift a VS
+// output register per eye without touching position.
+bool Context11Proxy::BindShiftUV(const ShaderAnalysis11Result* info,
+                                  unsigned outputReg, unsigned component, float amount)
+{
+    if (!info || !m_parent) return false;
+    const float eyeShift = wiz3D_GetEffectiveEyeShift() * ProfileShaderMultiplier(m_parent, m_boundVS) * EyeShiftSign();
+    const float k[4] = { eyeShift * amount, 0.f, 0.f, 0.f };
+    if (!BindTwin(ST_VS, info, kTwinShiftUV, ShiftUVPlan(outputReg, component), k, 4)) return false;
+    m_clipSpaceBound = true;
+    ++m_clipSpaceDrawsThisFrame;
+    return true;
+}
+
+// 0.4.3 <OverrideCBValue CB=N OffsetBytes=M Value=X/>: at right-eye draw, write
+// `value` into the bound VS CB at slot `cbSlot` at byte offset `offsetBytes`.
+// Uses Map(D3D11_MAP_WRITE_DISCARD) which resets the buffer — safe because the
+// game re-writes the CB each frame anyway, and our read-modify-write covers
+// the full buffer by copying the shadow contents first.
+bool Context11Proxy::BindOverrideCBValue(const ShaderAnalysis11Result* info,
+                                          int cbSlot, int offsetBytes, float value)
+{
+    if (!info || !m_parent) return false;
+    if (cbSlot < 0 || (UINT)cbSlot >= kMaxCBs || offsetBytes < 0) return false;
+    const CBEyeSlots& s = m_cbSlots[ST_VS];
+    if ((UINT)cbSlot >= s.high || !s.proxy[cbSlot]) return false;
+    Buffer11Proxy* b = s.proxy[cbSlot];
+    // Need the game's current CB contents (shadow) to write-through — otherwise
+    // Map DISCARD would zero the whole buffer. If the CB isn't tracked in the
+    // shadow, bail (dynamic-ring-only buffers aren't safe for mid-frame CPU
+    // writes outside the stereo pipeline's existing map-hook).
+    if (b->Shadow().empty()) return false;
+    if ((size_t)offsetBytes + sizeof(float) > b->Shadow().size()) return false;
+    // Prefer the right-eye sibling buffer so the left eye keeps the game's
+    // original value. Fall back to the shared buffer if no right-eye twin
+    // exists (then both eyes see our override, which is still useful when
+    // the override is stereo-neutral — e.g. zeroing a broken-effect coef).
+    ID3D11Buffer* rawCB = b->GetRealRight();
+    if (!rawCB) rawCB = b->GetReal();
+    if (!rawCB) return false;
+    D3D11_MAPPED_SUBRESOURCE map = {};
+    if (FAILED(m_real->Map(rawCB, 0, D3D11_MAP_WRITE_DISCARD, 0, &map)) || !map.pData) return false;
+    memcpy(map.pData, b->Shadow().data(), b->Shadow().size());
+    memcpy((char*)map.pData + offsetBytes, &value, sizeof(float));
+    m_real->Unmap(rawCB, 0);
+    m_clipSpaceBound = true;
+    ++m_clipSpaceDrawsThisFrame;
+    return true;
+}
+
+// 0.6.0 <PerEyeTexture Slot=N LeftCRC=X RightCRC=Y/>. On the right-eye draw,
+// scans currently-bound PS SRVs: if one at `slot` has a resource matching
+// `leftCRC` AND another slot has `rightCRC`, substitutes the right-eye SRV
+// into `slot`. No restore — next game PSSetShaderResources naturally resets.
+// Intentionally minimal: a persistent SRV-pointer cache would need lifecycle
+// tracking (hook Release) that we skip here for the usual stereo-pair case
+// where the game binds BOTH textures simultaneously.
+bool Context11Proxy::BindPerEyeTexture(const ShaderAnalysis11Result* info,
+                                        int slot, DWORD leftCRC, DWORD rightCRC)
+{
+    if (!m_parent || slot < 0 || slot >= 16 || !leftCRC || !rightCRC) return false;
+    ID3D11ShaderResourceView* srvs[16] = {};
+    m_real->PSGetShaderResources(0, 16, srvs);
+    // Validate the game's slot has the expected left-eye texture.
+    bool leftOk = false;
+    if (srvs[slot])
+    {
+        ID3D11Resource* res = nullptr;
+        srvs[slot]->GetResource(&res);
+        if (res) {
+            if (FnvHashPtr(res) == (uint32_t)leftCRC) leftOk = true;
+            res->Release();
+        }
+    }
+    // Find any slot holding the right-eye SRV.
+    ID3D11ShaderResourceView* rightSrv = nullptr;
+    if (leftOk)
+    {
+        for (unsigned i = 0; i < 16; ++i)
+        {
+            if (!srvs[i]) continue;
+            ID3D11Resource* res = nullptr;
+            srvs[i]->GetResource(&res);
+            if (res) {
+                if (FnvHashPtr(res) == (uint32_t)rightCRC) rightSrv = srvs[i];
+                res->Release();
+            }
+            if (rightSrv) break;
+        }
+    }
+    if (leftOk && rightSrv)
+    {
+        ID3D11ShaderResourceView* one = rightSrv;
+        m_real->PSSetShaderResources((UINT)slot, 1, &one);
+        m_clipSpaceBound = true;
+    }
+    // Release all queried SRVs (GetShaderResources AddRefs each).
+    for (unsigned i = 0; i < 16; ++i)
+        if (srvs[i]) srvs[i]->Release();
+    return m_clipSpaceBound;
+}
+
+// 0.5.0 <AnimateDepth StartDepth=X EndDepth=Y ProgressCB=N ProgressOffset=M/>
+// Reads progress (0..1) from a game-filled CB and lerps between StartDepth
+// and EndDepth. Reuses the FixedDepth plan (single ADD-constant-to-position.x);
+// only the depth constant differs per draw.
+bool Context11Proxy::BindAnimateDepth(const ShaderAnalysis11Result* info,
+                                       int cbSlot, int offsetBytes,
+                                       float startDepth, float endDepth)
+{
+    if (!info || !m_parent) return false;
+    if (cbSlot < 0 || (UINT)cbSlot >= kMaxCBs || offsetBytes < 0) return false;
+    const CBEyeSlots& s = m_cbSlots[ST_VS];
+    if ((UINT)cbSlot >= s.high || !s.proxy[cbSlot]) return false;
+    Buffer11Proxy* b = s.proxy[cbSlot];
+    const bool ring = b->IsRing();
+    if (!ring && b->Shadow().empty()) return false;
+    const size_t base = s.num[cbSlot] ? (size_t)s.first[cbSlot] * 16 : 0;
+    const size_t total = ring ? b->RingSize() : b->Shadow().size();
+    if (base + (size_t)offsetBytes + sizeof(float) > total) return false;
+    const unsigned char* bytes = (ring ? b->RingData() : b->Shadow().data()) + base;
+    float progress = 0.0f;
+    memcpy(&progress, bytes + (size_t)offsetBytes, sizeof(float));
+    // Clamp to [0, 1] so an out-of-range game value can't yank the sprite
+    // into extreme depths.
+    if (progress < 0.0f) progress = 0.0f; else if (progress > 1.0f) progress = 1.0f;
+    const float depth = startDepth + (endDepth - startDepth) * progress;
+    return BindFixedDepth(info, depth);
 }
 
 // Right-eye shader twins (ShaderPatch11): built once per stage, plan tag and CRC from the code the shader kept, its

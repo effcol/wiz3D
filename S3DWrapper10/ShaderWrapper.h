@@ -51,9 +51,10 @@ public:
 	ModifiedShaderData		m_ModifiedShaderData;
 	std::vector<UINT>		m_pCode;
 
-#ifndef FINAL_RELEASE
+	// 0.5.0: ungated. ShaderWrapper.cpp dumps this bitset into every shader
+	// entry so DumpVS/DumpPS output includes the real texture-slot mask (was
+	// previously all-zero in release because the member didn't exist).
 	std::bitset<128>		m_UserResourcesMask;
-#endif
 
 private:
 	void ProcessShader( ShaderStaticData& data, CONST UINT* pCode, CONST D3D10DDIARG_STAGE_IO_SIGNATURES* pSignatures );

@@ -21,6 +21,12 @@ typedef D3DCOLORVALUE DXGI_RGBA;     // bundled lib/d3d10 dxgitype.h still
 #include "ShaderPatch11.h"   // right-eye shader twins
 #include "ShaderModifier11.h" // wiz3d::ModifiedVS11 (TryBuildModifiedVS Phase 2)
 
+// 0.5.0: forward-decl so WhenFilterMatches declaration can take a reference to
+// the global-namespace ShaderProfileData without pulling the whole header into
+// every TU that includes Context11Proxy.h. Full definition is only needed in
+// Context11Proxy_RHW.cpp, which includes it via Context11Proxy-inl.h.
+class ShaderProfileData;
+
 namespace wiz3d
 {
 
@@ -678,6 +684,42 @@ private:
     unsigned            m_spriteTwinDrawsThisFrame = 0;
     bool BindSpriteDepth(const ShaderAnalysis11Result* info);
     bool SpriteDepthRow(const ShaderAnalysis11Result* info, float row[4]);
+    // 0.5.0 <SpriteDepth> XML override — see Context11Proxy_RHW.cpp.
+    void EffectiveSpriteDepthFields(const ShaderAnalysis11Result* info,
+                                     int& outWorldInput,
+                                     int& outCameraCB,
+                                     int& outCameraReg);
+    // 0.5.0 XML-driven primitives — bind one of the new twins if the bound
+    // VS's profile has the matching primitive set. Called from
+    // BindClipSpaceShift before auto-detect so XML wins.
+    bool BindFixedDepth(const ShaderAnalysis11Result* info, float depth);
+    bool BindDepthFromCB(const ShaderAnalysis11Result* info, int cbSlot, int offsetBytes);
+    bool BindShiftUV(const ShaderAnalysis11Result* info,
+                     unsigned outputReg, unsigned component, float amount);
+    bool BindAnimateDepth(const ShaderAnalysis11Result* info,
+                           int cbSlot, int offsetBytes, float startDepth, float endDepth);
+    // 0.6.0 <PerEyeTexture Slot=N LeftCRC=X RightCRC=Y/>. Right-eye draw
+    // substitutes the SRV at Slot with one whose resource hashes to RightCRC.
+    // No persistent SRV cache: both textures must be bound somewhere on PS
+    // for the swap to find a target. For games that ship stereo texture pairs.
+    bool BindPerEyeTexture(const ShaderAnalysis11Result* info,
+                            int slot, DWORD leftCRC, DWORD rightCRC);
+    // 0.4.3 <OverrideCBValue CB=N OffsetBytes=M Value=X/>. On right-eye draw,
+    // writes `value` into the bound VS CB at Slot N at byte offset M.
+    // Doesn't need a shader twin — the game's shader is unchanged; we just
+    // push a different constant into the CB that it reads. Returns true if
+    // the write happened.
+    bool BindOverrideCBValue(const ShaderAnalysis11Result* info,
+                              int cbSlot, int offsetBytes, float value);
+    // 0.5.0 <When TextureCRC> runtime filter + per-draw PS resource snapshot.
+    // ShaderProfileData lives in the global namespace (S3DAPI/ShaderProfileData.h).
+    bool WhenFilterMatches(const ::ShaderProfileData& p);
+    void PsBoundResourceHashes(uint32_t out[16], unsigned& count);
+    // 0.5.0 Called from every Draw* after NoteDraw. When the Hunter is in
+    // Draw mode and this is the cycled draw, computes PS resource-pointer
+    // hashes and hands them to ShaderHunter so Numpad 3 can print them.
+    // Returns immediately otherwise (cheap one atomic load).
+    void HuntMaybeCaptureFingerprint();
     // ClipSpaceRays: the same for a pass-through vertex shader carrying a world ray per vertex; the geometry shader
     // moves the ray by the eye offset at infinity, the position stays (the sky quad keeps covering the screen).
     std::map<DWORD, ID3D11GeometryShader*> m_clipSpaceRayGS;
@@ -835,7 +877,15 @@ public:
     { shifted = m_clipSpaceDrawsThisFrame; noCamera = m_clipSpaceNoCameraThisFrame; m_clipSpaceDrawsThisFrame = m_clipSpaceNoCameraThisFrame = 0; }
     unsigned                  SpriteTwinCount() { const unsigned n = m_spriteTwinDrawsThisFrame; m_spriteTwinDrawsThisFrame = 0; return n; }
     // Shader twins' plan tags (ShaderPatch11 clients).
-    enum TwinTag { kTwinSpriteDepth = 1, kTwinFogVolume = 2 };
+    enum TwinTag {
+        kTwinSpriteDepth = 1,
+        kTwinFogVolume   = 2,
+        // 0.5.0 XML-driven primitives — see ShaderProfileData.h.
+        kTwinFixedDepth  = 3,   // <FixedDepth Value=.../>
+        kTwinDepthFromCB = 4,   // <DepthFromCB CB=... OffsetBytes=.../>
+        kTwinShiftUV     = 5,   // <ShiftUV OutputReg=... Component=... Amount=.../>
+        kTwinAnimateDepth = 6   // <AnimateDepth Start=X End=Y ProgressCB=N ProgressOffset=M/>
+    };
     // A twin of the bound `st` shader under `plan` (built once per tag and CRC), bound for the coming right draw or
     // dispatch with `count` floats (16 at most) in its cbuffer; false = none (unpatchable, no code kept).
     bool                      BindTwin(StageIdx st, const ShaderAnalysis11Result* info, int tag, const ShaderPatchPlan& plan,

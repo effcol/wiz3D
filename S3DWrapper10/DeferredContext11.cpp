@@ -15,6 +15,8 @@
 #include "proxy_factory.h"                 // TryUnwrap*
 #include "ProfileFeature.h"                // EntryValue, FeatureLog
 #include "StereoHeuristic.h"               // IsBlockCompressedFormat
+#include "Context11Proxy-inl.h"            // BoundShaderCRC
+#include "ShaderHunter.h"                  // 0.5.0 deferred-context hunt plumbing
 #include "..\S3DAPI\ShaderProfileData.h"   // g_ProfileData
 #include <d3d11_3.h>
 #include <unordered_set>
@@ -345,14 +347,86 @@ public:
         for (UINT i = 0; i < kMaxUAVs; ++i) if (m_csUavRight[i]) m_csRight = true;
     }
 
-    // Draws and dispatches
-    void STDMETHODCALLTYPE Draw(UINT c, UINT s) override                                     { m_left->Draw(c, s); if (RightDraw()) m_right->Draw(c, s); }
-    void STDMETHODCALLTYPE DrawIndexed(UINT c, UINT s, INT b) override                       { m_left->DrawIndexed(c, s, b); if (RightDraw()) m_right->DrawIndexed(c, s, b); }
-    void STDMETHODCALLTYPE DrawInstanced(UINT c, UINT n, UINT s, UINT si) override           { m_left->DrawInstanced(c, n, s, si); if (RightDraw()) m_right->DrawInstanced(c, n, s, si); }
-    void STDMETHODCALLTYPE DrawIndexedInstanced(UINT c, UINT n, UINT s, INT b, UINT si) override { m_left->DrawIndexedInstanced(c, n, s, b, si); if (RightDraw()) m_right->DrawIndexedInstanced(c, n, s, b, si); }
-    void STDMETHODCALLTYPE DrawAuto() override                                               { m_left->DrawAuto(); if (RightDraw()) m_right->DrawAuto(); }
-    void STDMETHODCALLTYPE DrawInstancedIndirect(ID3D11Buffer* a, UINT o) override           { m_left->DrawInstancedIndirect(UnwrapBuf(a), o); if (RightDraw()) m_right->DrawInstancedIndirect(RightBuf(a), o); }
-    void STDMETHODCALLTYPE DrawIndexedInstancedIndirect(ID3D11Buffer* a, UINT o) override    { m_left->DrawIndexedInstancedIndirect(UnwrapBuf(a), o); if (RightDraw()) m_right->DrawIndexedInstancedIndirect(RightBuf(a), o); }
+    // 0.5.0 ShaderHunter wiring for deferred contexts. Design doc risk #3
+    // originally excluded these from the hunt path on lock-cost grounds; we
+    // now plumb them through so a game like Fallout Shelter (Unity, uses
+    // deferred contexts for UI) exposes every shader to Numpad 1/2 cycling
+    // and the on/off flash. GetShader queries are O(1) COM-interface returns
+    // with an AddRef — one Release per draw at hunt time, zero cost when off.
+    DWORD HuntVS_()
+    {
+        if (!wiz3d::ShaderHunter::IsActive()) return 0;
+        ID3D11VertexShader* vs = nullptr;
+        m_left->VSGetShader(&vs, nullptr, nullptr);
+        if (!vs) return 0;
+        const DWORD crc = wiz3d::BoundShaderCRC(m_device, vs);
+        vs->Release();
+        return crc;
+    }
+    DWORD HuntPS_()
+    {
+        if (!wiz3d::ShaderHunter::IsActive()) return 0;
+        ID3D11PixelShader* ps = nullptr;
+        m_left->PSGetShader(&ps, nullptr, nullptr);
+        if (!ps) return 0;
+        const DWORD crc = wiz3d::BoundShaderCRC(m_device, ps);
+        ps->Release();
+        return crc;
+    }
+
+    // Draws and dispatches. Hunter notes every draw's bound VS+PS and skips
+    // on the flash cadence (ShouldSkipDraw returns true 15/30 frames while
+    // the hunted CRC is bound). Fast path (!IsActive) returns 0 instantly
+    // and the skip is a short-circuit false.
+    void STDMETHODCALLTYPE Draw(UINT c, UINT s) override
+    {
+        const DWORD v = HuntVS_(), p = HuntPS_();
+        wiz3d::ShaderHunter::NoteDraw(v, p);
+        if (wiz3d::ShaderHunter::ShouldSkipDraw(v, p)) return;
+        m_left->Draw(c, s); if (RightDraw()) m_right->Draw(c, s);
+    }
+    void STDMETHODCALLTYPE DrawIndexed(UINT c, UINT s, INT b) override
+    {
+        const DWORD v = HuntVS_(), p = HuntPS_();
+        wiz3d::ShaderHunter::NoteDraw(v, p);
+        if (wiz3d::ShaderHunter::ShouldSkipDraw(v, p)) return;
+        m_left->DrawIndexed(c, s, b); if (RightDraw()) m_right->DrawIndexed(c, s, b);
+    }
+    void STDMETHODCALLTYPE DrawInstanced(UINT c, UINT n, UINT s, UINT si) override
+    {
+        const DWORD v = HuntVS_(), p = HuntPS_();
+        wiz3d::ShaderHunter::NoteDraw(v, p);
+        if (wiz3d::ShaderHunter::ShouldSkipDraw(v, p)) return;
+        m_left->DrawInstanced(c, n, s, si); if (RightDraw()) m_right->DrawInstanced(c, n, s, si);
+    }
+    void STDMETHODCALLTYPE DrawIndexedInstanced(UINT c, UINT n, UINT s, INT b, UINT si) override
+    {
+        const DWORD v = HuntVS_(), p = HuntPS_();
+        wiz3d::ShaderHunter::NoteDraw(v, p);
+        if (wiz3d::ShaderHunter::ShouldSkipDraw(v, p)) return;
+        m_left->DrawIndexedInstanced(c, n, s, b, si); if (RightDraw()) m_right->DrawIndexedInstanced(c, n, s, b, si);
+    }
+    void STDMETHODCALLTYPE DrawAuto() override
+    {
+        const DWORD v = HuntVS_(), p = HuntPS_();
+        wiz3d::ShaderHunter::NoteDraw(v, p);
+        if (wiz3d::ShaderHunter::ShouldSkipDraw(v, p)) return;
+        m_left->DrawAuto(); if (RightDraw()) m_right->DrawAuto();
+    }
+    void STDMETHODCALLTYPE DrawInstancedIndirect(ID3D11Buffer* a, UINT o) override
+    {
+        const DWORD v = HuntVS_(), p = HuntPS_();
+        wiz3d::ShaderHunter::NoteDraw(v, p);
+        if (wiz3d::ShaderHunter::ShouldSkipDraw(v, p)) return;
+        m_left->DrawInstancedIndirect(UnwrapBuf(a), o); if (RightDraw()) m_right->DrawInstancedIndirect(RightBuf(a), o);
+    }
+    void STDMETHODCALLTYPE DrawIndexedInstancedIndirect(ID3D11Buffer* a, UINT o) override
+    {
+        const DWORD v = HuntVS_(), p = HuntPS_();
+        wiz3d::ShaderHunter::NoteDraw(v, p);
+        if (wiz3d::ShaderHunter::ShouldSkipDraw(v, p)) return;
+        m_left->DrawIndexedInstancedIndirect(UnwrapBuf(a), o); if (RightDraw()) m_right->DrawIndexedInstancedIndirect(RightBuf(a), o);
+    }
     void STDMETHODCALLTYPE Dispatch(UINT x, UINT y, UINT z) override                         { m_left->Dispatch(x, y, z); if (RightDispatch()) m_right->Dispatch(x, y, z); }
     void STDMETHODCALLTYPE DispatchIndirect(ID3D11Buffer* a, UINT o) override                { m_left->DispatchIndirect(UnwrapBuf(a), o); if (RightDispatch()) m_right->DispatchIndirect(RightBuf(a), o); }
 

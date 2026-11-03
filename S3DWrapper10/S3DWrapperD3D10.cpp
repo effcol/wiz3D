@@ -79,6 +79,7 @@ static void RegisterShaderHunterHandlers()
 	gInfo.HuntNextHandler    = &wiz3d::ShaderHunter::OnCycleNext;
 	gInfo.HuntCaptureHandler = &wiz3d::ShaderHunter::OnCapture;
 	gInfo.HuntMonoCurrentHandler = &wiz3d::ShaderHunter::OnMonoCurrent;
+	gInfo.HuntToggleGranularityHandler = &wiz3d::ShaderHunter::OnToggleGranularity;
 }
 
 // 0.4.1 runtime profile reload. Ctrl+F5 sets a between-frames flag; the
@@ -131,17 +132,18 @@ void InitDirectories( )
 {
 	RegisterShaderHunterHandlers();
 	gInfo.ProfileReloadHandler = &RequestProfileReload;
-#ifdef ZLOG_ALLOW_TRACING
-	InitializeLogging();
 
-	// 0.4.2 layout: <DriverDir>\wiz3D_Shaders\<Game>\Dump\ for mass dumps
-	// (DumpVS/DumpPS/DumpMeshes). Hunter/ sibling folder is reserved for
-	// user-captured single-shader reports from the ShaderHunter OSD mode.
-	// Shared across every stereo-injector wrapper (DX7/8/9/10-11) so an
-	// author authoring across APIs sees a single Shaders folder next to
-	// the DLLs rather than per-API scattered trees. (The historical
-	// %ALLUSERSPROFILE%\DX9ShaderDataCache\<Profile>.vsc/.psc runtime
-	// binary cache from iZ3D is unrelated and stays where it is.)
+	// 0.5.0 layout: <DriverDir>\wiz3D_Shaders\<Game>\Dump\ for mass dumps
+	// (DumpVS/DumpPS/DumpMeshes). Hunter/ sibling folder is written to
+	// directly by ShaderHunter from the same base path. Must be set
+	// unconditionally — the previous ZLOG_ALLOW_TRACING gate meant release
+	// builds left gData.DumpDirectory empty, so ShaderWrapper::DumpShaderText
+	// wrote to the DriverDir root (silently failing on CreateFile) and
+	// DumpVS/DumpPS/WIZ3D_FORCE_DUMP all did nothing. CreateDirectory is a
+	// no-op when the folder exists; ClearDirectory on an empty folder is
+	// also a no-op. Shared across every stereo-injector wrapper
+	// (DX7/8/9/10-11) so an author authoring across APIs sees a single
+	// Shaders folder next to the DLLs.
 	_tcscpy(gData.DumpDirectory, gInfo.DriverDirectory);
 	PathAppend(gData.DumpDirectory, _T("wiz3D_Shaders"));
 	CreateDirectory(gData.DumpDirectory, 0);
@@ -156,6 +158,9 @@ void InitDirectories( )
 	PathAppend(gData.DumpDirectory, _T("Dump"));
 	CreateDirectory(gData.DumpDirectory, 0);
 	ClearDirectory(gData.DumpDirectory);
+
+#ifdef ZLOG_ALLOW_TRACING
+	InitializeLogging();
 
 	wchar_t	CommandFlow[MAX_PATH];
 #ifndef DISABLE_D3DDEVICE_WRAPPER

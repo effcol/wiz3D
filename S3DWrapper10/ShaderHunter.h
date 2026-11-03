@@ -110,6 +110,24 @@ public:
     // on success. No-op if hunt mode is off or nothing is cycled.
     static void OnMonoCurrent();
 
+    // Numpad 5. Toggle hunt granularity between CRC-level (default) and
+    // Draw-level. In Draw mode, Numpad 1/2 cycles through the individual
+    // draw calls of the currently-selected CRC within a frame; the flashed
+    // draw is just that one call. Essential for shaders used many times
+    // per frame (Unity UI) where the specific element you want is one of
+    // many draws of the same CRC. No-op if hunt mode is off.
+    static void OnToggleGranularity();
+
+    // 0.5.0 <When TextureCRC> capture: during Draw-mode cycling, the caller
+    // (Context11Proxy::Draw*) asks ShouldCaptureFingerprint() right after
+    // NoteDraw; if true, it computes bound PS resource hashes and passes them
+    // to StoreCurrentDrawFingerprint. OnCapture (Numpad 3) then writes them
+    // into the capture report so the user can paste them into a
+    // <When TextureCRC="0x..."/> sub-filter. Both are no-ops when hunt mode
+    // is off or we're in CRC granularity.
+    static bool ShouldCaptureFingerprint();
+    static void StoreCurrentDrawFingerprint(const uint32_t* hashes, unsigned count);
+
     // -------------------------------------------------------------------------
     // OSD read API (SwapChain11Proxy / OSDRenderer thread). Takes the s_lock
     // only for the GetState snapshot; returns a POD copy so the OSD renderer
@@ -124,6 +142,11 @@ public:
         uint32_t drawsForHidden; // draws observed for hiddenCRC this frame
         size_t   cycleIdx;       // 1-based position in cycle (0 if none)
         size_t   cycleSize;      // total CRCs drawn last frame
+        // 0.5.0: granularity-level + draw-cycle state. In CRC mode drawCycleIdx
+        // is unused; in Draw mode it's the 1-based draw-of-selected-CRC index.
+        bool     drawGranularity;      // true = Draw-level (Numpad 5 toggled)
+        size_t   drawCycleIdx;         // 1-based (0 if none)
+        size_t   drawCycleSize;        // total draws of the selected CRC last frame
         // 0.4.1 save-toast: non-zero flashDeadline means an OSD "Shader
         // saved: <leaf>" toast should render bottom-right until the
         // deadline. flashLeaf carries the written file's basename so the

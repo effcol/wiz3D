@@ -264,6 +264,12 @@ enum EventId
 	// hot-applies via g_ProfileData so the user sees the effect immediately.
 	// The toast asks them to upstream the fix to github.com/effcol/wiz3D.
 	HUNT_MONO_CURRENT_SHADER,
+	// 0.5.0 ShaderHunter: Numpad 5 toggle hunt granularity between CRC-level
+	// (default) and Draw-level. In Draw mode, Numpad 1/2 cycles through the
+	// individual draw calls of the currently-selected CRC within a frame —
+	// essential for shaders used many times per frame (Unity UI) where only
+	// one specific draw is the element you want.
+	HUNT_TOGGLE_GRANULARITY,
 	// 0.4.1 runtime reload: re-reads BaseProfile.xml / UserProfile.xml
 	// between frames so authors can iterate on ShaderPatch entries without
 	// restarting the game. Feature-tag changes don't fully propagate (the
@@ -458,6 +464,8 @@ public:
 	// 0.5.0: Numpad 4 "mono this CRC" — hot-apply mono via g_ProfileData and
 	// persist to the per-user UserProfile.xml so the fix survives a restart.
 	void      (*HuntMonoCurrentHandler)();
+	// 0.5.0: Numpad 5 toggle hunt granularity CRC <-> Draw. See EventId notes.
+	void      (*HuntToggleGranularityHandler)();
 	// 0.4.1 runtime profile reload: Ctrl+F5 triggers this. The wrapper's
 	// handler sets a between-frames flag; the actual re-parse happens in
 	// SwapChain11Proxy::OnPresentBoundaryPost once no draws are inflight.
@@ -656,6 +664,7 @@ public:
 			{ "HuntNextShader",    HUNT_NEXT_SHADER,                         98 },	//--- Numpad 2 (hide next CRC)	---
 			{ "HuntCaptureShader", HUNT_CAPTURE_SHADER,                      99 },	//--- Numpad 3 (capture current CRC)	---
 			{ "HuntMonoCurrentShader", HUNT_MONO_CURRENT_SHADER,            100 },	//--- Numpad 4 (force mono + persist)	---
+			{ "HuntToggleGranularity", HUNT_TOGGLE_GRANULARITY,             101 },	//--- Numpad 5 (CRC <-> Draw cycle mode)	---
 			// 0.4.1 runtime profile reload: re-parse BaseProfile.xml live.
 			{ "ReloadBaseProfile", RELOAD_BASE_PROFILE,                     628 },	//--- Ctrl + F5 (re-read BaseProfile.xml)	---
 			{ "PresenterSleepTimeIncrease", INCREASE_PRESENTER_SLEEP_TIME,  221 },  //--- ]				        ---

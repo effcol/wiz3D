@@ -543,6 +543,7 @@ void STDMETHODCALLTYPE Context11Proxy::Draw(UINT VertexCount, UINT StartVertexLo
     const DWORD _huntVS = BoundShaderCRC(m_parent, m_boundVS);
     const DWORD _huntPS = BoundShaderCRC(m_parent, m_boundPS);
     wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);
+    HuntMaybeCaptureFingerprint();
     // 0.5.0 ShaderHunter: symmetric skip — if the bound VS or PS matches the
     // currently hunted CRC, we drop the real left-eye draw AND skip the
     // m_frameCommands.emplace_back below, so right-eye replay sees the same
@@ -578,6 +579,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexed(
     const DWORD _huntVS = BoundShaderCRC(m_parent, m_boundVS);
     const DWORD _huntPS = BoundShaderCRC(m_parent, m_boundPS);
     wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);
+    HuntMaybeCaptureFingerprint();
     if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return;
     if (FrameTraceActive())
         FrameTrace("    DrawIndexed eye=%c icount=%u start=%u base=%d vs=0x%08lX ps=0x%08lX\n",
@@ -610,6 +612,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstanced(
     const DWORD _huntVS = BoundShaderCRC(m_parent, m_boundVS);
     const DWORD _huntPS = BoundShaderCRC(m_parent, m_boundPS);
     wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);
+    HuntMaybeCaptureFingerprint();
     if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return;
     { ScopedTicks t_(m_time.gameCalls); m_real->DrawInstanced(VertexCountPerInstance, InstanceCount,
                                                              StartVertexLocation, StartInstanceLocation); }
@@ -637,6 +640,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstanced(
     const DWORD _huntVS = BoundShaderCRC(m_parent, m_boundVS);
     const DWORD _huntPS = BoundShaderCRC(m_parent, m_boundPS);
     wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);
+    HuntMaybeCaptureFingerprint();
     if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return;
     { ScopedTicks t_(m_time.gameCalls); m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount,
                                                                     StartIndexLocation, BaseVertexLocation,
@@ -665,6 +669,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawAuto()
     const DWORD _huntVS = BoundShaderCRC(m_parent, m_boundVS);
     const DWORD _huntPS = BoundShaderCRC(m_parent, m_boundPS);
     wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);
+    HuntMaybeCaptureFingerprint();
     if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return;
     { ScopedTicks t_(m_time.gameCalls); m_real->DrawAuto(); }
     DUPLICATE_DRAW(DrawAuto());
@@ -686,6 +691,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawInstancedIndirect(
     const DWORD _huntVS = BoundShaderCRC(m_parent, m_boundVS);
     const DWORD _huntPS = BoundShaderCRC(m_parent, m_boundPS);
     wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);
+    HuntMaybeCaptureFingerprint();
     if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return;
     { ScopedTicks t_(m_time.gameCalls); m_real->DrawInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs); }
     DUPLICATE_DRAW(DrawInstancedIndirect(RightArgs(pBufferForArgs), AlignedByteOffsetForArgs));
@@ -710,6 +716,7 @@ void STDMETHODCALLTYPE Context11Proxy::DrawIndexedInstancedIndirect(
     const DWORD _huntVS = BoundShaderCRC(m_parent, m_boundVS);
     const DWORD _huntPS = BoundShaderCRC(m_parent, m_boundPS);
     wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);
+    HuntMaybeCaptureFingerprint();
     if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return;
     { ScopedTicks t_(m_time.gameCalls); m_real->DrawIndexedInstancedIndirect(UnwrapBuf(pBufferForArgs), AlignedByteOffsetForArgs); }
     DUPLICATE_DRAW(DrawIndexedInstancedIndirect(RightArgs(pBufferForArgs), AlignedByteOffsetForArgs));

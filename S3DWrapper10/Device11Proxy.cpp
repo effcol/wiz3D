@@ -13,6 +13,7 @@
 #include "Texture3D11Proxy.h"
 #include "StereoHeuristic.h"
 #include "ShaderHunter.h"                   // 0.4.1 hunt-mode plumbing
+#include "GlobalData.h"                     // 0.5.0 DumpVS/PS + gData.DumpDirectory
 #include "..\S3DAPI\ReadData.h"            // ReadCurrentProfile
 #include "..\S3DAPI\ShaderProfileData.h"   // g_ProfileData
 #include "proxy_factory.h"     // for IID_wiz3D_Device11Proxy
@@ -25,7 +26,11 @@
 #include <intrin.h>            // _ReturnAddress
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 #include <atomic>
+#include <d3dcompiler.h>       // 0.5.0 shader-dump D3DDisassemble
+
+#pragma comment(lib, "d3dcompiler.lib")
 
 #pragma comment(lib, "dxguid.lib")
 
@@ -437,6 +442,71 @@ const wiz3d::ModifiedVS11* Device11Proxy::LookupModifiedVS(ID3D11VertexShader* o
 
 namespace {
 
+// 0.5.0 Modern-DX11 shader dump. PR#31's AnalyzeAndCreate is the sole shader-
+// creation entry point for games that use the DX11 COM interface — the legacy
+// DDI path in ShaderWrapper::ProcessShader is bypassed entirely, so its
+// DumpShaderText never fires for a game like Fallout Shelter. This writes to
+// <gData.DumpDirectory>\<stage>.txt in the same shape ShaderWrapper does for
+// legacy DDI games: first shader per stage overwrites, subsequent appends.
+// Called once per unique shader at create time; no per-draw cost.
+static void DumpShader_DX11Modern(const char* tag, uint32_t crc,
+                                   const void* pBytecode, SIZE_T byteLength)
+{
+    if (!pBytecode || !byteLength) return;
+    if (!gData.DumpDirectory[0]) return;
+
+    // DumpVS covers VS/HS/DS/GS; DumpPS covers PS/CS. Matches ShaderWrapper.cpp.
+    const bool vsFamily = (!strcmp(tag, "Vertex") || !strcmp(tag, "Hull") ||
+                            !strcmp(tag, "Domain") || !strcmp(tag, "Geometry"));
+    const bool psFamily = (!strcmp(tag, "Pixel")  || !strcmp(tag, "Compute"));
+    if (vsFamily && !gInfo.DumpVS) return;
+    if (psFamily && !gInfo.DumpPS) return;
+    if (!vsFamily && !psFamily) return;
+
+    const wchar_t* suffix = L"";
+    if      (!strcmp(tag, "Vertex"))    suffix = L"VS";
+    else if (!strcmp(tag, "Pixel"))     suffix = L"PS";
+    else if (!strcmp(tag, "Geometry"))  suffix = L"GS";
+    else if (!strcmp(tag, "Hull"))      suffix = L"HS";
+    else if (!strcmp(tag, "Domain"))    suffix = L"DS";
+    else if (!strcmp(tag, "Compute"))   suffix = L"CS";
+
+    wchar_t path[MAX_PATH];
+    _snwprintf_s(path, _TRUNCATE, L"%s\\%s.txt", gData.DumpDirectory, suffix);
+
+    // Serialize file I/O across the (potentially many) shader-create threads.
+    // Track first-touch per stage so first shader overwrites, subsequent append —
+    // matches the ShaderWrapper::DumpShaderText convention for legacy DDI games.
+    static std::mutex s_dumpLock;
+    static std::unordered_set<std::wstring> s_firstTouchDone;
+
+    std::lock_guard<std::mutex> g(s_dumpLock);
+    const bool firstTouch = (s_firstTouchDone.find(suffix) == s_firstTouchDone.end());
+    FILE* fp = _wfopen(path, firstTouch ? L"w" : L"a");
+    if (!fp) return;
+    s_firstTouchDone.insert(suffix);
+
+    fprintf(fp, "// =====================================================================\n");
+    fprintf(fp, "// Shader CRC: 0x%08X    stage: %s\n", crc, tag);
+    fprintf(fp, "// =====================================================================\n\n");
+
+    ID3DBlob* pDisasm = nullptr;
+    HRESULT hr = D3DDisassemble(pBytecode, byteLength,
+                                D3D_DISASM_ENABLE_DEFAULT_VALUE_PRINTS,
+                                nullptr, &pDisasm);
+    if (SUCCEEDED(hr) && pDisasm)
+    {
+        fprintf(fp, "%s", (const char*)pDisasm->GetBufferPointer());
+        pDisasm->Release();
+    }
+    else
+    {
+        fprintf(fp, "D3DDisassemble failed hr=0x%08X\n", (unsigned)hr);
+    }
+    fprintf(fp, "\n\n");
+    fclose(fp);
+}
+
 template<typename TShader, typename CreateFn>
 HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createReal,
                          const void* pBytecode, SIZE_T byteLength,
@@ -511,6 +581,13 @@ HRESULT AnalyzeAndCreate(const char* tag, Device11Proxy* self, CreateFn createRe
             : wiz3d::HuntStage::PS;
         wiz3d::ShaderHunter::NoteCreated(info.crc32, huntStage, info);
     }
+
+    // 0.5.0: dump the shader bytecode disassembly when DumpVS/DumpPS is on.
+    // Companion to legacy DDI dumper in ShaderWrapper::DumpShaderText — this
+    // handles games using the modern DX11 COM path (PR#31), which bypasses
+    // ShaderWrapper entirely. Covers VS/HS/DS/GS → wiz3D_Shaders/<Game>/Dump/
+    // {VS,HS,DS,GS}.txt and PS/CS → PS.txt, CS.txt.
+    DumpShader_DX11Modern(tag, info.crc32, pBytecode, byteLength);
 
     // TryBuildModifiedVS DX11 Phase 1: when a profile sets AlwaysModifyShaders=1 (or
     // a per-shader <VertexShader CRC Modify="1"> entry matches this VS's CRC), try to

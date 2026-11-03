@@ -243,6 +243,8 @@
     <ClCompile Include="..\S3DWrapper10\RightRecorder11.cpp" />
     <ClCompile Include="..\S3DWrapper10\GpuTimer11.cpp" />
     <ClCompile Include="..\S3DWrapper10\SpriteDepth11.cpp" />
+    <ClCompile Include="..\S3DWrapper10\FixedDepth11.cpp" />
+    <ClCompile Include="..\S3DWrapper10\ShiftUV11.cpp" />
     <ClCompile Include="..\S3DWrapper10\ShaderPatch11.cpp" />
     <ClCompile Include="..\S3DWrapper10\FeatureWholeBufferRanges.cpp" />
     <ClCompile Include="..\S3DWrapper10\FeatureVertexCameraMatrices.cpp" />

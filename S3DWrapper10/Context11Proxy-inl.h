@@ -25,6 +25,8 @@
 #include "AdapterFunctions.h"  // DDILog
 #include "..\S3DAPI\ShaderProfileData.h"  // g_ProfileData matrix declarations
 #include "SpriteDepth11.h"     // ClipSpaceSprites 3: the sprite-depth plan
+#include "FixedDepth11.h"      // 0.5.0 <FixedDepth/> + <DepthFromCB/> primitives
+#include "ShiftUV11.h"         // 0.5.0 <ShiftUV/> primitive
 #include "RightRecorder11.h"   // BatchRightEye
 #include "GpuTimer11.h"        // CollectDebugInformation: GPU time of our work
 #include <d3dcompiler.h>       // D3DDisassemble: the UAV slots a compute shader reads
