@@ -62,8 +62,8 @@ public:
     HRESULT STDMETHODCALLTYPE Present(UINT SyncInterval, UINT Flags) override;
     HRESULT STDMETHODCALLTYPE GetBuffer(UINT Buffer, REFIID riid, void** ppSurface) override;
     HRESULT STDMETHODCALLTYPE SetFullscreenState(BOOL Fullscreen, IDXGIOutput* pTarget) override;
-    HRESULT STDMETHODCALLTYPE GetFullscreenState(BOOL* pFullscreen, IDXGIOutput** ppTarget) override           { return m_real->GetFullscreenState(pFullscreen, ppTarget); }
-    HRESULT STDMETHODCALLTYPE GetDesc(DXGI_SWAP_CHAIN_DESC* pDesc) override                                    { return m_real->GetDesc(pDesc); }
+    HRESULT STDMETHODCALLTYPE GetFullscreenState(BOOL* pFullscreen, IDXGIOutput** ppTarget) override;
+    HRESULT STDMETHODCALLTYPE GetDesc(DXGI_SWAP_CHAIN_DESC* pDesc) override;
     HRESULT STDMETHODCALLTYPE ResizeBuffers(UINT BufferCount, UINT Width, UINT Height, DXGI_FORMAT NewFormat, UINT SwapChainFlags) override;
     HRESULT STDMETHODCALLTYPE ResizeTarget(const DXGI_MODE_DESC* pNewTargetParameters) override                { return m_real->ResizeTarget(pNewTargetParameters); }
     HRESULT STDMETHODCALLTYPE GetContainingOutput(IDXGIOutput** ppOutput) override                             { return m_real->GetContainingOutput(ppOutput); }
@@ -71,8 +71,8 @@ public:
     HRESULT STDMETHODCALLTYPE GetLastPresentCount(UINT* pLastPresentCount) override                            { return m_real->GetLastPresentCount(pLastPresentCount); }
 
     // IDXGISwapChain1
-    HRESULT STDMETHODCALLTYPE GetDesc1(DXGI_SWAP_CHAIN_DESC1* pDesc) override                                  { return m_real1 ? m_real1->GetDesc1(pDesc) : E_NOINTERFACE; }
-    HRESULT STDMETHODCALLTYPE GetFullscreenDesc(DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pDesc) override               { return m_real1 ? m_real1->GetFullscreenDesc(pDesc) : E_NOINTERFACE; }
+    HRESULT STDMETHODCALLTYPE GetDesc1(DXGI_SWAP_CHAIN_DESC1* pDesc) override;
+    HRESULT STDMETHODCALLTYPE GetFullscreenDesc(DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pDesc) override;
     HRESULT STDMETHODCALLTYPE GetHwnd(HWND* pHwnd) override                                                    { return m_real1 ? m_real1->GetHwnd(pHwnd) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE GetCoreWindow(REFIID refiid, void** ppUnk) override                              { return m_real1 ? m_real1->GetCoreWindow(refiid, ppUnk) : E_NOINTERFACE; }
     HRESULT STDMETHODCALLTYPE Present1(UINT SyncInterval, UINT PresentFlags, const DXGI_PRESENT_PARAMETERS* pPresentParameters) override;
@@ -85,6 +85,14 @@ public:
 
     IDXGISwapChain* GetReal()    const { return m_real;   }
     Device10Proxy*  GetParent()  const { return m_parent; }
+
+    // DX10 parity with SwapChain11Proxy::EmulateFullscreen. Enabled when the
+    // Factory wrap path creates the chain windowed though the game asked for
+    // fullscreen (DisableFullscreenModeEmulation=0, or legacy shutter output).
+    // The chain then fakes fullscreen state back to the game via GetDesc /
+    // GetFullscreenState while running windowed underneath -- avoids the
+    // Crysis-Warhead-class alt-tab + fullscreen-exclusive-toggle thrash.
+    void            EmulateFullscreen() { m_emulateFullscreen = true; m_gameFullscreen = TRUE; }
 
 private:
     void    OnPresentBoundaryPre();
@@ -117,6 +125,14 @@ private:
     ID3D10RasterizerState*    m_compositeRaster;
     ID3D10BlendState*         m_compositeBlend;
     ID3D10DepthStencilState*  m_compositeDepthStencil;
+
+    // Fullscreen-emulation state (DX11-parity). m_emulateFullscreen is set
+    // once by wiz3D_EmulateFullscreen10 at swap-chain wrap time; m_gameFullscreen
+    // tracks the fullscreen state the game last asked for, so Get*Desc/
+    // GetFullscreenState can report that to the game even though the real
+    // chain stays windowed.
+    bool                      m_emulateFullscreen = false;
+    BOOL                      m_gameFullscreen    = FALSE;
 };
 
 } // namespace wiz3d

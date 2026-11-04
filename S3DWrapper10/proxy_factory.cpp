@@ -438,3 +438,15 @@ void wiz3D_EmulateFullscreen(IDXGISwapChain* pSwapChain)
     static_cast<wiz3d::SwapChain11Proxy*>(static_cast<IDXGISwapChain*>(ours))->EmulateFullscreen();
     ours->Release();
 }
+
+// DX10 parity companion. Same discovery pattern via QI; the DX10 and DX11
+// IIDs are distinct (IID_wiz3D_SwapChain10Proxy vs ..._SwapChain11Proxy)
+// so Factory wrap sites call the matching helper per wrapper path.
+void wiz3D_EmulateFullscreen10(IDXGISwapChain* pSwapChain)
+{
+    IUnknown* ours = nullptr;
+    if (!pSwapChain || FAILED(pSwapChain->QueryInterface(IID_wiz3D_SwapChain10Proxy, reinterpret_cast<void**>(&ours))) || !ours)
+        return;
+    static_cast<wiz3d::SwapChain10Proxy*>(static_cast<IDXGISwapChain*>(ours))->EmulateFullscreen();
+    ours->Release();
+}

@@ -385,6 +385,8 @@ STDMETHODIMP CreateSwapChain( IDXGIFactory* This, IUnknown *pDevice, DXGI_SWAP_C
 				wiz3D_WrapD3D10SwapChain(&scOut, probe10);
 				*ppSwapChain = static_cast<IDXGISwapChain*>(scOut);
 				WrapperLog("  Option B: wrapped *ppSwapChain=%p (DX10)\n", *ppSwapChain);
+				if (emulatedFullscreen)
+					wiz3D_EmulateFullscreen10(*ppSwapChain);
 			}
 			asD3D10->Release();
 		}
@@ -607,7 +609,13 @@ STDMETHODIMP CreateSwapChainForHwnd(IDXGIFactory2* This, IUnknown* pDevice, HWND
         IDXGISwapChain* sc = static_cast<IDXGISwapChain*>(*ppSwapChain);
         TryWrapSwapChainOptionB("F2.Hwnd", pDevice, &sc);
         if (forceWindowed)
+        {
+            // Both wrappers get a tag attempt; each helper's own QI gates
+            // whether it fires (SwapChain11Proxy vs SwapChain10Proxy IID),
+            // so at most one actually tags the chain. No-op otherwise.
             wiz3D_EmulateFullscreen(sc);
+            wiz3D_EmulateFullscreen10(sc);
+        }
         *ppSwapChain = static_cast<IDXGISwapChain1*>(sc);
     }
     return hr;

@@ -386,12 +386,67 @@ HRESULT STDMETHODCALLTYPE SwapChain10Proxy::ResizeBuffers(
 
 HRESULT STDMETHODCALLTYPE SwapChain10Proxy::SetFullscreenState(BOOL Fullscreen, IDXGIOutput* pTarget)
 {
-    DDILog("SwapChain10Proxy::SetFullscreenState: fullscreen=%d target=%p\n",
-           (int)Fullscreen, pTarget);
+    // Parity with SwapChain11Proxy::SetFullscreenState: fullscreen transitions
+    // can implicitly resize the swap chain and invalidate BB-derived closures.
+    // Clear the frame-replay queue so right-eye replay can't re-issue stale
+    // state (the game will re-record the frame after the transition settles).
+    DDILog("SwapChain10Proxy::SetFullscreenState: fullscreen=%d target=%p emu=%d\n",
+           (int)Fullscreen, pTarget, (int)m_emulateFullscreen);
     if (m_parent) m_parent->ClearFrameCommands();
+
+    // Emulated chain never enters fullscreen on the real swap chain, but
+    // leaving it always reaches DXGI: Alt+Enter can switch the real chain
+    // behind us, and a fullscreen chain must go windowed before it's released.
+    if (m_emulateFullscreen)
+    {
+        m_gameFullscreen = Fullscreen;
+        if (Fullscreen) return S_OK;  // fake the fullscreen entry
+    }
+
     HRESULT hr = m_real->SetFullscreenState(Fullscreen, pTarget);
     DDILog("SwapChain10Proxy::SetFullscreenState -> hr=0x%08lX\n", hr);
     return hr;
+}
+
+// GetDesc / GetDesc1 overrides — when emulating fullscreen, patch the
+// returned Windowed flag so the game still sees "fullscreen" even though the
+// real chain stays windowed. Mirrors SwapChain11Proxy::GetDesc at line 1577.
+HRESULT STDMETHODCALLTYPE SwapChain10Proxy::GetDesc(DXGI_SWAP_CHAIN_DESC* pDesc)
+{
+    HRESULT hr = m_real->GetDesc(pDesc);
+    if (SUCCEEDED(hr) && pDesc && m_emulateFullscreen)
+        pDesc->Windowed = !m_gameFullscreen;
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE SwapChain10Proxy::GetDesc1(DXGI_SWAP_CHAIN_DESC1* pDesc)
+{
+    if (!m_real1) return E_NOINTERFACE;
+    // DXGI_SWAP_CHAIN_DESC1 has no Windowed field; fullscreen is reported via
+    // the separate GetFullscreenDesc below. GetDesc1 passes through unchanged.
+    return m_real1->GetDesc1(pDesc);
+}
+
+HRESULT STDMETHODCALLTYPE SwapChain10Proxy::GetFullscreenDesc(DXGI_SWAP_CHAIN_FULLSCREEN_DESC* pDesc)
+{
+    if (!m_real1) return E_NOINTERFACE;
+    HRESULT hr = m_real1->GetFullscreenDesc(pDesc);
+    if (SUCCEEDED(hr) && pDesc && m_emulateFullscreen)
+        pDesc->Windowed = !m_gameFullscreen;
+    return hr;
+}
+
+HRESULT STDMETHODCALLTYPE SwapChain10Proxy::GetFullscreenState(BOOL* pFullscreen, IDXGIOutput** ppTarget)
+{
+    if (!m_emulateFullscreen) return m_real->GetFullscreenState(pFullscreen, ppTarget);
+    // Emulated path: hand the game whatever fullscreen state it last asked for.
+    if (pFullscreen) *pFullscreen = m_gameFullscreen;
+    if (ppTarget)
+    {
+        *ppTarget = nullptr;
+        if (m_gameFullscreen) m_real->GetContainingOutput(ppTarget);
+    }
+    return S_OK;
 }
 
 void SwapChain10Proxy::OnPresentBoundaryPre()
