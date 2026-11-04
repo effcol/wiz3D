@@ -14,6 +14,9 @@
 #include "proxy_factory.h"     // IID_wiz3D_Device10Proxy + TryUnwrap_10 helpers
 #include "AdapterFunctions.h"  // DDILog
 #include "ShaderHunter.h"      // cycle 3: NoteDraw / ShouldSkipDraw per-draw hunt integration
+#include "../S3DAPI/GlobalData.h"       // g_ProfileData
+#include "../S3DAPI/ShaderProfileData.h"  // ShaderProfileData
+#include <cmath>
 
 #include <dxgi.h>
 #include <dxgi1_2.h>
@@ -89,6 +92,7 @@ Device10Proxy::Device10Proxy(ID3D10Device* real)
 {
     InitializeCriticalSection(&m_dxgiCacheLock);
     InitializeCriticalSection(&m_shaderProjLock);
+    InitializeCriticalSection(&m_vsTwinsLock10);
     for (UINT i = 0; i < kMaxVSCBSlots; ++i) m_boundVSCBs[i] = nullptr;
 }
 
@@ -136,8 +140,17 @@ Device10Proxy::~Device10Proxy()
         m_dxgiDeviceProxy->Release();
         m_dxgiDeviceProxy = nullptr;
     }
+    // Release DXBC-twin cache (cycle 2b).
+    for (auto& e : m_vsTwins10)
+        if (e.second.shader) e.second.shader->Release();
+    m_vsTwins10.clear();
+    if (m_twinCB10)    { m_twinCB10->Release();    m_twinCB10    = nullptr; }
+    if (m_twinSavedVS10) { m_twinSavedVS10->Release(); m_twinSavedVS10 = nullptr; }
+    if (m_twinSavedCB10) { m_twinSavedCB10->Release(); m_twinSavedCB10 = nullptr; }
+
     DeleteCriticalSection(&m_dxgiCacheLock);
     DeleteCriticalSection(&m_shaderProjLock);
+    DeleteCriticalSection(&m_vsTwinsLock10);
 }
 
 DXGIDevice10Proxy* Device10Proxy::GetOrCreateDXGIDeviceProxyAddRef()
@@ -898,6 +911,17 @@ void STDMETHODCALLTYPE Device10Proxy::OMSetDepthStencilState(
     HuntMaybeCaptureFingerprint10();                                                \
     if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return
 
+// Right-eye draw closure template:
+//   1. ApplySnapshotRightCBs10 -- per-draw CB sibling-bind
+//   2. BindClipSpaceShift10 -- DXBC twin primitive dispatch
+//   3. m_real->Draw*
+//   4. UnbindClipSpaceShift10 -- restore saved VS + CB if twin was bound
+#define WIZ3D_DX10_RIGHT_EYE_DRAW(REAL_CALL) \
+    ApplySnapshotRightCBs10(snap); \
+    const bool _twinBound = BindClipSpaceShift10(snap.vsInfo, snap.psInfo); \
+    REAL_CALL; \
+    if (_twinBound) UnbindClipSpaceShift10()
+
 void STDMETHODCALLTYPE Device10Proxy::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
     WIZ3D_DX10_HUNT_PROLOGUE();
@@ -906,8 +930,7 @@ void STDMETHODCALLTYPE Device10Proxy::Draw(UINT VertexCount, UINT StartVertexLoc
     DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back(
         [this, VertexCount, StartVertexLocation, snap]() {
-            ApplySnapshotRightCBs10(snap);
-            m_real->Draw(VertexCount, StartVertexLocation);
+            WIZ3D_DX10_RIGHT_EYE_DRAW(m_real->Draw(VertexCount, StartVertexLocation));
         });
 }
 
@@ -919,8 +942,7 @@ void STDMETHODCALLTYPE Device10Proxy::DrawIndexed(UINT IndexCount, UINT StartInd
     DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back(
         [this, IndexCount, StartIndexLocation, BaseVertexLocation, snap]() {
-            ApplySnapshotRightCBs10(snap);
-            m_real->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
+            WIZ3D_DX10_RIGHT_EYE_DRAW(m_real->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation));
         });
 }
 
@@ -934,8 +956,8 @@ void STDMETHODCALLTYPE Device10Proxy::DrawInstanced(
     DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back(
         [this, VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation, snap]() {
-            ApplySnapshotRightCBs10(snap);
-            m_real->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
+            WIZ3D_DX10_RIGHT_EYE_DRAW(
+                m_real->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation));
         });
 }
 
@@ -951,9 +973,9 @@ void STDMETHODCALLTYPE Device10Proxy::DrawIndexedInstanced(
     m_frameCommands.emplace_back(
         [this, IndexCountPerInstance, InstanceCount, StartIndexLocation,
          BaseVertexLocation, StartInstanceLocation, snap]() {
-            ApplySnapshotRightCBs10(snap);
-            m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation,
-                                          BaseVertexLocation, StartInstanceLocation);
+            WIZ3D_DX10_RIGHT_EYE_DRAW(
+                m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation,
+                                              BaseVertexLocation, StartInstanceLocation));
         });
 }
 
@@ -964,17 +986,37 @@ void STDMETHODCALLTYPE Device10Proxy::DrawAuto()
     if (!m_presentHookActive) return;
     DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back([this, snap]() {
-        ApplySnapshotRightCBs10(snap);
-        m_real->DrawAuto();
+        WIZ3D_DX10_RIGHT_EYE_DRAW(m_real->DrawAuto());
     });
 }
 #undef WIZ3D_DX10_HUNT_PROLOGUE
+#undef WIZ3D_DX10_RIGHT_EYE_DRAW
 
 // Stage 4e DX10: shader-create methods now run the DXBC analyzer + cache
 // per-shader projection-matrix info. DX10 bytecode is SHDR (SM4) — the
 // shared analyzer in ShaderAnalyzer11 already tries SHEX first then falls
 // back to SHDR, so the same call works.
 namespace {
+
+// Cycle 2b: check whether the shader's CRC is primitive-tagged in the loaded
+// profile (BaseProfile.xml / UserProfile.xml). If yes, keep the DXBC bytecode
+// so Device10Proxy_RHW.cpp's twin compiler has something to work from at
+// right-eye draw time.
+static bool ShaderCRCHasPrimitive10(DWORD crc, bool isVS)
+{
+    const auto& table = isVS ? g_ProfileData.VSCRCData : g_ProfileData.PSCRCData;
+    auto it = table.find(crc);
+    if (it == table.end()) return false;
+    const ShaderProfileData& p = it->second;
+    if (p.m_bSkipStereo) return true;
+    if (!std::isnan(p.m_FixedDepth)) return true;
+    if (p.m_DepthFromCB_Slot >= 0) return true;
+    if (!std::isnan(p.m_AnimDepth_Start)) return true;
+    if (p.m_ShiftUV_OutputReg >= 0) return true;
+    if (p.m_PerEye_Slot >= 0) return true;
+    if (p.m_OverrideCB_Slot >= 0) return true;
+    return false;
+}
 
 template<typename TShader>
 HRESULT AnalyzeAndCreate10(const char* tag, Device10Proxy* self,
@@ -984,11 +1026,37 @@ HRESULT AnalyzeAndCreate10(const char* tag, Device10Proxy* self,
     HRESULT hr = createReal(pBytecode, byteLength, ppShader);
     if (FAILED(hr) || !ppShader || !*ppShader) return hr;
     ShaderAnalysis11Result info;
-    if (AnalyzeShader11(pBytecode, byteLength, info) && !info.projection.matrixData.cb.empty())
+    const bool analyzed = AnalyzeShader11(pBytecode, byteLength, info);
+
+    // Cycle 2b: retain bytecode for CRCs that have primitive-tagged profile
+    // entries. The DXBC-twin compiler in Device10Proxy_RHW.cpp (BindFixedDepth10
+    // etc.) feeds PatchShader + m_real->CreateVertexShader from this.
+    const bool isVS = !strcmp(tag, "Vertex");
+    const bool isPS = !strcmp(tag, "Pixel");
+    const bool primitiveTagged = (isVS && ShaderCRCHasPrimitive10(info.crc32, true))
+                              || (isPS && ShaderCRCHasPrimitive10(info.crc32, false));
+    if (pBytecode && byteLength && primitiveTagged)
     {
-        DDILog("  Device10Proxy::Create%sShader: CRC=0x%08lX shader=%p matrices in %u CB(s)\n",
+        info.bytecode = std::make_shared<const std::vector<BYTE>>(
+            (const BYTE*)pBytecode, (const BYTE*)pBytecode + byteLength);
+        info.keepCode = true;
+    }
+
+    if (analyzed && !info.projection.matrixData.cb.empty())
+    {
+        DDILog("  Device10Proxy::Create%sShader: CRC=0x%08lX shader=%p matrices in %u CB(s)%s\n",
                tag, info.crc32, *ppShader,
-               (unsigned)info.projection.matrixData.cb.size());
+               (unsigned)info.projection.matrixData.cb.size(),
+               primitiveTagged ? " [primitive-tagged, keeping bytecode]" : "");
+        self->StoreShaderProjection(*ppShader, info);
+    }
+    else if (primitiveTagged || info.crc32)
+    {
+        // Even without projection matrices, store if primitive-tagged so the
+        // twin compiler can reach the bytecode.
+        DDILog("  Device10Proxy::Create%sShader: CRC=0x%08lX shader=%p (parsed=%d)%s\n",
+               tag, info.crc32, *ppShader, (int)info.parsed,
+               primitiveTagged ? " [primitive-tagged, keeping bytecode]" : "");
         self->StoreShaderProjection(*ppShader, info);
     }
     else

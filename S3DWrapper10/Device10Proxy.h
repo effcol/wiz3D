@@ -260,22 +260,24 @@ public:
     };
     struct DrawSnapshot10
     {
-        bool                        skipStereo = false;
-        std::vector<RightCBSnap10>  rightCBs;
-        ComRefHolder10              vsHolder;     // keep shader analyses alive -- technically
-        ComRefHolder10              psHolder;     // the pointers come from m_shaderProjections
-        ComRefHolder10              gsHolder;     // (device-lifetime), but keep the shader object
-                                                  // addref'd to satisfy the game's reference
-                                                  // counting contract during replay.
-        std::vector<ComRefHolder10> cbHolders;    // one holder per entry in rightCBs
+        bool                                 skipStereo = false;
+        std::vector<RightCBSnap10>           rightCBs;
+        const ShaderAnalysis11Result*        vsInfo = nullptr; // for BindClipSpaceShift10
+        const ShaderAnalysis11Result*        psInfo = nullptr;
+        ComRefHolder10                       vsHolder;         // keep shader object addref'd
+        ComRefHolder10                       psHolder;
+        ComRefHolder10                       gsHolder;
+        std::vector<ComRefHolder10>          cbHolders;        // one per entry in rightCBs
     };
     DrawSnapshot10 CaptureDrawSnapshot10();
     void           ApplySnapshotRightCBs10(const DrawSnapshot10& snap);
 
     // Primitive engine dispatch (DXBC twin binds). Called from the pre-draw
-    // hook on the right-eye pass. Returns true if a twin was bound and the
-    // caller should UnbindTwin10/UnbindClipSpaceShift10 after the real draw.
-    bool BindClipSpaceShift10();
+    // hook on the right-eye pass with the snapshot of bound shader state
+    // captured at Draw record time. Returns true if a twin was bound and the
+    // caller should UnbindClipSpaceShift10 after the real draw.
+    bool BindClipSpaceShift10(const ShaderAnalysis11Result* vsInfo,
+                              const ShaderAnalysis11Result* psInfo);
     void UnbindClipSpaceShift10();
 
     // Shader primitives (one per XML tag). Each returns true if it applied
@@ -302,6 +304,10 @@ public:
 
     // Hunter integration -- called after NoteDraw at each real draw site.
     void HuntMaybeCaptureFingerprint10();
+
+    // DXBC-twin cache entry (needs to be public so Device10Proxy_RHW.cpp's
+    // namespace-scope helpers can reference it).
+    struct VSTwin10 { ID3D10VertexShader* shader = nullptr; UINT slot = 0; };
 
 private:
     ID3D10Device*      m_real;
@@ -343,6 +349,24 @@ private:
 
     // Hunter sub-draw bookkeeping (parallel to Context11Proxy's).
     unsigned                      m_drawIndex10   = 0;
+
+    // DXBC-twin cache (cycle 2b). Key = (stage << 40) | (tag << 32) | crc32.
+    // Twins are device-lifetime -- released in dtor. Analyzer retains source
+    // bytecode on info->bytecode (shared_ptr) when a CRC has primitive-tagged
+    // profile entries so PatchShader has something to compile from.
+    // VSTwin10 struct declared in public section above.
+    std::unordered_map<unsigned long long, VSTwin10> m_vsTwins10;
+    CRITICAL_SECTION                                 m_vsTwinsLock10;
+
+    // Per-twin-call CB holding the plan's constants (cb[0].x etc). One 64-byte
+    // dynamic CB reused across all twin binds this device sees.
+    ID3D10Buffer*                 m_twinCB10         = nullptr;
+
+    // Per-twin-call saved state for UnbindTwin10.
+    int                           m_twinStage10      = -1;   // ST10_VS / ST10_PS or -1 none
+    UINT                          m_twinSavedSlot10  = 0;
+    ID3D10VertexShader*           m_twinSavedVS10    = nullptr;
+    ID3D10Buffer*                 m_twinSavedCB10    = nullptr;
 };
 
 } // namespace wiz3d
