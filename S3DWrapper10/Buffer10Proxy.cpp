@@ -71,11 +71,43 @@ Buffer10Proxy::Buffer10Proxy(ID3D10Buffer* real, Device10Proxy* parent)
     , m_activeMapByteWidth(0)
     , m_activeMapType(D3D10_MAP_WRITE_DISCARD)
 {
+    // Remaining Option A (DX11-shape) fields default-initialized in the header.
 }
 
 Buffer10Proxy::~Buffer10Proxy()
 {
-    if (m_real) { m_real->Release(); m_real = nullptr; }
+    if (m_realRightMoved) { m_realRightMoved->Release(); m_realRightMoved = nullptr; }
+    if (m_realRight)      { m_realRight->Release();      m_realRight      = nullptr; }
+    if (m_real)           { m_real->Release();           m_real           = nullptr; }
+}
+
+// Option A: lazy-create the right-eye sibling buffer with the same desc as the
+// game's left buffer. Called by Device10Proxy::EditRightCBs (Cycle 2) when a
+// per-draw right-eye edit needs its own buffer to bind rather than rewrite the
+// left in-place. variant 0 is the standard sibling; variant 1 is a second
+// sibling for passes that see the right camera with its origin moved.
+ID3D10Buffer* Buffer10Proxy::RightCopy(int variant)
+{
+    ID3D10Buffer*& slot = (variant & 1) ? m_realRightMoved : m_realRight;
+    if (slot) return slot;
+    if (!m_real || !m_parent) return nullptr;
+
+    D3D10_BUFFER_DESC desc;
+    m_real->GetDesc(&desc);
+    // Siblings never participate in the game's own Map/Unmap shadow pipeline,
+    // they receive bytes via the eye-shift path. Keep the same usage/bind so
+    // binding at the exact same slot works, but drop any STAGING requirement
+    // games sometimes bake in -- siblings should be DEFAULT for GPU-side edits.
+
+    ID3D10Device* dev = m_parent->GetReal();
+    if (!dev) return nullptr;
+
+    ID3D10Buffer* sibling = nullptr;
+    if (FAILED(dev->CreateBuffer(&desc, nullptr, &sibling)) || !sibling)
+        return nullptr;
+
+    slot = sibling;
+    return slot;
 }
 
 ULONG STDMETHODCALLTYPE Buffer10Proxy::Release()
