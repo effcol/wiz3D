@@ -375,26 +375,13 @@ foreach ($t in $wiz3dConfigTargets) {
         Copy-Item -Path $wiz3dConfigSrc -Destination $dst -Force
     }
 }
-# Trim DX10-11-only OutputMode listings from the DX7/8/9 Config.xml copies.
-# Modes 2 (FullSBS), 3 (HalfTAB), 4 (FullTAB), 7 (ColumnIL) and 8 (Checker)
-# have no DX7-9 plugin DLL, so listing them in a DX9 config comment misleads
-# a user into picking a mode their wrapper can't deliver. The template keeps
-# the full list; this strip is a DX7-9-only post-process.
-foreach ($t in "$relRoot\Stereo-Injector\DX7",
-               "$relRoot\Stereo-Injector\DX8",
-               "$relRoot\Stereo-Injector\DX9\32-bit",
-               "$relRoot\Stereo-Injector\DX9\64-bit") {
-    $dst = Join-Path $t 'wiz3D_Config.xml'
-    if (Test-Path $dst) {
-        $xml = [IO.File]::ReadAllText($dst)
-        $xml = $xml -replace '(?m)^\s*<!--\s*2 == "FullSBS".*-->\s*\r?\n', ''
-        $xml = $xml -replace '(?m)^\s*<!--\s*3 == "HalfTAB".*-->\s*\r?\n', ''
-        $xml = $xml -replace '(?m)^\s*<!--\s*4 == "FullTAB".*-->\s*\r?\n', ''
-        $xml = $xml -replace '(?m)^\s*<!--\s*7 == "ColumnIL".*-->\s*\r?\n', ''
-        $xml = $xml -replace '(?m)^\s*<!--\s*8 == "Checker".*-->\s*\r?\n', ''
-        [IO.File]::WriteAllText($dst, $xml)
-    }
-}
+# Previous versions trimmed modes 2 (FullSBS), 3 (HalfTAB), 4 (FullTAB),
+# 7 (ColumnIL) and 8 (Checker) from the DX7/8/9 Config.xml copies under the
+# assumption that only DX10-11 could deliver them. 0.4.3's unified output
+# pipeline + `SideBySideOutput.dll` / `InterlacedOutput.dll` / `DLP3DOutput.dll`
+# shipping under every Stereo-Injector/DX*/OutputMethods folder means every
+# mode in the shared OutputModeNames.h table works on every wrapper (DX7-11,
+# OGL, HD3D, 3DV-Direct). Keep the full enum visible in all configs.
 
 # DisableFullscreenModeEmulation=1 across every modern Stereo-Injector path.
 # iZ3D set this to 0 originally because its shutter output needed games
