@@ -186,6 +186,12 @@ void STDMETHODCALLTYPE Buffer10Proxy::Unmap()
         memcpy(bytes.data(), m_activeMapData, m_activeMapByteWidth);
         D3D10_MAP mt = m_activeMapType;
 
+        // Option A (#62): also populate the Buffer10Proxy shadow + bump
+        // write-seq so EditRightCBs10 / primitive engine have fresh bytes
+        // to read at per-draw edit time. Runs alongside the Option B
+        // frame-replay closure below -- doesn't change existing behaviour.
+        SetShadow(bytes.data(), bytes.size());
+
         // Stage 4e DX10: consult the analyzer for the bound VS shader. If
         // it has known projection matrices in any CB slot that this buffer
         // is bound to (per Device10Proxy's m_boundVSCBs snapshot), build

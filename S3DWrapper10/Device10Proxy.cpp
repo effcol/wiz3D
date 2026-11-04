@@ -13,6 +13,7 @@
 #include "StereoHeuristic.h"
 #include "proxy_factory.h"     // IID_wiz3D_Device10Proxy + TryUnwrap_10 helpers
 #include "AdapterFunctions.h"  // DDILog
+#include "ShaderHunter.h"      // cycle 3: NoteDraw / ShouldSkipDraw per-draw hunt integration
 
 #include <dxgi.h>
 #include <dxgi1_2.h>
@@ -363,7 +364,7 @@ HRESULT STDMETHODCALLTYPE Device10Proxy::CreateShaderResourceView(
 // ---------------------------------------------------------------------------
 // *SetConstantBuffers — unwrap + VS-pipeline tag (Stage 4c.1 carryover).
 // ---------------------------------------------------------------------------
-#define D3D10_CB_SET(STAGE_PREFIX, IS_VS_PIPELINE)                                          \
+#define D3D10_CB_SET(STAGE_PREFIX, IS_VS_PIPELINE, ST10_STAGE)                              \
 void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetConstantBuffers(                     \
     UINT StartSlot, UINT NumBuffers, ID3D10Buffer* const* ppConstantBuffers)                \
 {                                                                                           \
@@ -372,9 +373,12 @@ void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetConstantBuffers(         
     for (UINT i = 0; i < cap; ++i)                                                          \
     {                                                                                       \
         ID3D10Buffer* p = ppConstantBuffers ? ppConstantBuffers[i] : nullptr;               \
+        UINT slot = StartSlot + i;                                                          \
+        Buffer10Proxy* bp = p ? TryUnwrapBuffer_10(static_cast<ID3D10Resource*>(p)) : nullptr; \
+        if (slot < kMaxVSCBSlots) m_cbSlots[ST10_STAGE][slot] = bp;                         \
         if (p)                                                                              \
         {                                                                                   \
-            if (auto* bp = TryUnwrapBuffer_10(static_cast<ID3D10Resource*>(p)))             \
+            if (bp)                                                                         \
             {                                                                               \
                 if (IS_VS_PIPELINE) bp->TagVSBound();                                       \
                 raw[i] = bp->GetReal();                                                     \
@@ -401,8 +405,8 @@ void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetConstantBuffers(         
             m_real->STAGE_PREFIX##SetConstantBuffers(StartSlot, NumBuffers, rraw);          \
         });                                                                                 \
 }
-D3D10_CB_SET(PS, 0)
-D3D10_CB_SET(GS, 1)
+D3D10_CB_SET(PS, 0, ST10_PS)
+D3D10_CB_SET(GS, 1, ST10_GS)
 #undef D3D10_CB_SET
 
 // Stage 4e DX10: VS variant that ALSO snapshots m_boundVSCBs[] so
@@ -418,9 +422,12 @@ void STDMETHODCALLTYPE Device10Proxy::VSSetConstantBuffers(
         ID3D10Buffer* p = ppConstantBuffers ? ppConstantBuffers[i] : nullptr;
         UINT slot = StartSlot + i;
         if (slot < kMaxVSCBSlots) m_boundVSCBs[slot] = p;
+        // Option A per-stage CB tracking (cycle 2): mirror into m_cbSlots.
+        Buffer10Proxy* bp = p ? TryUnwrapBuffer_10(static_cast<ID3D10Resource*>(p)) : nullptr;
+        if (slot < kMaxVSCBSlots) m_cbSlots[ST10_VS][slot] = bp;
         if (p)
         {
-            if (auto* bp = TryUnwrapBuffer_10(static_cast<ID3D10Resource*>(p)))
+            if (bp)
             {
                 bp->TagVSBound();
                 raw[i] = bp->GetReal();
@@ -709,7 +716,7 @@ void STDMETHODCALLTYPE Device10Proxy::ClearDepthStencilView(
 // ---------------------------------------------------------------------------
 
 // *SetShaderResources (VS / PS / GS)
-#define D3D10_SRV_SET(STAGE_PREFIX)                                                         \
+#define D3D10_SRV_SET(STAGE_PREFIX, ST10_STAGE)                                             \
 void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetShaderResources(                     \
     UINT StartSlot, UINT NumViews, ID3D10ShaderResourceView* const* ppShaderResourceViews)  \
 {                                                                                           \
@@ -717,8 +724,13 @@ void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetShaderResources(         
     UINT setCap = NumViews <= kMaxSRVs ? NumViews : kMaxSRVs;                               \
     bool pickRight = (m_activeEye == Eye::Right);                                           \
     for (UINT i = 0; i < setCap; ++i)                                                       \
-        rawSet[i] = UnwrapSRV10ForEye(ppShaderResourceViews ? ppShaderResourceViews[i]      \
-                                                            : nullptr, pickRight);          \
+    {                                                                                       \
+        ID3D10ShaderResourceView* pSRV = ppShaderResourceViews ? ppShaderResourceViews[i]   \
+                                                               : nullptr;                   \
+        UINT slot = StartSlot + i;                                                          \
+        if (slot < kMaxSRVSlots10) m_srvSlots[ST10_STAGE][slot] = pSRV;                     \
+        rawSet[i] = UnwrapSRV10ForEye(pSRV, pickRight);                                     \
+    }                                                                                       \
     m_real->STAGE_PREFIX##SetShaderResources(StartSlot, NumViews,                           \
         ppShaderResourceViews ? rawSet : nullptr);                                          \
     if (!m_presentHookActive) return;                                                       \
@@ -737,9 +749,9 @@ void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetShaderResources(         
             m_real->STAGE_PREFIX##SetShaderResources(StartSlot, NumViews, raw);             \
         });                                                                                 \
 }
-D3D10_SRV_SET(VS)
-D3D10_SRV_SET(PS)
-D3D10_SRV_SET(GS)
+D3D10_SRV_SET(VS, ST10_VS)
+D3D10_SRV_SET(PS, ST10_PS)
+D3D10_SRV_SET(GS, ST10_GS)
 #undef D3D10_SRV_SET
 
 // *SetSamplers
@@ -768,9 +780,13 @@ D3D10_SAMPLER_SET(GS)
 #undef D3D10_SAMPLER_SET
 
 // *SetShader (single shader, no class instances on D3D10)
-#define D3D10_SHADER_SET(STAGE_PREFIX, SHADER_TYPE)                                         \
+// Option A (cycle 2): also snapshot m_boundInfo[stage] from the analyzer cache
+// so EditRightCBs10 + primitive engine can see the bound shader's rightCBs +
+// CRC without a per-draw lookup.
+#define D3D10_SHADER_SET(STAGE_PREFIX, SHADER_TYPE, ST10_STAGE)                             \
 void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetShader(SHADER_TYPE* pShader)         \
 {                                                                                           \
+    m_boundInfo[ST10_STAGE] = pShader ? LookupShaderProjection(pShader) : nullptr;          \
     m_real->STAGE_PREFIX##SetShader(pShader);                                               \
     if (!m_presentHookActive) return;                                                       \
     ComRefHolder10 shaderRef(pShader);                                                      \
@@ -779,8 +795,8 @@ void STDMETHODCALLTYPE Device10Proxy::STAGE_PREFIX##SetShader(SHADER_TYPE* pShad
             m_real->STAGE_PREFIX##SetShader(static_cast<SHADER_TYPE*>(shaderRef.p));        \
         });                                                                                 \
 }
-D3D10_SHADER_SET(PS, ID3D10PixelShader)
-D3D10_SHADER_SET(GS, ID3D10GeometryShader)
+D3D10_SHADER_SET(PS, ID3D10PixelShader, ST10_PS)
+D3D10_SHADER_SET(GS, ID3D10GeometryShader, ST10_GS)
 #undef D3D10_SHADER_SET
 
 // Stage 4e DX10: VS variant that ALSO snapshots m_boundVS so Buffer10Proxy::
@@ -789,6 +805,7 @@ D3D10_SHADER_SET(GS, ID3D10GeometryShader)
 void STDMETHODCALLTYPE Device10Proxy::VSSetShader(ID3D10VertexShader* pShader)
 {
     m_boundVS = pShader;
+    m_boundInfo[ST10_VS] = pShader ? LookupShaderProjection(pShader) : nullptr;
     m_real->VSSetShader(pShader);
     if (!m_presentHookActive) return;
     ComRefHolder10 shaderRef(pShader);
@@ -868,22 +885,41 @@ void STDMETHODCALLTYPE Device10Proxy::OMSetDepthStencilState(
 }
 
 // Draws — pure POD captures.
+// Draws — left eye runs with the game's CBs; right-eye replay closures also
+// invoke ApplySnapshotRightCBs10 so the Option A per-draw sibling-bind path
+// fires for CBs the analyzer flagged as rightCBs on the bound shaders.
+// ShaderHunter integration (cycle 3) lives at the top of each: NoteDraw +
+// HuntMaybeCaptureFingerprint10 record the per-draw CRC + fingerprint, and
+// ShouldSkipDraw lets Hunter hide a specific CRC's draws to isolate it.
+#define WIZ3D_DX10_HUNT_PROLOGUE()                                                  \
+    const uint32_t _huntVS = m_boundInfo[ST10_VS] ? m_boundInfo[ST10_VS]->crc32 : 0;\
+    const uint32_t _huntPS = m_boundInfo[ST10_PS] ? m_boundInfo[ST10_PS]->crc32 : 0;\
+    wiz3d::ShaderHunter::NoteDraw(_huntVS, _huntPS);                                \
+    HuntMaybeCaptureFingerprint10();                                                \
+    if (wiz3d::ShaderHunter::ShouldSkipDraw(_huntVS, _huntPS)) return
+
 void STDMETHODCALLTYPE Device10Proxy::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
+    WIZ3D_DX10_HUNT_PROLOGUE();
     m_real->Draw(VertexCount, StartVertexLocation);
     if (!m_presentHookActive) return;
+    DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back(
-        [this, VertexCount, StartVertexLocation]() {
+        [this, VertexCount, StartVertexLocation, snap]() {
+            ApplySnapshotRightCBs10(snap);
             m_real->Draw(VertexCount, StartVertexLocation);
         });
 }
 
 void STDMETHODCALLTYPE Device10Proxy::DrawIndexed(UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation)
 {
+    WIZ3D_DX10_HUNT_PROLOGUE();
     m_real->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
     if (!m_presentHookActive) return;
+    DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back(
-        [this, IndexCount, StartIndexLocation, BaseVertexLocation]() {
+        [this, IndexCount, StartIndexLocation, BaseVertexLocation, snap]() {
+            ApplySnapshotRightCBs10(snap);
             m_real->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
         });
 }
@@ -892,10 +928,13 @@ void STDMETHODCALLTYPE Device10Proxy::DrawInstanced(
     UINT VertexCountPerInstance, UINT InstanceCount,
     UINT StartVertexLocation, UINT StartInstanceLocation)
 {
+    WIZ3D_DX10_HUNT_PROLOGUE();
     m_real->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
     if (!m_presentHookActive) return;
+    DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back(
-        [this, VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation]() {
+        [this, VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation, snap]() {
+            ApplySnapshotRightCBs10(snap);
             m_real->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
         });
 }
@@ -904,12 +943,15 @@ void STDMETHODCALLTYPE Device10Proxy::DrawIndexedInstanced(
     UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation,
     INT BaseVertexLocation, UINT StartInstanceLocation)
 {
+    WIZ3D_DX10_HUNT_PROLOGUE();
     m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation,
                                   BaseVertexLocation, StartInstanceLocation);
     if (!m_presentHookActive) return;
+    DrawSnapshot10 snap = CaptureDrawSnapshot10();
     m_frameCommands.emplace_back(
         [this, IndexCountPerInstance, InstanceCount, StartIndexLocation,
-         BaseVertexLocation, StartInstanceLocation]() {
+         BaseVertexLocation, StartInstanceLocation, snap]() {
+            ApplySnapshotRightCBs10(snap);
             m_real->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation,
                                           BaseVertexLocation, StartInstanceLocation);
         });
@@ -917,10 +959,16 @@ void STDMETHODCALLTYPE Device10Proxy::DrawIndexedInstanced(
 
 void STDMETHODCALLTYPE Device10Proxy::DrawAuto()
 {
+    WIZ3D_DX10_HUNT_PROLOGUE();
     m_real->DrawAuto();
     if (!m_presentHookActive) return;
-    m_frameCommands.emplace_back([this]() { m_real->DrawAuto(); });
+    DrawSnapshot10 snap = CaptureDrawSnapshot10();
+    m_frameCommands.emplace_back([this, snap]() {
+        ApplySnapshotRightCBs10(snap);
+        m_real->DrawAuto();
+    });
 }
+#undef WIZ3D_DX10_HUNT_PROLOGUE
 
 // Stage 4e DX10: shader-create methods now run the DXBC analyzer + cache
 // per-shader projection-matrix info. DX10 bytecode is SHDR (SM4) — the

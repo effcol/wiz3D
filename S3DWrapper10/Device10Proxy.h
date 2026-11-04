@@ -21,9 +21,12 @@
 #include <unordered_map>
 #include "ShaderAnalyzer11.h"  // ShaderAnalysis11Result — DXBC analyzer works for SM4 (DX10) too
 
+class ShaderProfileData;  // ::ShaderProfileData (global namespace) — used by WhenFilterMatches10
+
 namespace wiz3d
 {
 
+class Buffer10Proxy;
 class DXGIDevice10Proxy;
 
 // RAII COM-pointer holder for closure captures. Same shape as the DX11
@@ -208,6 +211,98 @@ public:
         return slot < kMaxVSCBSlots ? m_boundVSCBs[slot] : nullptr;
     }
 
+    // ==========================================================================
+    // DX10 Option A (task #62 cycles 2+3): per-draw right-eye edit + primitive
+    // engine. Mirrors Context11Proxy's binding state so the shader primitives
+    // (<SkipStereo>, <FixedDepth>, <ShiftUV>, <DepthFromCB>, <AnimateDepth>,
+    // <OverrideCBValue>, <PerEyeTexture>, <SpriteDepth>, <ParallaxLayer>,
+    // <When TextureCRC>) + ShaderHunter note-draw can fire on DX10 games.
+    //
+    // DX10 has three programmable stages: VS, GS, PS (no HS/DS/CS).
+    // ==========================================================================
+    enum StageIdx10 { ST10_VS = 0, ST10_GS = 1, ST10_PS = 2, ST10_COUNT = 3 };
+    static constexpr UINT kMaxSRVSlots10 = 128; // D3D10_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT
+
+    // Per-stage bound-shader analysis (filled at *SetShader); null = not bound.
+    const ShaderAnalysis11Result* GetBoundInfo(StageIdx10 st) const
+    { return (st < ST10_COUNT) ? m_boundInfo[st] : nullptr; }
+
+    // Per-stage CB slots. Stage 4e already tracked VS; cycle 2 extends to GS + PS.
+    Buffer10Proxy* GetCBSlot(StageIdx10 st, UINT slot) const
+    {
+        if (st >= ST10_COUNT || slot >= kMaxVSCBSlots) return nullptr;
+        return m_cbSlots[st][slot];
+    }
+
+    // Per-stage SRV slots (eye-swap substitution happens here for PerEyeTexture).
+    ID3D10ShaderResourceView* GetSRVSlot(StageIdx10 st, UINT slot) const
+    {
+        if (st >= ST10_COUNT || slot >= kMaxSRVSlots10) return nullptr;
+        return m_srvSlots[st][slot];
+    }
+
+    // Per-draw right-eye edit entry point. Mirrors Context11Proxy::EditRightCBs
+    // minus the 37-feature dispatch (features remain DX11-only in cycle 2).
+    // Walks each stage's rightCBs list; for each noted CB, writes shifted bytes
+    // into Buffer10Proxy::RightCopy(0) and rebinds it on the right-eye draw.
+    void EditRightCBs10();
+
+    // Snapshot of per-draw state Option A needs during right-eye replay.
+    // Captured at Draw-record time in the game's thread; applied at replay.
+    // Buffer10Proxy refs are AddRef'd in the capture + Released on snapshot
+    // destruction so the proxy stays alive through replay even if the game
+    // released its binding between frames.
+    struct RightCBSnap10
+    {
+        int            stage = ST10_VS;
+        UINT           slot  = 0;
+        Buffer10Proxy* bp    = nullptr;  // AddRef'd below
+    };
+    struct DrawSnapshot10
+    {
+        bool                        skipStereo = false;
+        std::vector<RightCBSnap10>  rightCBs;
+        ComRefHolder10              vsHolder;     // keep shader analyses alive -- technically
+        ComRefHolder10              psHolder;     // the pointers come from m_shaderProjections
+        ComRefHolder10              gsHolder;     // (device-lifetime), but keep the shader object
+                                                  // addref'd to satisfy the game's reference
+                                                  // counting contract during replay.
+        std::vector<ComRefHolder10> cbHolders;    // one holder per entry in rightCBs
+    };
+    DrawSnapshot10 CaptureDrawSnapshot10();
+    void           ApplySnapshotRightCBs10(const DrawSnapshot10& snap);
+
+    // Primitive engine dispatch (DXBC twin binds). Called from the pre-draw
+    // hook on the right-eye pass. Returns true if a twin was bound and the
+    // caller should UnbindTwin10/UnbindClipSpaceShift10 after the real draw.
+    bool BindClipSpaceShift10();
+    void UnbindClipSpaceShift10();
+
+    // Shader primitives (one per XML tag). Each returns true if it applied
+    // a twin or substitution for this draw.
+    bool BindSkipStereoGate(bool& skipRightEye);
+    bool BindFixedDepth10(const ShaderAnalysis11Result* info, StageIdx10 st, float depth);
+    bool BindShiftUV10(const ShaderAnalysis11Result* info, StageIdx10 st,
+                       int outputReg, int component, float amount);
+    bool BindDepthFromCB10(const ShaderAnalysis11Result* info, StageIdx10 st,
+                           int cbSlot, int offsetBytes);
+    bool BindAnimateDepth10(const ShaderAnalysis11Result* info, StageIdx10 st,
+                            int cbSlot, int offsetBytes, float start, float end);
+    bool BindOverrideCBValue10(const ShaderAnalysis11Result* info, StageIdx10 st,
+                               int cbSlot, int offsetBytes, float value);
+    bool BindPerEyeTexture10(const ShaderAnalysis11Result* info, StageIdx10 st,
+                             int slot, DWORD leftCRC, DWORD rightCRC);
+
+    // <When TextureCRC="..."> sub-filter for shader primitives.
+    bool WhenFilterMatches10(const ::ShaderProfileData& p);
+
+    // Scan currently-bound PS SRVs by FNV-1a 32-bit hash over the
+    // ID3D10Resource* pointer. Up to 16 hashes written; count out.
+    void PsBoundResourceHashes10(uint32_t out[16], unsigned& count);
+
+    // Hunter integration -- called after NoteDraw at each real draw site.
+    void HuntMaybeCaptureFingerprint10();
+
 private:
     ID3D10Device*      m_real;
     LONG               m_refs;
@@ -231,6 +326,23 @@ private:
     // analyzer data. kMaxVSCBSlots declared public above.
     ID3D10VertexShader*   m_boundVS;
     ID3D10Buffer*         m_boundVSCBs[kMaxVSCBSlots];
+
+    // Option A per-stage binding state (cycle 2). Mirrors Context11Proxy's
+    // m_boundInfo[3] and m_cbSlots[stage].proxy[slot]. Null entries mean
+    // "nothing bound at this slot." Shader info pointers come from the
+    // m_shaderProjections map and have the same lifetime -- never AddRef'd.
+    const ShaderAnalysis11Result* m_boundInfo[ST10_COUNT]        = {};
+    class Buffer10Proxy*          m_cbSlots[ST10_COUNT][kMaxVSCBSlots] = {};
+    ID3D10ShaderResourceView*     m_srvSlots[ST10_COUNT][kMaxSRVSlots10] = {};
+
+    // Scratch byte buffer reused across EditRightCBs10 passes.
+    std::vector<unsigned char>    m_editScratch10;
+    // Per-eye-shift-value cadence: avoid redundant right-sibling writes.
+    float                         m_editLastShift = 0.f;
+    float                         m_editLastConv  = 0.f;
+
+    // Hunter sub-draw bookkeeping (parallel to Context11Proxy's).
+    unsigned                      m_drawIndex10   = 0;
 };
 
 } // namespace wiz3d
