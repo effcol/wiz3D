@@ -540,6 +540,32 @@ Games that used 3D Vision "Automatic Mode" driver stereo injection, but communic
 
 ---
 
+## Supported Output Formats
+
+Pick an output in `wiz3D_Config.xml` by name or number — both parse (`<OutputMode Value="SRWeave"/>` or `<OutputMode Value="9"/>`). Every wrapper (DX7, DX8, DX9, DX10/11, OpenGL-QB, HD3D, 3D-Vision-Direct) exposes the same enum from 0.5.0 onward.
+
+| Mode | Name | What it does | Hardware / software needed |
+| ---: | --- | --- | --- |
+| 0 | `iZ3D` | iZ3D dual-panel (legacy) | iZ3D hardware; modern wrappers fall back to Half SBS |
+| 1 | `HalfSBS` | Half Side-by-Side (default) | Any stereo panel / TV with SBS input |
+| 2 | `FullSBS` | Full Side-by-Side | Stereo displays expecting full-width per eye |
+| 3 | `HalfTAB` | Half Top-and-Bottom | TVs with "Over/Under" stereo input |
+| 4 | `FullTAB` | Full Top-and-Bottom | Full-resolution per eye, stacked |
+| 5 | `Anaglyph` | Red/Cyan Dubois | Any monitor + red/cyan glasses |
+| 6 | `RowIL` | Row interleaved | Passive 3D TVs (LG Cinema 3D etc.) |
+| 7 | `ColumnIL` | Column interleaved | Lenticular / column-interleaved displays |
+| 8 | `Checker` | Checkerboard | DLP-Link projectors |
+| 9 | `SRWeave` | Simulated Reality weave | Leia / Samsung Odyssey 3D / other SR panels — ships `SimulatedRealityWeaveOutput.dll` + LeiaSR runtime |
+| 10 | `Mirror` | StereoMirror | Dual-display mirror rig |
+| 11 | `3DVisionGlasses` | NVIDIA 3D Vision shutter via NV3D-Lib | 3D Vision IR emitter + shutter glasses + 120 Hz 3D-Vision-Ready panel; requires legacy R417-or-earlier NVIDIA driver *or* Oscar's [Vision Restoration](https://github.com/oscardelatorre/VisionRestoration) patch on modern drivers. Auto-falls-back to Half SBS when the hardware/driver chain isn't complete. |
+| 12 | `Katanga` | Shared wide-SBS DX11 texture for [bo3b's Katanga](https://github.com/bo3b/Katanga) external viewer | Launch Katanga separately *before* the game; it picks up the shared handle automatically. Works across all 6 wrappers (DX7/8/9 go via the DX11 bridge, OpenGL uses GL/DX interop). |
+
+**Default** is `SRWeave` on shipped Config.xml because the SR runtime is the only free-software cross-vendor path to a modern 3D display today. For a Half-SBS TV or a projector, flip to `HalfSBS`, `HalfTAB`, or `Checker` as appropriate. For NVIDIA 3D Vision hardware, pick `3DVisionGlasses`. For debugging or sharing to a remote 3D viewer, pick `Katanga`.
+
+`OutputMethodDll` (sibling knob) is the legacy iZ3D plugin filename selector; leave it blank to let the modern pipeline backfill from `OutputMode`. Set it only to pin a specific legacy DX7–9 output DLL (`SideBySideOutput.dll`, `CMOShutterOutput.dll`, Zalman / VR920 / Z800 / Lenovo hardware drivers, etc.).
+
+---
+
 ## Keyboard Shortcuts
 
 In-game hotkeys for adjusting stereo on the fly. All bindings are remappable in `wiz3D_Config.xml` under `<HotKeyList>`, see the header comment in that file for the key-code format.
