@@ -360,6 +360,57 @@ static pfnHookedCreateDXGIFactory2 g_pfnWrapCreateFactory2 = NULL;
 // directly to the real dxgi.dll.
 static __declspec(thread) int g_reentrant = 0;
 
+// Caller-module filter for CreateDXGIFactory* exports. Microsoft's diagnostic
+// shim stack (dxdiagn.dll, apphelp.dll, AcLayers.DLL) and Microsoft's
+// d3d9.dll all call CreateDXGIFactory during game launcher / DXDiag probes --
+// Far Cry 2's systemdetection.dll reaches us this way ~30 times before the
+// shim's cached pointer goes stale and the whole stack crashes (see
+// Testing/Logs/.../Far Cry 2/wiz3D_Logs/wiz3D_proxy.log line 3457+). Those
+// paths don't ever create a swap chain through the returned factory, so
+// wrapping them is pure overhead AND exposes us to the shim's bugs. Pass
+// through to the real dxgi.dll with no vtable hook or state capture when
+// the caller lives in one of these modules.
+//
+// Detection: _ReturnAddress() + GetModuleHandleExW(FROM_ADDRESS, ...) names
+// the exact DLL that called us. We also check hCallingModule when the
+// wrapper's Hooked_* was going to see it anyway.
+#include <strsafe.h>
+#include <intrin.h>   // _ReturnAddress()
+#pragma intrinsic(_ReturnAddress)
+static bool CallerIsDiagnosticShim(void* returnAddr)
+{
+    if (!returnAddr) return false;
+    HMODULE hCaller = NULL;
+    if (!GetModuleHandleExW(
+            GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+            GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+            (LPCWSTR)returnAddr, &hCaller) || !hCaller)
+        return false;
+    WCHAR name[MAX_PATH] = {};
+    if (!GetModuleFileNameW(hCaller, name, MAX_PATH)) return false;
+    // Match the leaf filename case-insensitively.
+    const WCHAR* leaf = wcsrchr(name, L'\\');
+    leaf = leaf ? leaf + 1 : name;
+    static const WCHAR* const kShims[] = {
+        L"dxdiagn.dll", L"apphelp.dll", L"AcLayers.DLL", L"AcLayers.dll",
+        // Microsoft's d3d9.dll in SYSTEM32 only -- not a wiz3D proxy d3d9.
+        // We can distinguish by the FULL path having "\\WINDOWS\\" in it.
+        NULL
+    };
+    for (int i = 0; kShims[i]; ++i)
+        if (_wcsicmp(leaf, kShims[i]) == 0) return true;
+    // Microsoft d3d9.dll (specifically the SYSTEM32 one, not our proxy).
+    if (_wcsicmp(leaf, L"d3d9.dll") == 0)
+    {
+        // Our proxy d3d9.dll sits next to the game exe; the real one is in
+        // the Windows directory. Look for "\\Windows\\" or "\\System32\\".
+        WCHAR lower[MAX_PATH]; lstrcpynW(lower, name, MAX_PATH);
+        for (WCHAR* p = lower; *p; ++p) if (*p >= L'A' && *p <= L'Z') *p += 32;
+        if (wcsstr(lower, L"\\windows\\")) return true;
+    }
+    return false;
+}
+
 // ---------------------------------------------------------------------------
 // OpenAdapter10 DDI hooking — IAT-based approach
 //
@@ -1196,6 +1247,17 @@ extern "C" __declspec(dllexport) HRESULT WINAPI CreateDXGIFactory(REFIID riid, v
         return g_pfnRealCreateFactory(riid, ppFactory);
     }
 
+    // Caller-module filter: Microsoft diagnostic shim + dxdiagn + Microsoft
+    // d3d9.dll paths run CreateDXGIFactory* repeatedly during game-launcher
+    // hardware probes. They never use the factory to create a swap chain,
+    // and the shim stack eventually corrupts its own state. Pass through
+    // without wrapping. (Far Cry 2 systemdetection.dll repro.)
+    if (CallerIsDiagnosticShim(_ReturnAddress()))
+    {
+        Log("  Caller is diagnostic shim -- forwarding to real dxgi.dll (no wrap)\n");
+        return g_pfnRealCreateFactory(riid, ppFactory);
+    }
+
     LoadWrapper();
 
     // Lazy IAT-hook GetProcAddress in d3d10/d3d11.dll so the runtime gets our
@@ -1246,6 +1308,12 @@ extern "C" __declspec(dllexport) HRESULT WINAPI CreateDXGIFactory1(REFIID riid, 
     if (g_reentrant > 0)
     {
         Log("  Re-entrant call — forwarding to real dxgi.dll\n");
+        return g_pfnRealCreateFactory1(riid, ppFactory);
+    }
+
+    if (CallerIsDiagnosticShim(_ReturnAddress()))
+    {
+        Log("  Caller is diagnostic shim -- forwarding to real dxgi.dll (no wrap)\n");
         return g_pfnRealCreateFactory1(riid, ppFactory);
     }
 
@@ -1304,6 +1372,12 @@ extern "C" __declspec(dllexport) HRESULT WINAPI CreateDXGIFactory2(UINT Flags, R
     if (g_reentrant > 0)
     {
         Log("  Re-entrant call — forwarding to real dxgi.dll\n");
+        return g_pfnRealCreateFactory2(Flags, riid, ppFactory);
+    }
+
+    if (CallerIsDiagnosticShim(_ReturnAddress()))
+    {
+        Log("  Caller is diagnostic shim -- forwarding to real dxgi.dll (no wrap)\n");
         return g_pfnRealCreateFactory2(Flags, riid, ppFactory);
     }
 
