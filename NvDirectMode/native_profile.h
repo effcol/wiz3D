@@ -6,8 +6,12 @@
  * Header-only so each proxy (NvApiProxy, AmdQbProxy, S3DWrapperOGL when we
  * wire it in) gets its own TU-local copy. Zero linkage / library complexity.
  *
- * Location: %APPDATA%\wiz3D\NativeProfile.xml (source of truth, human-readable,
- *           editable, matches iZ3D UserProfile.xml pattern)
+ * Location: <game-exe-dir>\NativeProfile.xml (source of truth, human-readable,
+ *           editable, sits next to BaseProfile.xml / UserProfile.xml so all
+ *           wiz3D per-game state is in one place)
+ * Legacy:   %APPDATA%\wiz3D\NativeProfile.xml (pre-0.4.3 location, read as
+ *           fallback on Load() so upgraders don't lose StereoActive=0 state;
+ *           writes go to the new location only)
  * Mirror:   HKCU\Software\wiz3D\NativeProfile\<exe> (best-effort registry
  *           mirror so games/tools reading their own registry key see the same
  *           state; XML always wins on conflict)
@@ -60,7 +64,25 @@ inline int ReadIntTag(const char* xml, const char* tag, int defaultValue)
     return atoi(p);
 }
 
+// 0.4.3+ primary location: next to the game exe (lives with BaseProfile.xml
+// and UserProfile.xml so all wiz3D per-game state is in the install folder).
 inline bool GetXmlPath(WCHAR* outPath, size_t cch)
+{
+    if (!outPath || cch < MAX_PATH) return false;
+    WCHAR exePath[MAX_PATH] = {0};
+    if (!GetModuleFileNameW(NULL, exePath, MAX_PATH))
+        return false;
+    WCHAR* leaf = wcsrchr(exePath, L'\\');
+    if (!leaf) return false;
+    *leaf = L'\0';  // exePath -> directory
+    _snwprintf_s(outPath, cch, _TRUNCATE, L"%s\\NativeProfile.xml", exePath);
+    return true;
+}
+
+// Pre-0.4.3 location: %APPDATA%\wiz3D\NativeProfile.xml. Used by Load() as a
+// read-only fallback when the game-folder file doesn't have this exe's entry,
+// so upgraders keep their StereoActive=0 state. Never written to.
+inline bool GetLegacyXmlPath(WCHAR* outPath, size_t cch)
 {
     if (!outPath || cch < MAX_PATH) return false;
     WCHAR appData[MAX_PATH] = {0};
@@ -121,10 +143,8 @@ inline void SaveXml()
     WCHAR xmlPath[MAX_PATH] = {0};
     if (!GetXmlPath(xmlPath, MAX_PATH)) return;
 
-    WCHAR dir[MAX_PATH];
-    lstrcpynW(dir, xmlPath, MAX_PATH);
-    WCHAR* pSlash = wcsrchr(dir, L'\\');
-    if (pSlash) { *pSlash = L'\0'; CreateDirectoryW(dir, NULL); }
+    // 0.4.3+: game-exe-dir always exists (we're loaded into it), so no mkdir
+    // needed — the pre-0.4.3 %AppData%\wiz3D\ creation is handled by S3DAPI.
 
     char* buf = NULL;
     size_t bufLen = 0;
@@ -241,9 +261,48 @@ inline void Init(const char* nativePathTag)
     detail::s_initialized = true;
 }
 
+namespace detail {
+
+// Try to read StereoActive for s_gameExeBaseName from xmlPath. Returns true
+// iff a matching <Profile> block was found; *outStereoActive set from it.
+// Returns false (and leaves outStereoActive untouched) if the file is missing,
+// unreadable, or has no entry for this exe.
+inline bool TryLoadFromPath(const WCHAR* xmlPath, int* outStereoActive)
+{
+    FILE* f = _wfopen(xmlPath, L"rb");
+    if (!f) return false;
+    fseek(f, 0, SEEK_END);
+    long sz = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (sz <= 0 || sz > 1024 * 1024) { fclose(f); return false; }
+    char* buf = (char*)malloc((size_t)sz + 1);
+    if (!buf) { fclose(f); return false; }
+    size_t n = fread(buf, 1, (size_t)sz, f);
+    buf[n] = '\0';
+    fclose(f);
+
+    size_t blockLen = 0;
+    char* block = FindProfileBlock(buf, s_gameExeBaseName, &blockLen);
+    bool found = false;
+    if (block)
+    {
+        char saved = block[blockLen];
+        block[blockLen] = '\0';
+        *outStereoActive = ReadIntTag(block, "StereoActive", 1) ? 1 : 0;
+        block[blockLen] = saved;
+        found = true;
+    }
+    free(buf);
+    return found;
+}
+
+} // namespace detail
+
 // Load StereoActive from NativeProfile.xml (returns default 1 if the file
-// doesn't exist or has no entry for this exe). Also updates in-memory state.
-// Call after Init().
+// doesn't exist or has no entry for this exe). Reads game-folder file first,
+// then falls back to %APPDATA%\wiz3D\NativeProfile.xml (pre-0.4.3 location)
+// so upgraders keep their StereoActive=0 state across the migration. Also
+// updates in-memory state. Call after Init().
 inline int Load()
 {
     if (detail::s_gameExeBaseName[0] == '\0')
@@ -252,43 +311,26 @@ inline int Load()
         return 1;
     }
 
-    WCHAR xmlPath[MAX_PATH] = {0};
-    if (!detail::GetXmlPath(xmlPath, MAX_PATH))
-    {
-        detail::s_stereoActive = 1;
-        return 1;
-    }
-
-    FILE* f = _wfopen(xmlPath, L"rb");
-    if (!f)
-    {
-        detail::s_stereoActive = 1;
-        return 1;
-    }
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    if (sz <= 0 || sz > 1024 * 1024) { fclose(f); detail::s_stereoActive = 1; return 1; }
-    char* buf = (char*)malloc((size_t)sz + 1);
-    if (!buf) { fclose(f); detail::s_stereoActive = 1; return 1; }
-    size_t n = fread(buf, 1, (size_t)sz, f);
-    buf[n] = '\0';
-    fclose(f);
-
-    size_t blockLen = 0;
-    char* block = detail::FindProfileBlock(buf, detail::s_gameExeBaseName, &blockLen);
     int loaded = 1;
-    if (block)
-    {
-        char saved = block[blockLen];
-        block[blockLen] = '\0';
-        loaded = detail::ReadIntTag(block, "StereoActive", 1);
-        block[blockLen] = saved;
-    }
-    free(buf);
 
-    detail::s_stereoActive = loaded ? 1 : 0;
-    return detail::s_stereoActive;
+    WCHAR xmlPath[MAX_PATH] = {0};
+    if (detail::GetXmlPath(xmlPath, MAX_PATH) &&
+        detail::TryLoadFromPath(xmlPath, &loaded))
+    {
+        detail::s_stereoActive = loaded;
+        return detail::s_stereoActive;
+    }
+
+    WCHAR legacyPath[MAX_PATH] = {0};
+    if (detail::GetLegacyXmlPath(legacyPath, MAX_PATH) &&
+        detail::TryLoadFromPath(legacyPath, &loaded))
+    {
+        detail::s_stereoActive = loaded;
+        return detail::s_stereoActive;
+    }
+
+    detail::s_stereoActive = 1;
+    return 1;
 }
 
 // Update state and persist (both XML + registry). No-op if new state matches
