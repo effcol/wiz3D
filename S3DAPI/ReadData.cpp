@@ -624,12 +624,20 @@ void ReadProfilesRouterType()
 				PathAppend(legacyPath, _T("UserProfile.xml"));
 				if (GetFileAttributes(legacyPath) != INVALID_FILE_ATTRIBUTES)
 				{
+					// Braces matter: in FINAL_RELEASE builds DEBUG_MESSAGE expands
+					// to `if (FALSE) __noop`, which turns a bare `if ... else`
+					// around two DEBUG_MESSAGE calls into a dangling-else parse
+					// error (C2181). Always wrap in blocks.
 					if (CopyFile(legacyPath, userProfilePath, FALSE))
+					{
 						DEBUG_MESSAGE(_T("Migrated legacy UserProfile.xml: %s -> %s\n"),
 						              legacyPath, userProfilePath);
+					}
 					else
+					{
 						DEBUG_MESSAGE(_T("Legacy UserProfile.xml copy failed (err=%lu): %s\n"),
 						              GetLastError(), legacyPath);
+					}
 				}
 			}
 		}
