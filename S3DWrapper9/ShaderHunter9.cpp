@@ -21,6 +21,8 @@
 #include <tchar.h>
 
 #include "../S3DAPI/GlobalData.h"
+#include <Shlwapi.h>     // PathRemoveFileSpec for the Numpad 4 save-path toast
+#pragma comment(lib, "Shlwapi.lib")
 #include "../S3DAPI/ReadData.h"
 #include "../S3DAPI/ShaderProfileData.h"
 #include "../CommonUtils/System.h"
@@ -364,13 +366,26 @@ void HunterOnMonoCurrent()
          wasMonoed ? (removed ? "removed" : "remove-failed")
                    : (added   ? "added"   : "add-skipped-already-present"));
 
-    char toast[128];
+    // 0.4.3: log the full save-path so users don't have to hunt for
+    // UserProfile.xml. Toast shows a short hint; proxy log carries full path.
+    TCHAR exeDirT[MAX_PATH] = {};
+    _tcscpy_s<MAX_PATH>(exeDirT, gInfo.ApplicationFileName);
+    PathRemoveFileSpec(exeDirT);
+    char exeDirA[MAX_PATH];
+#ifdef UNICODE
+    WideCharToMultiByte(CP_UTF8, 0, exeDirT, -1, exeDirA, MAX_PATH, nullptr, nullptr);
+#else
+    strncpy_s(exeDirA, exeDirT, _TRUNCATE);
+#endif
+    HLog("[hunt-dx9] mono -> %s\\UserProfile.xml\n", exeDirA);
+
+    char toast[192];
     _snprintf_s(toast, _TRUNCATE,
-                "%s 0x%08X %s - share at github.com/effcol/wiz3D",
+                "%s 0x%08X %s -> UserProfile.xml (next to game exe)",
                 wasMonoed ? "Un-mono" : "Mono",
                 crc, (stage == HuntStage::VS ? "VS" : "PS"));
     std::lock_guard<std::mutex> g(s_lock);
-    s_flashDeadline = (uint64_t)GetTickCount64() + 2000;
+    s_flashDeadline = (uint64_t)GetTickCount64() + 2500;
     strncpy_s(s_flashLeaf, toast, _TRUNCATE);
 }
 

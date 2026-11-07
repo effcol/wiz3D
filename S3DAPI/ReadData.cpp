@@ -597,11 +597,45 @@ void ReadProfilesRouterType()
 		// failed to parse (which would be a bigger problem anyway).
 	}
 
-	if (iz3d::resources::GetCurrentUserDirectory( szPath ))
+	// 0.4.3: UserProfile.xml now lives next to the game exe (same folder as
+	// BaseProfile.xml), replacing the %AppData%\wiz3D\ location used through
+	// 0.4.2. Benefits: per-game isolation (TinTin fixes don't leak into Crysis),
+	// discoverability (users expect profiles alongside the install), and the
+	// Numpad 4 save toast can point at a path the user can open with one
+	// alt-tab to Explorer.
+	//
+	// Migration: if a legacy %AppData%\wiz3D\UserProfile.xml still exists and
+	// the game-folder one doesn't, copy it over on first boot so the user's
+	// existing fixes are preserved. The TinyXML doc's SaveFile() uses the
+	// filename baked in at Load time, so subsequent Numpad 4 writes go to the
+	// new game-folder location without any further plumbing.
 	{
-		PathAppend(szPath, _T("UserProfile.xml") );
-		DEBUG_MESSAGE(_T("User profile:\n"));
-		ReadProfileRouterType(szApplicationFileName, szPath, g_docUserProfiles, g_nodeUserProfile, true, 2 /*User*/);
+		TCHAR exeDir[MAX_PATH];
+		_tcscpy_s<MAX_PATH>(exeDir, gInfo.ApplicationFileName);
+		PathRemoveFileSpec(exeDir);
+		TCHAR userProfilePath[MAX_PATH];
+		_stprintf_s<MAX_PATH>(userProfilePath, _T("%s\\UserProfile.xml"), exeDir);
+
+		if (GetFileAttributes(userProfilePath) == INVALID_FILE_ATTRIBUTES)
+		{
+			TCHAR legacyPath[MAX_PATH];
+			if (iz3d::resources::GetCurrentUserDirectory(legacyPath))
+			{
+				PathAppend(legacyPath, _T("UserProfile.xml"));
+				if (GetFileAttributes(legacyPath) != INVALID_FILE_ATTRIBUTES)
+				{
+					if (CopyFile(legacyPath, userProfilePath, FALSE))
+						DEBUG_MESSAGE(_T("Migrated legacy UserProfile.xml: %s -> %s\n"),
+						              legacyPath, userProfilePath);
+					else
+						DEBUG_MESSAGE(_T("Legacy UserProfile.xml copy failed (err=%lu): %s\n"),
+						              GetLastError(), legacyPath);
+				}
+			}
+		}
+
+		DEBUG_MESSAGE(_T("User profile: %s\n"), userProfilePath);
+		ReadProfileRouterType(szApplicationFileName, userProfilePath, g_docUserProfiles, g_nodeUserProfile, true, 2 /*User*/);
 	}
 
 	if (gInfo.ProfileName[0] == '\0')
