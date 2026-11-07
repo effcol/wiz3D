@@ -53,20 +53,23 @@ Known DX11 ShaderFix profile coverage (14 titles in `BaseProfile.xml` as of 0.4.
 
 Historically treated as a thin DX11 sibling; the DX10 proxy is `dxgi.dll` and reuses DX10-11 settings. Game list same as DX11 for pure-DX10 titles.
 
-## Direct3D 7 / 8
+## Direct3D 7
+
+Shimmed to DX9 internally (`S3DWrapper7/Direct3D7.cpp:54` calls `Direct3DCreate9()`). Inherits output modes + OSD + hotkeys from the DX9 path, so anything that drives stereo in DX9 lights up here too. The proxy surface is full DirectDraw + Direct3D 7 (DirectDrawClipper, DirectDrawPalette, Direct3DVertexBuffer7…), separate from DX8.
 
 | Game | Status | Notes |
 |---|---|---|
-| DX7/DX8 titles (generic) | 🧪 | Shimmed to DX9 internally (`Direct3DCreate9()` under the hood). Inherits output modes + OSD + hotkeys. Known issue: 16-bit back-buffer games on Win10/11 may need R5G6B5 mapping — see [DX7 potential issues](https://github.com/effcol/WiZ3D). |
+| DX7 titles (generic) | 🧪 | Known issue: 16-bit back-buffer games on Win10/11 may need R5G6B5 mapping — see `project_dx7_potential_issues` notes. Please file reports with specific titles. |
 
-## OpenGL (Quad-Buffer Stereo)
+## Direct3D 8
 
-The OGL wrapper exposes QB-style stereo to the game and then weaves the two buffers into your chosen output format.
+Also shimmed to DX9 internally (`S3DWrapper8/S3DWrapper8.cpp:432` → `Direct3DCreate9()`), with its own full Direct3D8 proxy hierarchy (Direct3DBaseTexture8, Direct3DCubeTexture8, Direct3DIndexBuffer8…). Ships as a distinct DLL set in `Stereo-Injector/DX8/`.
 
-| Game | Engine | Status | Mode | Notes |
-|---|---|---|---|---|
-| Return to Castle Wolfenstein | idTech 3 | ✅ | SR Weave | 0.4.x. |
-| Minecraft (Java) | — | 🧪 | — | Pending. |
+Historical gotcha landed in 0.4.x: `BuildAdapterModesList` had an R5G6B5-seed bug that broke adapter enumeration; fixed. Logging path emits `[wrap]` lines regardless of release build (see `project_dx8_wrapper_diagnostics` notes).
+
+| Game | Status | Notes |
+|---|---|---|
+| DX8 titles (generic) | 🧪 | Please file reports with specific titles. |
 
 ## Vulkan (0.5.0 — in flight)
 
@@ -84,7 +87,18 @@ Akshay's upcoming Vulkan wrapper. Expected PR around 2026-11-08. Known targets:
 
 ## Native-stereo paths
 
-These run alongside a Stereo-Injector install and only activate for games listed in `NativeProfile.xml`.
+In these paths the **game** produces two eye frames; wiz3D just composites them to your chosen output format. This is a different shape to the Stereo-Injector wrappers above (which generate the second eye themselves from a mono game).
+
+### OpenGL (Quad-Buffer Stereo)
+
+Lives in `OpenGL-Quad-Buffer-Stereo/{32,64}-bit/`. The wrapper tells the game "yes you have a quad-buffer stereo context" (via `HglGetBooleanv(GL_STEREO)` returning `TRUE` and the `EmulateQB=1` shipped default in `wiz3D_Config.xml`), the game does its own L/R rendering to `GL_BACK_LEFT` / `GL_BACK_RIGHT` through standard OpenGL stereo API, and the wrapper composites those buffers for your display. Works on any hardware — wiz3D is lying to the game about QB support, so you don't need a Quadro / FirePro with real QB stereo.
+
+**Requires the game to be QB-aware**. idTech 3 / 4 titles (RtCW, Quake 3, Doom 3 and derivatives) typically support this; so do several emulators. A mono-only OpenGL title (anything that never calls `glDrawBuffer(GL_BACK_LEFT)` etc.) will NOT be upgraded to stereo by this wrapper — that's planned as a separate OGL Stereo Injector sibling project.
+
+| Game | Engine | Status | Mode | Notes |
+|---|---|---|---|---|
+| Return to Castle Wolfenstein | idTech 3 | ✅ | SR Weave | 0.4.x. |
+| Minecraft (Java) + stereo mod | — | 🧪 | — | Needs a shader mod that emits QB stereo — bare Minecraft doesn't. |
 
 ### HD3D (AMD)
 
