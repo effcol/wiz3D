@@ -244,12 +244,31 @@ void ReadProfilesRouterType()
 		delete docSystemProfiles;
 	}
 
-	if(iz3d::resources::GetCurrentUserDirectory( szPath ))
+	// 0.4.3: UserProfile.xml lives next to the game exe (same folder as
+	// BaseProfile.xml), replacing the %AppData%\wiz3D\ location used through
+	// 0.4.2. First boot on a game whose legacy %AppData% file has saves
+	// migrates them into the game folder before reading.
 	{
-		PathAppend(szPath, TEXT("UserProfile.xml") );
+		TCHAR exeDir[MAX_PATH];
+		_tcscpy_s<MAX_PATH>(exeDir, gInfo.ApplicationFileName);
+		PathRemoveFileSpec(exeDir);
+		TCHAR userProfilePath[MAX_PATH];
+		_stprintf_s<MAX_PATH>(userProfilePath, _T("%s\\UserProfile.xml"), exeDir);
+
+		if (GetFileAttributes(userProfilePath) == INVALID_FILE_ATTRIBUTES)
+		{
+			TCHAR legacyPath[MAX_PATH];
+			if (iz3d::resources::GetCurrentUserDirectory(legacyPath))
+			{
+				PathAppend(legacyPath, _T("UserProfile.xml"));
+				if (GetFileAttributes(legacyPath) != INVALID_FILE_ATTRIBUTES)
+					CopyFile(legacyPath, userProfilePath, FALSE);
+			}
+		}
+
 		TiXmlDocument *docUserProfiles = NULL;
 		TiXmlNode* nodeUserProfile = NULL;
-		ReadProfileRouterType(szApplicationFileName, szPath, docUserProfiles, nodeUserProfile, true);
+		ReadProfileRouterType(szApplicationFileName, userProfilePath, docUserProfiles, nodeUserProfile, true);
 		delete docUserProfiles;
 	}
 }

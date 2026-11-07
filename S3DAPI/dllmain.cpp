@@ -41,9 +41,12 @@ void InitDriverDirectory( HINSTANCE hinstDLL )
 	s = _tcsrchr(gInfo.DriverDirectory, '\\');
 	if(s) 
 		*s = 0;
-	TCHAR szPath[MAX_PATH];
-	if(iz3d::resources::GetCurrentUserDirectory(szPath)) 
-		CreateDirectory(szPath, NULL); // special for multiple users
+	// 0.4.3: %AppData%\wiz3D\ is no longer created. All wiz3D per-game state
+	// (UserProfile.xml, NativeProfile.xml) now lives next to the game exe.
+	// The legacy %AppData%\wiz3D\ location is read-only fallback (migration)
+	// and doesn't require the directory to exist — fopen on a missing file
+	// just returns NULL, which the migration handles gracefully.
+
 	// 0.4.1: wire up zlog's log-file path regardless of FINAL_RELEASE so
 	// shipped builds still write to wiz3D_Logs/<Game>/<Game>.log. DEBUG_TRACE
 	// call-sites remain FINAL_RELEASE-stripped — only the plumbing stays.
