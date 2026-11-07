@@ -218,9 +218,13 @@ inline void DataInput::SwitchCurrentPresetAutofocus()
 
 inline bool DataInput::IsChanged(DataInput& inputOther)
 {
+	// 0.4.3: ConvergenceShift included so the deferred WriteInputData fires
+	// when the user tunes it with Alt+Num +/- (the KeyboardHook handler only
+	// mutates the field in place; persistence relies on this signal).
 	return StereoActive						!= inputOther.StereoActive	||
-		ActivePreset						!= inputOther.ActivePreset	|| 
+		ActivePreset						!= inputOther.ActivePreset	||
 		SwapEyes							!= inputOther.SwapEyes		||
+		ConvergenceShift					!= inputOther.ConvergenceShift ||
 		GetActivePreset()->StereoBase		!= inputOther.GetActivePreset()->StereoBase  ||
 		GetActivePreset()->One_div_ZPS		!= inputOther.GetActivePreset()->One_div_ZPS ||
 		GetActivePreset()->AutoFocusEnable	!= inputOther.GetActivePreset()->AutoFocusEnable;

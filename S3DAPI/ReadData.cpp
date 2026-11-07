@@ -674,6 +674,13 @@ void ReadInputData(TiXmlNode* node)
 	pitem = item->FirstChildElement("StereoActive");
 	if (pitem)
 		QueryBoolAsInt(pitem, "Value", &gInfo.Input.StereoActive);
+	// 0.4.3: top-level ConvergenceShift (Alt+Num +/-). Pairs with the
+	// WriteInputData serialization below; absent in older UserProfile.xml
+	// files, so we read only on presence and leave the default (0.0f) in
+	// place otherwise.
+	pitem = item->FirstChildElement("ConvergenceShift");
+	if (pitem)
+		pitem->QueryFloatAttribute("Value", &gInfo.Input.ConvergenceShift);
 	const bool userProfile = (node == g_nodeUserProfile);
 	node = node->FirstChild("Presets");
 	if (node)
@@ -766,6 +773,13 @@ void WriteInputData(DataInput* overrideInput)
 	pitem->SetAttribute("Value", overrideInput->LaserSightEnable);
 	pitem = FindOrCreateElement(node, "StereoActive");
 	pitem->SetAttribute("Value", overrideInput->StereoActive);
+	// 0.4.3: ConvergenceShift is a top-level comfort knob (Alt+Num +/-,
+	// additive to the preset's One_div_ZPS at render time). Serialized here
+	// so Ctrl+F5 reload doesn't wipe it -- see DataInput::IsChanged, which
+	// was also widened to trigger the deferred write on ConvergenceShift
+	// changes.
+	pitem = FindOrCreateElement(node, "ConvergenceShift");
+	pitem->SetDoubleAttribute("Value", overrideInput->ConvergenceShift);
 	TiXmlNode* node2 = node->FirstChild("Presets");
 	if (!node2)
 		node2 = node->InsertEndChild(TiXmlElement("Presets"));
