@@ -19,12 +19,12 @@ wiz3D generates left + right eye frames from a mono game.
 - [DirectX 11](API-DirectX-11)
 - [DirectX 12](API-DirectX-12)
 - [Vulkan](API-Vulkan)
-- [3D Vision Automatic-aware games](Injector-3D-Vision-Automatic-Aware)
+- [3D Vision Automatic-Aware](Injector-3D-Vision-Automatic-Aware)
 
 **Native-stereo paths**
 
 The game produces both eye frames; wiz3D composites them to your display.
 
-- [OpenGL (Quad-Buffer)](Native-OpenGL-Quad-Buffer)
-- [HD3D (AMD)](Native-HD3D)
-- [3D Vision Direct (NVIDIA)](Native-3D-Vision-Direct)
+- [OpenGL Quad-Buffer Stereo](Native-OpenGL-Quad-Buffer)
+- [AMD HD3D](Native-HD3D)
+- [3D Vision Direct Mode](Native-3D-Vision-Direct)
