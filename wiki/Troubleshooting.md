@@ -66,5 +66,5 @@ Logs live next to the game exe under `wiz3D_Logs/`. When filing an issue, includ
 
 ## Still stuck?
 
-- GitHub Issues: https://github.com/effcol/WiZ3D/issues
+- GitHub Issues: https://github.com/Stereopticon-Org/wiz3D/issues
 - Include the log files, version info, and a 30-second description of the symptom.

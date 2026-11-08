@@ -1,6 +1,6 @@
 # DirectX 11
 
-✅ **Mostly Working.** The DX11 Stereo-Injector pipeline landed in 0.4.0 via [PR #31](https://github.com/effcol/WiZ3D/pull/31) by [@AkshayUHegde](https://github.com/AkshayUHegde), with 14 per-game profiles and the Feature Engine that handles constant-buffer stereo on the right eye. 0.5.0+ continues to expand profile coverage; Akshay's in-flight DX11 update targets stereo rendering on any DX11 title that uses standard CB layouts (crashes expected to be eliminated; shadows/reflections may still need per-game shader fixes).
+✅ **Mostly Working.** The DX11 Stereo-Injector pipeline landed in 0.4.0 via [PR #31](https://github.com/Stereopticon-Org/wiz3D/pull/31) by [@AkshayUHegde](https://github.com/AkshayUHegde), with 14 per-game profiles and the Feature Engine that handles constant-buffer stereo on the right eye. 0.5.0+ continues to expand profile coverage; Akshay's in-flight DX11 update targets stereo rendering on any DX11 title that uses standard CB layouts (crashes expected to be eliminated; shadows/reflections may still need per-game shader fixes).
 
 ## How the wrapper works
 

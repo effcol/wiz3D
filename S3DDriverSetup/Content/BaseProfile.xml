@@ -13,7 +13,7 @@
      your contribution is LGPL-2.1 licensed too, and must stay that way.
    - If you figure out a working profile for a new game, please consider sending
      it back so every wiz3D user benefits. Open a pull request or an issue at:
-         https://github.com/effcol/wiz3D
+         https://github.com/Stereopticon-Org/wiz3D
      Even a rough profile is useful -- someone else can polish it from there.
 
   Profiles are matched by exe name (case-insensitive). See docs/SHADER_FIXES.md

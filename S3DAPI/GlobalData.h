@@ -266,7 +266,7 @@ enum EventId
 	// 0.5.0 ShaderHunter: Numpad 4 force-mono the currently cycled CRC. Writes
 	// a <Mono> entry to the per-user UserProfile.xml so the fix persists, and
 	// hot-applies via g_ProfileData so the user sees the effect immediately.
-	// The toast asks them to upstream the fix to github.com/effcol/wiz3D.
+	// The toast asks them to upstream the fix to github.com/Stereopticon-Org/wiz3D.
 	HUNT_MONO_CURRENT_SHADER,
 	// 0.5.0 ShaderHunter: Numpad 5 toggle hunt granularity between CRC-level
 	// (default) and Draw-level. In Draw mode, Numpad 1/2 cycles through the

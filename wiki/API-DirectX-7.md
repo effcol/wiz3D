@@ -20,4 +20,4 @@
 |---|---|---|---|---|
 | Deus Ex | `Stereo-Injector/DX7` | ✕ | 🔴 Not Working | Listed for DX7 testing. |
 
-Please report additional DX7 titles via [GitHub Issues](https://github.com/effcol/WiZ3D/issues).
+Please report additional DX7 titles via [GitHub Issues](https://github.com/Stereopticon-Org/wiz3D/issues).

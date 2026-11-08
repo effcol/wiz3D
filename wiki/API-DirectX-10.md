@@ -16,7 +16,7 @@ Same as DX11: `Stereo-Injector/DX10-11/32-bit/` or `Stereo-Injector/DX10-11/64-b
 
 Most titles tagged DX10/11 in the README ran on DX11 at test time. Pure-DX10 testing results are what we need. See [DirectX 11](API-DirectX-11) for the shared game list.
 
-Please report DX10-exclusive titles via [GitHub Issues](https://github.com/effcol/WiZ3D/issues) so we can split them out here.
+Please report DX10-exclusive titles via [GitHub Issues](https://github.com/Stereopticon-Org/wiz3D/issues) so we can split them out here.
 
 ## Related
 

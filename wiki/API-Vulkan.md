@@ -20,7 +20,7 @@ Some Vulkan emulators load their Vulkan loader in a way that skips drop-in proxy
 | Lichii — Ocarina of Time Remake | Uses system Vulkan loader by default | Env var required (details once PR lands) |
 | KytyPS5 — Demon's Souls | Uses system Vulkan loader by default | Env var required; also needs a stereo-mode shader-precompilation pass to avoid first-run stutter |
 
-Long term, the [Stereopticon](https://github.com/effcol/Stereopticon) launcher will set those env vars per-game. Short term, additional install instructions will document the env-var dance per emulator.
+Long term, the [Stereopticon](https://github.com/Stereopticon-Org/Stereopticon) launcher will set those env vars per-game. Short term, additional install instructions will document the env-var dance per emulator.
 
 ## Performance note
 
@@ -40,4 +40,4 @@ Akshay reports **200 FPS in Demon's Souls** with 4× MFG + DLSS Quality + stereo
 | Lichii — Ocarina of Time Remake | — | 🧪 | Env var required. |
 | KytyPS5 — Demon's Souls | — | 🧪 | Env var required + stereo-mode shader precompile. |
 
-Please report additional Vulkan titles via [GitHub Issues](https://github.com/effcol/WiZ3D/issues).
+Please report additional Vulkan titles via [GitHub Issues](https://github.com/Stereopticon-Org/wiz3D/issues).

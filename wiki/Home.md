@@ -42,6 +42,6 @@ If you don't know the API, [Quick-Start](Quick-Start) has a short way to figure 
 
 ## Project links
 
-- Source and releases: https://github.com/effcol/WiZ3D
+- Source and releases: https://github.com/Stereopticon-Org/wiz3D
 - Licence: LGPL-2.1-or-later (fork retains the original iZ3D 1.13 licence)
 - Sibling projects: Stereopticon (launcher), SR-Loom (desktop weaver)

@@ -2,7 +2,7 @@
 
 ## 1. Download
 
-Grab the latest release zip from the [GitHub Releases page](https://github.com/effcol/WiZ3D/releases). Extract it anywhere — the top-level `wiz3D/` folder contains one subfolder per path.
+Grab the latest release zip from the [GitHub Releases page](https://github.com/Stereopticon-Org/wiz3D/releases). Extract it anywhere — the top-level `wiz3D/` folder contains one subfolder per path.
 
 ## 2. Figure out which folder to copy
 
