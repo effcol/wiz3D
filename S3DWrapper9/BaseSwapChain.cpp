@@ -675,6 +675,7 @@ HRESULT CBaseSwapChain::ModifyPresentParameters()
 			effectiveMode = TDisplayScalingMode(gInfo.DisplayScalingMode);
 		}
 		else if (!gInfo.DisplayScalingMode &&
+		         !gInfo.DisableAutoUpscale && // 0.4.3 issue #48 per-game opt-out
 		         m_PresentationParameters[0].hDeviceWindow &&
 		         m_PresentationParameters[0].BackBufferWidth  > 1 &&
 		         m_PresentationParameters[0].BackBufferHeight > 1)

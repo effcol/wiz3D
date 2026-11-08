@@ -1367,6 +1367,25 @@
 			</Preset>
 		</Presets>
 	</Profile>
+	<!-- 0.4.3 (issue #48): Hothead's Deathspank trilogy breaks under the
+	     Task #77 sub-native auto-upscale path. Games report 1024x768 as the
+	     requested back-buffer, we widen it to panel-native (e.g. 1920x1200)
+	     and redirect the game's initial RT to the pre-scale eye RT; engine
+	     then renders black with audio still playing. <DisableAutoUpscale>
+	     keeps the game at its original BB size (letterboxed on bigger
+	     panels) but it actually renders. Reporter: NTM-3D (logs: issue #48). -->
+	<Profile Name="DeathSpank">
+		<File Name="DeathSpank.exe" />
+		<DisableAutoUpscale Value="1"/>
+	</Profile>
+	<Profile Name="DeathSpank: Thongs of Virtue">
+		<File Name="DeathSpankTOV.exe" />
+		<DisableAutoUpscale Value="1"/>
+	</Profile>
+	<Profile Name="The Baconing">
+		<File Name="TheBaconing.exe" />
+		<DisableAutoUpscale Value="1"/>
+	</Profile>
 	<Profile Name="Trine 4: The Nightmare Prince">
 		<File Name="trine4_game.exe" />
 		<!-- 0.4.3 (issue #47 workaround): to stop the particle-distortion

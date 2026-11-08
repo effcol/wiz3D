@@ -1109,6 +1109,7 @@ void ReadProfilePart2Data(TiXmlNode* node)
 		// Per game: deferred titles need the inverse hunt, others can be hurt by it; draw-time patching changes every patch.
 		DECLARE_BVALUE(DetectInverseMatrix),
 		DECLARE_BVALUE(PatchConstantsAtDraw),
+		DECLARE_BVALUE(DisableAutoUpscale),
 		DECLARE_FVALUE(SeparationScale),
 		DECLARE_FVALUE(ScaleSeparationForSmallViewPorts),
 		DECLARE_IVALUE(SearchFrameSizeX),

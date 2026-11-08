@@ -440,6 +440,15 @@ public:
 	// DX10/11 COM-wrap, per game: find inverse view-projections numerically in constant buffers no shader analysis
 	// reaches (deferred lighting's pixel-shader-only buffers) and patch them for the right eye.
 	bool		DetectInverseMatrix;
+	// 0.4.3 (issue #48): per-game override to disable the Task #77 sub-native
+	// auto-upscale path. Some engines (Hothead's Deathspank trilogy) break
+	// when wiz3D widens their 1024x768 back-buffer to panel-native and then
+	// pre-scale-RT-redirects their draws -- end result is a black screen
+	// with audio still playing. Setting <DisableAutoUpscale Value="1"/> in
+	// the per-game BaseProfile.xml block keeps the game at its original
+	// back-buffer size so it renders, at the cost of letterbox on a panel
+	// larger than the game's requested resolution.
+	bool		DisableAutoUpscale;
 	// DX10/11 COM-wrap, per game: patch the right eye's constants at draw time, for the shader about to read them.
 	bool		PatchConstantsAtDraw;
 	// DX10/11 COM-wrap: issue each draw twice live instead of recording the frame and replaying it at Present.
@@ -604,6 +613,7 @@ public:
 		COMWrapEyeShift  = 0.0f;      // 0 = use per-game profile StereoBase; non-zero = override.
 		DetectInverseMatrix  = false; // Per game (BaseProfile.xml).
 		PatchConstantsAtDraw = false; // Per game (BaseProfile.xml).
+		DisableAutoUpscale   = false; // Per game (BaseProfile.xml) — see field doc.
 		DuplicateDraws   = true;      // Issue each draw twice live; false = record+replay at Present.
 		DrawType = 2;
 		DeviceMode = DEVICE_MODE_AUTO;
