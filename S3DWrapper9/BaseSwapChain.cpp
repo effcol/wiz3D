@@ -1269,18 +1269,27 @@ void CBaseSwapChain::WriteJPSScreenshot(bool applyGammaCorrection)
 		return;
 	if(IsStereoActive())
 	{
-		// 0.4.3 fix (issue #49): JPS spec is left-eye-on-left-half,
-		// right-eye-on-right-half. The previous code wrote m_pRightBackBuffer
-		// into the LEFT-half dst rect and m_pLeftBackBuffer into the RIGHT
-		// half, so saved JPS files had the eyes swapped versus on-screen.
-		// SwapEyes has already been applied by the time m_pLeftBackBuffer /
-		// m_pRightBackBuffer carry their "final" roles, so no second layer
-		// of swap is needed here.
+		// 0.4.3 fix (issue #49 corrected): JPS/PNS use the de-facto
+		// NVIDIA cross-eyed convention — RIGHT eye on the LEFT half,
+		// LEFT eye on the RIGHT half — expected by NVIDIA 3D Vision Photo
+		// Viewer, Stereoscopic Player, and StereoPhoto Maker. Plain
+		// PNG/JPEG/BMP/DDS have no de-facto stereo layout, so write them
+		// left-on-left (parallel) which is what most generic SBS viewers
+		// default to. The reporter who flagged "eyes swapped" was almost
+		// certainly viewing .jps files as parallel-SBS; a4d6575f flipped
+		// every format to parallel, which was wrong for .jps/.pns.
+		const bool bCrossEyed = (gInfo.ScreenshotType == 1 /*PNS*/ ||
+		                         gInfo.ScreenshotType == 3 /*JPS*/);
+		IDirect3DSurface9* pLeftHalfSrc  = bCrossEyed ? m_pRightBackBuffer : m_pLeftBackBuffer;
+		IDirect3DSurface9* pRightHalfSrc = bCrossEyed ? m_pLeftBackBuffer  : m_pRightBackBuffer;
+		const RECT* pLeftHalfSrcRect  = bCrossEyed ? &m_RightViewRect : &m_LeftViewRect;
+		const RECT* pRightHalfSrcRect = bCrossEyed ? &m_LeftViewRect  : &m_RightViewRect;
+
 		RECT LeftDst  = { 0, 0, m_BackBufferSize.cx, m_BackBufferSize.cy };
-		NSCALL(GetD3D9Device().StretchRect(m_pLeftBackBuffer, &m_LeftViewRect,
+		NSCALL(GetD3D9Device().StretchRect(pLeftHalfSrc, pLeftHalfSrcRect,
 			JPSSurface, &LeftDst, D3DTEXF_LINEAR));
 		RECT RightDst = { m_BackBufferSize.cx, 0, m_BackBufferSize.cx * 2, m_BackBufferSize.cy };
-		NSCALL(GetD3D9Device().StretchRect(m_pRightBackBuffer, &m_RightViewRect,
+		NSCALL(GetD3D9Device().StretchRect(pRightHalfSrc, pRightHalfSrcRect,
 			JPSSurface, &RightDst, D3DTEXF_LINEAR));
 	}
 	else
