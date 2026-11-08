@@ -93,7 +93,7 @@ static std::atomic<bool> g_profileReloadPending{ false };
 static void RequestProfileReload()
 {
 	g_profileReloadPending.store(true, std::memory_order_release);
-	DDILog("[reload] Ctrl+F5 pressed — BaseProfile.xml reload queued for next Present boundary\n");
+	DDILog("[reload] Ctrl+F5 pressed — BaseProfile.xml + UserProfile.xml reload queued for next Present boundary\n");
 }
 
 namespace wiz3d {
@@ -109,7 +109,7 @@ void MaybeReloadProfileBetweenFrames()
 {
 	if (!g_profileReloadPending.exchange(false, std::memory_order_acq_rel))
 		return;
-	DDILog("[reload] re-parsing BaseProfile.xml ...\n");
+	DDILog("[reload] re-parsing BaseProfile.xml + UserProfile.xml ...\n");
 	// FreeProfiles clears the TiXmlDocument objects; the CRC maps on
 	// g_ProfileData get repopulated by ReadCurrentProfile. Old entries
 	// linger until the matching new entry overwrites them, but <SkipStereo/>
@@ -119,6 +119,18 @@ void MaybeReloadProfileBetweenFrames()
 	g_ProfileData.PSCRCData.clear();
 	g_ProfileData.GSCRCData.clear();
 	FreeProfiles();
+	// 0.4.3 fix: FreeProfiles nulls g_docConfig + g_docSystemProfiles +
+	// g_docUserProfiles (and their cached nodes). Without the RouterType
+	// reloads below, ReadCurrentProfile's downstream ReadConfig()
+	// early-returns on g_docConfig==NULL and ReadProfilePart2Data(NULL)
+	// no-ops, so Ctrl+F5 wiped the CRC maps but never re-read BaseProfile
+	// or UserProfile from disk. ReadInputData never ran -> the
+	// PresetAtLoad snapshot stayed at game-launch values -> ResetToLoadedValues
+	// reverted the user's in-memory tuning -> the WriteInputData on game
+	// exit then persisted those reverted values back to UserProfile.xml,
+	// overwriting the user's saved separation / convergence / etc.
+	ReadConfigRouterType();
+	ReadProfilesRouterType();
 	ReadCurrentProfile(gData.VendorId);
 	DDILog("[reload] reload done, VS=%u PS=%u GS=%u entries\n",
 	       (unsigned)g_ProfileData.VSCRCData.size(),

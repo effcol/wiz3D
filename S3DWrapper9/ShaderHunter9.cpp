@@ -539,23 +539,35 @@ std::atomic<bool> g_profileReloadPending{ false };
 void RequestProfileReload()
 {
     g_profileReloadPending.store(true, std::memory_order_release);
-    HLog("[reload-dx9] Ctrl+F5 pressed — BaseProfile.xml reload queued\n");
+    HLog("[reload-dx9] Ctrl+F5 pressed — BaseProfile.xml + UserProfile.xml reload queued\n");
 }
 
 void MaybeReloadProfileBetweenFrames()
 {
     if (!g_profileReloadPending.exchange(false, std::memory_order_acq_rel))
         return;
-    HLog("[reload-dx9] re-parsing BaseProfile.xml ...\n");
+    HLog("[reload-dx9] re-parsing BaseProfile.xml + UserProfile.xml ...\n");
     g_ProfileData.VSCRCData.clear();
     g_ProfileData.PSCRCData.clear();
     g_ProfileData.GSCRCData.clear();
     FreeProfiles();
+    // 0.4.3 fix: FreeProfiles nulls g_docConfig + g_docSystemProfiles +
+    // g_docUserProfiles (and their cached nodes). Without the RouterType
+    // reloads below, ReadCurrentProfile's downstream ReadConfig()
+    // early-returns on g_docConfig==NULL and ReadProfilePart2Data(NULL)
+    // no-ops, so Ctrl+F5 wiped the CRC maps but never re-read BaseProfile
+    // or UserProfile from disk. ReadInputData never ran -> the
+    // PresetAtLoad snapshot stayed at game-launch values -> ResetToLoadedValues
+    // reverted the user's in-memory tuning -> the WriteInputData on game
+    // exit then persisted those reverted values back to UserProfile.xml,
+    // overwriting the user's saved separation / convergence / etc.
+    ReadConfigRouterType();
+    ReadProfilesRouterType();
     // DX9 doesn't park the VendorId globally the way DX10/11 does on
-    // gData.VendorId. Pass 0 — the reload reads BaseProfile.xml fresh and
-    // the vendor-specific selectors in ReadCurrentProfile fall back to
-    // generic. The initial device-create call still used the real vendor;
-    // we're only invalidating the ShaderPatch / ShaderOverride CRC maps.
+    // gData.VendorId. Pass 0 — the vendor-specific selectors in
+    // ReadCurrentProfile fall back to generic. The initial device-create
+    // call still used the real vendor; we're only invalidating the
+    // ShaderPatch / ShaderOverride CRC maps.
     ReadCurrentProfile(0);
     HLog("[reload-dx9] reload done, VS=%u PS=%u GS=%u entries\n",
          (unsigned)g_ProfileData.VSCRCData.size(),
