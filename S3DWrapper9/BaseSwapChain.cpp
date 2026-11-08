@@ -1268,12 +1268,19 @@ void CBaseSwapChain::WriteJPSScreenshot(bool applyGammaCorrection)
 		return;
 	if(IsStereoActive())
 	{
-		RECT RightRect = { 0, 0, m_BackBufferSize.cx, m_BackBufferSize.cy };
-		NSCALL(GetD3D9Device().StretchRect(m_pRightBackBuffer, &m_RightViewRect, 
-			JPSSurface, &RightRect, D3DTEXF_LINEAR));
-		RECT LeftRect = { m_BackBufferSize.cx, 0, m_BackBufferSize.cx * 2, m_BackBufferSize.cy };
-		NSCALL(GetD3D9Device().StretchRect(m_pLeftBackBuffer, &m_LeftViewRect, 
-			JPSSurface, &LeftRect, D3DTEXF_LINEAR));
+		// 0.4.3 fix (issue #49): JPS spec is left-eye-on-left-half,
+		// right-eye-on-right-half. The previous code wrote m_pRightBackBuffer
+		// into the LEFT-half dst rect and m_pLeftBackBuffer into the RIGHT
+		// half, so saved JPS files had the eyes swapped versus on-screen.
+		// SwapEyes has already been applied by the time m_pLeftBackBuffer /
+		// m_pRightBackBuffer carry their "final" roles, so no second layer
+		// of swap is needed here.
+		RECT LeftDst  = { 0, 0, m_BackBufferSize.cx, m_BackBufferSize.cy };
+		NSCALL(GetD3D9Device().StretchRect(m_pLeftBackBuffer, &m_LeftViewRect,
+			JPSSurface, &LeftDst, D3DTEXF_LINEAR));
+		RECT RightDst = { m_BackBufferSize.cx, 0, m_BackBufferSize.cx * 2, m_BackBufferSize.cy };
+		NSCALL(GetD3D9Device().StretchRect(m_pRightBackBuffer, &m_RightViewRect,
+			JPSSurface, &RightDst, D3DTEXF_LINEAR));
 	}
 	else
 	{

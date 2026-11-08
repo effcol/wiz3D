@@ -587,7 +587,7 @@ void OSDRenderer9::Render(IDirect3DDevice9* device, UINT bbW, UINT bbH,
             L"Numpad 7 / 8 / 9",     L"Preset Low / Default / Strong",
             L"Numpad /",             L"Toggle auto-focus",
             L"Ctrl + Numpad /",      L"Toggle laser-sight crosshair",
-            L"PrtScn",               L"Stereo screenshot",
+            L"Ctrl + F12",           L"Stereo screenshot",
             L"Shift + F1",           L"Toggle this hotkey list",
             L"Ctrl + F1",            L"Toggle OSD strip + FPS",
             // ShaderHunter cycle/capture/exit keys live on the hunter OSD

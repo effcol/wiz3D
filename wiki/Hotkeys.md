@@ -65,7 +65,7 @@ These are compiled out of the shipping `Final Release` build but may appear if y
 
 | Keys | Action |
 |---|---|
-| **Print Screen** | Save stereo screenshot to the install's `wiz3D_Logs/Screenshots/` |
+| **Ctrl + F12** | Save stereo screenshot to the install's `wiz3D_Logs/Screenshots/`. Moved off PrtScn in 0.4.3 (issue #49) so Steam / Windows Shift+S / Afterburner don't fight us for the key. |
 
 ## Hotkey OSD
 

@@ -390,7 +390,11 @@
 			<!-- Default: 623 Ctrl + Num / -->
 			<ToggleLaserSight Key="623"/>
 			<!-- Default: 44 PrntScr / -->
-			<Screenshot Key="44"/>
+			<!-- 0.4.3 (issue #49): moved off PrtScn (code 44) to Ctrl+F12
+			     (code 635). PrtScn gets stolen by Steam / Windows Shift+S /
+			     Afterburner for many users. Ctrl+F12 is uncommon-enough
+			     to avoid conflicts. -->
+			<Screenshot Key="635"/>
 			<!-- Default: 362 Shift * -->
 			<ToggleWizard Key="362"/>
 			<!-- Default: 122 F11-->

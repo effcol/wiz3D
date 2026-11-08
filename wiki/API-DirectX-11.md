@@ -56,7 +56,7 @@
 | Tempest 4000 | `Stereo-Injector/DX10-11/32-bit` | ✕ | ✅ Working |  |
 | Tom Clancy's H.A.W.X | `Stereo-Injector/DX10-11/32-bit` | ✓ | 🧪 Untested |  |
 | Tom Clancy's Splinter Cell: Blacklist | `Stereo-Injector/DX9/32-bit` | ✕ | 🟡 Mostly | **DX9 only.** Needs shader fix. |
-| Trine 4: The Nightmare Prince | `Stereo-Injector/DX10-11/64-bit` | ✕ | 🟡 Mostly | Fireplaces can flash in the right eye. |
+| Trine 4: The Nightmare Prince | `Stereo-Injector/DX10-11/64-bit` | ✕ | 🟡 Mostly | Fireplaces can flash in the right eye — workaround: add `setOption(rendererModule, "ParticleDistortion", false)` to `%APPDATA%\Trine4\options.txt` (issue #47). Shadows + 2D aim arrow still need shader-fix work. |
 | Trine 5: A Clockwork Conspiracy | `Stereo-Injector/DX10-11/64-bit` | ✕ | 🟡 Mostly | Raindrops hitting the ground make a puff of smoke in the right eye instead of ripples. |
 | What Remains of Edith Finch | `Stereo-Injector/DX10-11/64-bit` | ✕ | ✅ Working |  |
 | World in Conflict | `Stereo-Injector/DX10-11/32-bit` | ✓ | 🧪 Untested |  |

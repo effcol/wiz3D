@@ -629,7 +629,11 @@ public:
 
 		HotKeyInfo hotKeyList[MAX_EVENTS] = 
 		{
-			{ "Screenshot", SCREENSHOT,                                     44 },	//--- PrtScn				---
+			// 0.4.3 (issue #49): moved off PrtScn (code 44) to Ctrl+F12 (code
+			// 635 = Ctrl(512) + VK_F12(123)). Reporters bind PrtScn to Steam
+			// / Windows + Shift S / Afterburner, so our hook stole those
+			// chords. Ctrl+F12 is uncommon-enough to avoid conflicts.
+			{ "Screenshot", SCREENSHOT,                                    635 },	//--- Ctrl + F12			---
 			{ "ToggleStereo", TOGGLE_STEREO,                                106 },  //--- Num *					---
 			{ "ZPSIncrease", INCREASE_ZPS,                                  363 },  //--- Shift + Num +			---
 			{ "ZPSDecrease", DECREASE_ZPS,                                  365 },  //--- Shift + Num -			---
