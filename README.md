@@ -592,8 +592,7 @@ In-game hotkeys for adjusting stereo on the fly. All bindings are remappable in 
 | `Alt+Numpad +/-` | Convergence (quick comfort offset) |
 | `Ctrl+Alt+Numpad +/-` | Convergence fine (5x smaller step) |
 | `Ctrl+F5` | Reload `BaseProfile.xml` live (apply profile edits without restarting the game) |
-| `PrintScreen` | Save a stereo screenshot to `My Pictures\wiz3D Screenshots\<Game>\` (default format `.png`; pick PNG/PNS/JPEG/JPS/BMP/DDS via `<ScreenshotType>` in `wiz3D_Config.xml`) |
-| `Ctrl+PrintScreen` | Save a stereo screenshot without applying the display's gamma ramp |
+| `Ctrl+F12` | Save a stereo screenshot to `My Pictures\wiz3D Screenshots\<Game>\` (default format `.png`; pick PNG/PNS/JPEG/JPS/BMP/DDS via `<ScreenshotType>` in `wiz3D_Config.xml`). Moved off PrtScn in 0.4.3 (issue #49) so Steam / Windows Shift+S / MSI Afterburner don't fight us for the key |
 
 ---
 

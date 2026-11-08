@@ -13,8 +13,12 @@
 struct DataInput;
 
 #define PROFILES_VERSION 1
-bool ReadConfigRouterType();
-void ReadProfilesRouterType();
+// 0.4.3: S3DAPI_API export required so the DX9 + DX10/11 wrapper DLLs can
+// link these at CI Release config. Without it, the symbols resolve locally
+// in Final Release (which has different linker settings) but the Release
+// smoke-test build gets LNK2001 on ShaderHunter9.obj / S3DWrapperD3D10.obj.
+bool S3DAPI_API ReadConfigRouterType();
+void S3DAPI_API ReadProfilesRouterType();
 void S3DAPI_API FreeProfiles();
 
 void S3DAPI_API ReadCurrentProfile( DWORD Vendor );
